@@ -17,22 +17,27 @@ jobs:
         include:
           - os: ubuntu-latest
             label: linux-x86-64
+            lib: libbigmath_ffm.so
           - os: ubuntu-24.04-arm
             label: linux-aarch64
+            lib: libbigmath_ffm.so
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y libgmp-dev libmpfr-dev cmake
       - name: Build
         run: |
-          mkdir -p build/native out/${{ matrix.label }}
+          mkdir -p build/native native/${{ matrix.label }}
           cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
           cmake --build build/native --target install -j$(nproc)
-          cp build/native/lib/* out/${{ matrix.label }}/
+          cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
+          echo "=== built ==="
+          ls -la native/${{ matrix.label }}/
+          file native/${{ matrix.label }}/${{ matrix.lib }}
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.label }}
-          path: out/
+          path: native/${{ matrix.label }}/${{ matrix.lib }}
           retention-days: 1
 
   native-macos:
@@ -42,22 +47,27 @@ jobs:
         include:
           - os: macos-14
             label: macos-x86-64
+            lib: libbigmath_ffm.dylib
           - os: macos-latest
             label: macos-aarch64
+            lib: libbigmath_ffm.dylib
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - run: brew install gmp mpfr cmake
       - name: Build
         run: |
-          mkdir -p build/native out/${{ matrix.label }}
+          mkdir -p build/native native/${{ matrix.label }}
           cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
           cmake --build build/native --target install -j$(sysctl -n hw.ncpu)
-          cp build/native/lib/* out/${{ matrix.label }}/
+          cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
+          echo "=== built ==="
+          ls -la native/${{ matrix.label }}/
+          file native/${{ matrix.label }}/${{ matrix.lib }}
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.label }}
-          path: out/
+          path: native/${{ matrix.label }}/${{ matrix.lib }}
           retention-days: 1
 
   native-windows:
@@ -67,6 +77,7 @@ jobs:
         include:
           - os: windows-latest
             label: windows-x86-64
+            lib: bigmath_ffm.dll
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -77,14 +88,16 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
-          mkdir -p build/native out/${{ matrix.label }}
+          mkdir -p build/native native/${{ matrix.label }}
           cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
           cmake --build build/native --config Release --target install
-          cp build/native/lib/* out/${{ matrix.label }}/
+          cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
+          echo "=== built ==="
+          ls -la native/${{ matrix.label }}/
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.label }}
-          path: out/
+          path: native/${{ matrix.label }}/${{ matrix.lib }}
           retention-days: 1
 
   package:
@@ -108,18 +121,18 @@ jobs:
           distribution: 'temurin'
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew
-      - name: Download native artifacts
+      - name: Download and organize native artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: native-*
-          path: out/
+          path: ./
           merge-multiple: true
+      - name: Build JAR
+        run: ./gradlew assemble -x test
       - name: Get Version
         id: ver
         run: echo "version=$(grep -oP 'mod_version\s*=\s*\K.*' gradle.properties | head -1)" >> $GITHUB_OUTPUT
       - run: echo "VERSION_SUFFIX=$(echo "${{ github.sha }}" | cut -c 1-7)" >> $GITHUB_ENV
-      - name: Build JAR
-        run: ./gradlew assemble -x test
       - name: Rename Jars
         if: env.PUBLISH == 'true'
         run: for file in build/libs/*; do mv "$file" "${file/-SNAPSHOT/-SNAPSHOT+$(date --utc '+%Y%m%d-%H%M%S')-${{ env.VERSION_SUFFIX }}}"; done;
@@ -150,4 +163,4 @@ jobs:
             > Pre-release snapshot — not for production use.
           files: |
             build/libs/*.jar
-            out/**/*
+            native/**/*
