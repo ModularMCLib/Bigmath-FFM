@@ -86,39 +86,33 @@ public final class BigmathFFM {
 
 		String explicitPath = System.getProperty("bigmath.native.path");
 		if (explicitPath != null) {
-			return SymbolLookup.libraryLookup(explicitPath, Arena.ofAuto());
+			return SymbolLookup.libraryLookup(Path.of(explicitPath), Arena.ofAuto());
 		}
 
-		String[] searchPaths = {
-			"native/" + classifier + "/" + platformLibName(),
-			platformLibName(),
-		};
+		String libName = platformLibName();
+		String relativePath = "native/" + classifier + "/" + libName;
+		Path nativePath = Path.of(relativePath);
 
-		for (String path : searchPaths) {
-			try {
-				Path p = Path.of(path);
-				if (path.equals(platformLibName()) || Files.exists(p)) {
-					return SymbolLookup.libraryLookup(p, Arena.ofAuto());
-				}
-			} catch (IllegalArgumentException e) {
-				// library not found at this path, try next
+		try {
+			if (Files.exists(nativePath)) {
+				return SymbolLookup.libraryLookup(nativePath, Arena.ofAuto());
 			}
+		} catch (Exception e) {
+			// Try next method
 		}
 
-		// Try System.loadLibrary as last resort (uses java.library.path)
+		// Try System.loadLibrary as last resort
 		try {
 			System.loadLibrary("bigmath_ffm");
-			return SymbolLookup.libraryLookup(platformLibName(), Arena.ofAuto());
-		} catch (UnsatisfiedLinkError e) {
+			return SymbolLookup.libraryLookup(Path.of(libName), Arena.ofAuto());
+		} catch (Exception e) {
 			// give up
 		}
 
 		throw new UnsatisfiedLinkError(
-			"Failed to load native library '" + platformLibName() + "' " +
-			"for platform '" + platformClassifier() + "' " +
-			"(os=" + CURRENT_OS + ", arch=" + CURRENT_ARCH + "). " +
-			"Ensure the native library is built and placed in the correct path, " +
-			"or set -Dbigmath.native.path=/full/path/to/" + platformLibName()
+			"Failed to load " + libName + " for platform " + classifier + ". " +
+			"Tried: " + nativePath.toAbsolutePath() + " and java.library.path. " +
+			"Set -Dbigmath.native.path=/path/to/" + libName
 		);
 	}
 
