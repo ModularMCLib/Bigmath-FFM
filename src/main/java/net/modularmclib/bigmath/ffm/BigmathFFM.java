@@ -111,38 +111,6 @@ public final class BigmathFFM {
 		);
 	}
 
-		String explicitPath = System.getProperty("bigmath.native.path");
-		if (explicitPath != null) {
-			return SymbolLookup.libraryLookup(Path.of(explicitPath), Arena.ofAuto());
-		}
-
-		String libName = platformLibName();
-		String relativePath = "native/" + classifier + "/" + libName;
-		Path nativePath = Path.of(relativePath);
-
-		try {
-			if (Files.exists(nativePath)) {
-				return SymbolLookup.libraryLookup(nativePath, Arena.ofAuto());
-			}
-		} catch (Exception e) {
-			// Try next method
-		}
-
-		// Try System.loadLibrary as last resort
-		try {
-			System.loadLibrary("bigmath_ffm");
-			return SymbolLookup.libraryLookup(Path.of(libName), Arena.ofAuto());
-		} catch (Exception e) {
-			// give up
-		}
-
-		throw new UnsatisfiedLinkError(
-			"Failed to load " + libName + " for platform " + classifier + ". " +
-			"Tried: " + nativePath.toAbsolutePath() + " and java.library.path. " +
-			"Set -Dbigmath.native.path=/path/to/" + libName
-		);
-	}
-
 	public static BigmathFFM getInstance() {
 		return INSTANCE;
 	}
