@@ -2,7 +2,7 @@ name: Publish on Release
 
 on:
   release:
-    types: [released]
+    types: [prereleased, released]
 
 jobs:
   meta:
@@ -33,7 +33,7 @@ jobs:
   publish-26:
     name: Publish 26.1
     needs: [meta]
-    if: ${{ contains(github.ref_name, '26.1') }}
+    if: ${{ contains(github.ref_name, '26.1') && github.event.release.prerelease == false }}
     secrets: inherit
     uses: ./.github/workflows/publish.yml
     with:
@@ -42,3 +42,28 @@ jobs:
       version: '26.1'
       release-body: ${{ github.event.release.body }}
       changelog-body: ${{ needs.meta.outputs.CHANGELOG }}
+
+  publish-prerelease-26:
+    name: Publish 26.1 Pre-release
+    needs: [meta]
+    if: ${{ contains(github.ref_name, '26.1') && github.event.release.prerelease == true }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '26.1'
+      - name: Setup Build
+        uses: ./.github/actions/build_setup
+        with:
+          ref: '26.1'
+      - run: chmod +x gradlew
+      - name: Build
+        run: ./gradlew assemble -x test
+      - name: Upload JARs to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: build/libs/*.jar
+          fail_on_unmatched_files: true

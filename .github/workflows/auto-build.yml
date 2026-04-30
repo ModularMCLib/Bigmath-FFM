@@ -1,0 +1,69 @@
+name: Latest Snapshot
+
+on:
+  push:
+    branches: ['26.1']
+    paths: ['src/**', '*.gradle', 'gradle.properties', 'gradle/**', 'settings.gradle']
+
+concurrency:
+  group: auto-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      PUBLISH: ${{ !contains(github.event.commits[0].message, '[no-snapshot]') }}
+      SNAPSHOT: true
+      CI: true
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgmp-dev libmpfr-dev cmake
+      - name: Setup Build
+        uses: ./.github/actions/build_setup
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      - name: Get Mod Version
+        id: ver
+        run: echo "version=$(./gradlew -q printVersion 2>/dev/null || grep -oP 'mod_version\s*=\s*\K.*' gradle.properties | head -1)" >> $GITHUB_OUTPUT
+      - name: Version Suffix
+        id: suffix
+        run: echo "VERSION_SUFFIX=$(echo "${{ github.sha }}" | cut -c 1-7)" >> $GITHUB_ENV
+      - name: Build
+        run: ./gradlew build -x test
+      - name: Rename Jars
+        if: ${{ env.PUBLISH == 'true' }}
+        run: for file in build/libs/*; do mv "$file" "${file/-SNAPSHOT/-SNAPSHOT+$(date --utc '+%Y%m%d-%H%M%S')-${{ env.VERSION_SUFFIX }}}"; done;
+      - name: Changelog
+        id: changelog
+        if: ${{ env.PUBLISH == 'true' }}
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          configuration: "./.github/json/config-latest.json"
+          toTag: ${{ github.ref }}
+          fetchViaCommits: true
+          failOnError: false
+      - name: Release Latest
+        if: ${{ env.PUBLISH == 'true' }}
+        uses: andelf/nightly-release@v1
+        with:
+          tag_name: latest-${{ github.ref_name }}
+          name: '${{ steps.ver.outputs.version }}-SNAPSHOT+${{ env.VERSION_SUFFIX }}'
+          prerelease: true
+          body: |
+            ## Bigmath-FFM Snapshot Build
+            Branch: `${{ github.ref_name }}` | Commit: `${{ github.sha }}`
+
+            ${{ steps.changelog.outputs.changelog }}
+
+            > [!WARNING]
+            > This is a pre-release snapshot. Use with caution.
+          files: build/libs/*.jar
