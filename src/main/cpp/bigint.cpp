@@ -1,4 +1,5 @@
 #include "bigmath_ffm.h"
+#include "algos.h"
 #include <cstdlib>
 #include <cstring>
 
@@ -26,6 +27,8 @@ void bigint_sub(mpz_t *out, const mpz_t a, const mpz_t b) {
 
 void bigint_mul(mpz_t *out, const mpz_t a, const mpz_t b) {
 	mpz_init(*out);
+	// GMP internally uses tiered algorithms (schoolbook -> Karatsuba -> Toom-Cook -> FFT)
+	// based on operand size, automatically selecting the optimal algorithm
 	mpz_mul(*out, a, b);
 }
 
@@ -41,7 +44,7 @@ void bigint_mod(mpz_t *out, const mpz_t a, const mpz_t b) {
 
 void bigint_pow(mpz_t *out, const mpz_t a, unsigned long exp) {
 	mpz_init(*out);
-	mpz_pow_ui(*out, a, exp);
+	bigmath::fast_pow(*out, a, exp);
 }
 
 void bigint_neg(mpz_t *out, const mpz_t a) {
@@ -106,7 +109,13 @@ void bigint_free(mpz_t a) {
 
 void bigint_gcd(mpz_t *out, const mpz_t a, const mpz_t b) {
 	mpz_init(*out);
-	mpz_gcd(*out, a, b);
+	int abits = bigmath::limb_bits(a);
+	int bbits = bigmath::limb_bits(b);
+	if (abits + bbits <= bigmath::ALGO_THRESHOLD) {
+		bigmath::binary_gcd(*out, a, b);
+	} else {
+		mpz_gcd(*out, a, b);
+	}
 }
 
 void bigint_lcm(mpz_t *out, const mpz_t a, const mpz_t b) {
@@ -150,7 +159,7 @@ int bigint_is_probably_prime(const mpz_t a, int reps) {
 
 void bigint_factorial(mpz_t *out, unsigned long n) {
 	mpz_init(*out);
-	mpz_fac_ui(*out, n);
+	bigmath::product_tree_factorial(*out, n);
 }
 
 void bigint_next_prime(mpz_t *out, const mpz_t a) {
