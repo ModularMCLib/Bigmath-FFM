@@ -16,7 +16,7 @@ jobs:
           - os: ubuntu-24.04-arm
             arch: aarch64
             label: linux-aarch64
-          - os: macos-13
+          - os: macos-14
             arch: x86_64
             label: macos-x86-64
           - os: macos-latest
