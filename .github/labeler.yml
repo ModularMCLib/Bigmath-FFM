@@ -33,4 +33,10 @@ type:docs:
       - any-glob-to-any-file:
           - 'README.md'
           - 'LICENSE'
+          - 'CHANGELOG.md'
           - 'docs/**'
+
+type:tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/test/**'

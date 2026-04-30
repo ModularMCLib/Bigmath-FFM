@@ -26,14 +26,19 @@ jobs:
               - 'gradle.properties'
               - 'gradlew*'
               - 'gradle/**'
+      - name: Install native dependencies
+        if: steps.filter.outputs.code == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgmp-dev libmpfr-dev cmake
       - name: Setup Build
         if: steps.filter.outputs.code == 'true'
         uses: ./.github/actions/build_setup
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-      - name: Build
+      - name: Build & Test
         if: steps.filter.outputs.code == 'true'
-        run: ./gradlew assemble
+        run: ./gradlew build -PrunTests
       - name: Rename Jars
         if: steps.filter.outputs.code == 'true'
         run: for file in build/libs/*; do mv "$file" "${file/.jar/-${{ env.VERSION_SUFFIX }}.jar}"; done;
