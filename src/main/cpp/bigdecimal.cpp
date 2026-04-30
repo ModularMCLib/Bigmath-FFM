@@ -75,13 +75,102 @@ char *bigdecimal_to_string(mpfr_ptr a) {
 }
 
 char *bigdecimal_format(mpfr_ptr a, int scale, int group_size, const char *group_sep) {
-	int max_frac;
-	if (scale >= 0) {
-		max_frac = scale;
-	} else {
-		int decimal_prec = (int)(mpfr_get_prec(a) * 0.30103) + 2;
-		max_frac = decimal_prec > 40 ? 40 : decimal_prec;
+	int max_sig = (int)(mpfr_get_prec(a) * 0.30103);
+	if (max_sig < 8) max_sig = 8;
+	if (max_sig > 100) max_sig = 100;
+
+	mpfr_exp_t exp;
+	char *digits = mpfr_get_str(nullptr, &exp, 10, (size_t)max_sig, a, MPFR_RNDN);
+	if (!digits) return nullptr;
+
+	bool neg = (digits[0] == '-');
+	char *p = digits + (neg ? 1 : 0);
+	size_t digit_len = strlen(p);
+
+	int int_digits = (int)exp;
+	if (int_digits < 0) int_digits = 0;
+	size_t frac_len = (scale >= 0) ? (size_t)scale : (digit_len - int_digits);
+	if (frac_len > digit_len - int_digits) {
+		frac_len = digit_len - int_digits;
 	}
+
+	char *int_part = (char *)malloc(int_digits + 1);
+	if (!int_part) { mpfr_free_str(digits); return nullptr; }
+	if (int_digits > 0) {
+		memcpy(int_part, p, int_digits);
+		int_part[int_digits] = '\0';
+	} else {
+		int_part[0] = '0';
+		int_part[1] = '\0';
+		int_digits = 1;
+	}
+
+	size_t sep_len = (group_sep && group_size > 0) ? strlen(group_sep) : 0;
+	size_t ig_len = strlen(int_part);
+	size_t groups = ig_len > 0 ? (ig_len + group_size - 1) / group_size : 0;
+	char *int_fmt;
+	if (sep_len > 0 && group_size > 0 && ig_len > 0) {
+		size_t fmt_len = ig_len + (groups - 1) * sep_len;
+		int_fmt = (char *)malloc(fmt_len + 1);
+		if (!int_fmt) { free(int_part); mpfr_free_str(digits); return nullptr; }
+		size_t first_group = ig_len % group_size;
+		if (first_group == 0) first_group = group_size;
+		size_t out_pos = 0;
+		memcpy(int_fmt, int_part, first_group);
+		out_pos += first_group;
+		for (size_t i = first_group; i < ig_len; i += group_size) {
+			memcpy(int_fmt + out_pos, group_sep, sep_len);
+			out_pos += sep_len;
+			memcpy(int_fmt + out_pos, int_part + i, group_size);
+			out_pos += group_size;
+		}
+		int_fmt[out_pos] = '\0';
+	} else {
+		int_fmt = strdup(int_part);
+	}
+	free(int_part);
+
+	size_t frac_copy = frac_len;
+	if (frac_copy > digit_len - int_digits) {
+		frac_copy = digit_len - int_digits;
+	}
+	char *frac_str = (char *)malloc(frac_copy + 1);
+	if (!frac_str) { free(int_fmt); mpfr_free_str(digits); return nullptr; }
+	if (frac_copy > 0) {
+		memcpy(frac_str, p + int_digits, frac_copy);
+	}
+	frac_str[frac_copy] = '\0';
+	if (scale < 0) {
+		while (frac_copy > 0 && frac_str[frac_copy - 1] == '0') frac_copy--;
+		frac_str[frac_copy] = '\0';
+	} else {
+		while (frac_copy < (size_t)scale) {
+			frac_str[frac_copy++] = '0';
+			frac_str[frac_copy] = '\0';
+		}
+	}
+
+	size_t sign_len = (neg ? 1 : 0);
+	size_t int_fmt_len = strlen(int_fmt);
+	size_t total = sign_len + int_fmt_len + (frac_copy > 0 ? 1 + frac_copy : 0);
+	char *out = (char *)malloc(total + 1);
+	if (!out) { free(frac_str); free(int_fmt); mpfr_free_str(digits); return nullptr; }
+	size_t pos = 0;
+	if (neg) out[pos++] = '-';
+	memcpy(out + pos, int_fmt, int_fmt_len);
+	pos += int_fmt_len;
+	if (frac_copy > 0) {
+		out[pos++] = '.';
+		memcpy(out + pos, frac_str, frac_copy);
+		pos += frac_copy;
+	}
+	out[pos] = '\0';
+
+	free(frac_str);
+	free(int_fmt);
+	mpfr_free_str(digits);
+	return out;
+}
 
 	char fmt[32];
 	snprintf(fmt, sizeof(fmt), "%%.%dRf", max_frac);
