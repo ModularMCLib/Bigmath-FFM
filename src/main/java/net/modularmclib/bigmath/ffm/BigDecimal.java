@@ -24,7 +24,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_FROM_DOUBLE
 		);
 		invoke(handle, ptr, value, precision);
-		return new BigDecimal(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public static BigDecimal fromString(String value, int precision) {
@@ -38,7 +38,7 @@ public final class BigDecimal implements AutoCloseable {
 			);
 			invoke(handle, ptr, str, precision);
 		}
-		return new BigDecimal(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public static BigDecimal fromBigInt(BigInt value, int precision) {
@@ -53,7 +53,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal subtract(BigDecimal other) {
@@ -64,7 +64,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal multiply(BigDecimal other) {
@@ -75,7 +75,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal divide(BigDecimal other) {
@@ -86,7 +86,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal negate() {
@@ -97,7 +97,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal abs() {
@@ -108,7 +108,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal sqrt() {
@@ -119,7 +119,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal pow(BigDecimal exponent) {
@@ -130,7 +130,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_BINARY
 		);
 		invoke(handle, result, nativePtr, exponent.nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal log() {
@@ -141,7 +141,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal exp() {
@@ -152,7 +152,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal sin() {
@@ -163,7 +163,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal cos() {
@@ -174,7 +174,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal tan() {
@@ -185,7 +185,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal ceil() {
@@ -196,7 +196,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal floor() {
@@ -207,7 +207,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigDecimal round() {
@@ -218,7 +218,7 @@ public final class BigDecimal implements AutoCloseable {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public int compareTo(BigDecimal other) {
@@ -244,7 +244,7 @@ public final class BigDecimal implements AutoCloseable {
 					FunctionDescriptors.BIGDECIMAL_TO_STRING
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr);
-			String str = result.getString(0);
+			String str = result.reinterpret(tmp, null).getString(0);
 			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
 					"bigdecimal_free_string",
 					FunctionDescriptors.BIGDECIMAL_FREE_STRING
@@ -270,7 +270,7 @@ public final class BigDecimal implements AutoCloseable {
 					FunctionDescriptors.BIGDECIMAL_FORMAT
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr, scale, groupSize, sep);
-			String str = result.getString(0);
+			String str = result.reinterpret(tmp, null).getString(0);
 			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
 					"bigdecimal_free_string",
 					FunctionDescriptors.BIGDECIMAL_FREE_STRING

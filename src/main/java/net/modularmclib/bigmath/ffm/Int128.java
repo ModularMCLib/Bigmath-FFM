@@ -168,7 +168,7 @@ public final class Int128 implements AutoCloseable {
 					FunctionDescriptors.INT128_TO_STRING
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr, radix);
-			String str = result.getString(0);
+			String str = result.reinterpret(tmp, null).getString(0);
 			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
 					"int128_free_string",
 					FunctionDescriptors.INT128_FREE_STRING
@@ -190,7 +190,7 @@ public final class Int128 implements AutoCloseable {
 					FunctionDescriptors.INT128_FORMAT
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr, groupSize, sep);
-			String str = result.getString(0);
+			String str = result.reinterpret(tmp, null).getString(0);
 			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
 					"int128_free_string",
 					FunctionDescriptors.INT128_FREE_STRING
