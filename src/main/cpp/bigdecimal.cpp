@@ -84,7 +84,7 @@ char *bigdecimal_format(mpfr_ptr a, int scale, int group_size, const char *group
 
 	int int_digits = (int)exp;
 	if (int_digits < 0) int_digits = 0;
-	size_t frac_len = (scale >= 0) ? (size_t)scale : 0;
+	size_t frac_len = (scale >= 0) ? (size_t)scale : (digit_len - int_digits);
 	if (frac_len > digit_len - int_digits) {
 		frac_len = digit_len - int_digits;
 	}
