@@ -1,0 +1,10 @@
+java {
+	withSourcesJar()
+	withJavadocJar()
+}
+
+tasks.named('javadoc') {
+	failOnError(false)
+	options.tags = ["apiNote:a:API Note:", "implSpec:a:Implementation Requirements:", "implNote:a:Implementation Note:"]
+	options.addStringOption("Xdoclint:none", "-quiet")
+}

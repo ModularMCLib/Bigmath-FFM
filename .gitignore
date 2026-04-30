@@ -1,11 +1,53 @@
+# --- Gradle ---
+.gradle/
+build/
+
+# --- IDE ---
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# --- Java ---
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+replay_pid*
+
+# --- Kotlin ---
+*.kotlin_module
+
+# --- C / C++ ---
 # Prerequisites
 *.d
 
-# Compiled Object files
-*.slo
-*.lo
+# Object files
 *.o
 *.obj
+*.slo
+*.lo
 
 # Precompiled Headers
 *.gch
@@ -13,57 +55,68 @@
 
 # Linker files
 *.ilk
+*.exp
+*.def
 
 # Debugger Files
 *.pdb
+*.idb
+*.msvc
+*.dbg
 
-# Compiled Dynamic libraries
+# Dynamic libraries
 *.so
-*.dylib
-*.dll
 *.so.*
-
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
+*.dylib
+*.dylib.*
+*.dll
 *.lib
+*.dll.a
+*.dll.lib
+
+# Static libraries
+*.a
+*.la
+*.lai
 
 # Executables
 *.exe
 *.out
 *.app
+*.com
 
-# Build directories
-build/
-Build/
-build-*/
-
-# CMake generated files
+# --- CMake ---
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
+CMakeUserPresets.json
+CTestTestfile.cmake
 Makefile
 install_manifest.txt
 compile_commands.json
 
-# Temporary files
-*.tmp
-*.log
-*.bak
-*.swp
+# --- Native build dirs ---
+build-*/
+Build/
 
-# vcpkg
+# --- vcpkg ---
 vcpkg_installed/
+vcpkg-manifest-install.log
 
-# debug information files
-*.dwo
-
-# test output & cache
+# --- Testing ---
 Testing/
 .cache/
+*.log
+*.tmp
+*.bak
+
+# --- Debug info ---
+*.dwo
+*.dwp
+*.gcda
+*.gcno
+*.gcov
+
+# --- Generated ---
+src/generated/
+

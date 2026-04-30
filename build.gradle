@@ -1,0 +1,49 @@
+plugins {
+    id 'java-library'
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'jacoco'
+    alias libs.plugins.spotless
+    alias libs.plugins.lombok
+}
+
+group = maven_group
+version = mod_version
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
+}
+
+sourceSets {
+    main.resources {
+        srcDir 'src/generated/resources'
+    }
+}
+
+apply from: "$rootDir/gradle/scripts/jars.gradle"
+apply from: "$rootDir/gradle/scripts/repositories.gradle"
+apply from: "$rootDir/dependencies.gradle"
+apply from: "$rootDir/gradle/scripts/resources.gradle"
+apply from: "$rootDir/gradle/scripts/publishing.gradle"
+apply from: "$rootDir/gradle/scripts/spotless.gradle"
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    jvmArgs += '--enable-native-access=ALL-UNNAMED'
+    def nativeDir = layout.buildDirectory.dir('native/resources').get().asFile
+    onlyIf { project.hasProperty('runTests') || nativeDir.exists() }
+    doFirst {
+        if (!nativeDir.exists()) {
+            logger.warn 'Skipping tests – native library not built. Use -PrunTests to force or build native first.'
+        }
+    }
+}
+
+lombok {
+    version = libs.versions.lombok.get()
+}

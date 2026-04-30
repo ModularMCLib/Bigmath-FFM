@@ -1,0 +1,64 @@
+def nativeClassifier = {
+    def os = System.getProperty("os.name").toLowerCase()
+    def arch = System.getProperty("os.arch").toLowerCase()
+    def osPart = os.contains("win") ? "windows" : os.contains("mac") ? "macos" : "linux"
+    def archPart = arch.contains("amd64") || arch.contains("x86_64") ? "x86-64" : "aarch64"
+    "${osPart}-${archPart}"
+}()
+
+def nativeLibName = System.getProperty("os.name").toLowerCase().contains("win")
+        ? "bigmath_ffm.dll"
+        : System.getProperty("os.name").toLowerCase().contains("mac")
+                ? "libbigmath_ffm.dylib"
+                : "libbigmath_ffm.so"
+
+def cmakeBuildDir = layout.buildDirectory.dir("native").get().asFile
+
+tasks.register('buildNative', Exec) {
+    description = 'Build native library via CMake'
+    workingDir = cmakeBuildDir
+
+    inputs.dir("src/main/cpp").withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.file("${cmakeBuildDir}/lib/${nativeLibName}")
+
+    doFirst {
+        cmakeBuildDir.mkdirs()
+    }
+
+    commandLine 'cmake',
+            '-S', file("src/main/cpp").absolutePath,
+            '-B', cmakeBuildDir.absolutePath,
+            "-DCMAKE_BUILD_TYPE=${project.findProperty('buildType') ?: 'Release'}",
+            "-DCMAKE_INSTALL_PREFIX=${cmakeBuildDir}"
+    doLast {
+        exec {
+            workingDir = cmakeBuildDir
+            if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                commandLine 'cmake', '--build', '.', '--config', project.findProperty('buildType') ?: 'Release', '--target', 'install'
+            } else {
+                commandLine 'cmake', '--build', '.', '--target', 'install'
+            }
+        }
+    }
+}
+
+tasks.register('buildNativeSkip', Task) {
+    description = 'Skip native build (use prebuilt binaries)'
+    doLast {
+        logger.warn 'Skipping native build – using prebuilt native libraries if present'
+    }
+}
+
+def nativeResourcesDir = layout.buildDirectory.dir("native/resources/main/${nativeClassifier}").get().asFile
+
+tasks.register('copyNativeLib', Copy) {
+    description = 'Copy native library into resources for JAR packaging'
+    from("${cmakeBuildDir}/lib") {
+        include nativeLibName
+    }
+    into nativeResourcesDir
+}
+
+tasks.named('processResources') {
+    dependsOn copyNativeLib
+}

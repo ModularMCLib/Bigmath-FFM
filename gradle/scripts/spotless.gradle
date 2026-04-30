@@ -1,0 +1,8 @@
+spotless {
+    java {
+        target 'src/*/java/**/*.java'
+        leadingSpacesToTabs()
+        endWithNewline()
+        toggleOffOn()
+    }
+}
