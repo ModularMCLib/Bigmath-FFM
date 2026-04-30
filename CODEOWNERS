@@ -1,5 +1,5 @@
 # All other changes require the primary team
-* @ModularMCLib/synceddatadevs
+* @ModularMCLib/bigmathffmdevs
 
 # Specific files requiring admin approval
 CODEOWNERS @ModularMCLib/admin
