@@ -1,0 +1,36 @@
+type:java:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/main/java/**'
+          - 'src/test/java/**'
+
+type:native:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/main/cpp/**'
+          - 'src/test/cpp/**'
+          - 'CMakeLists.txt'
+          - 'src/main/cpp/CMakeLists.txt'
+
+type:build:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'build.gradle'
+          - 'settings.gradle'
+          - 'gradle.properties'
+          - 'dependencies.gradle'
+          - 'gradle/**'
+          - 'gradlew'
+          - 'gradlew.bat'
+
+type:ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+
+type:docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'README.md'
+          - 'LICENSE'
+          - 'docs/**'

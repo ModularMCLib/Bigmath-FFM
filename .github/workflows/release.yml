@@ -5,7 +5,7 @@ on:
     types: [published]
 
 jobs:
-  native-build:
+  native-full:
     strategy:
       fail-fast: false
       matrix:

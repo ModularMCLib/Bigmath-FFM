@@ -1,0 +1,28 @@
+name: PR
+
+on:
+  pull_request:
+    branches: [main, 26.1]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          sync-labels: true
+
+  assign-reviewers:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: kentaro-m/auto-assign-action@v2
+        with:
+          configuration-path: .github/pr-reviewers.yml
