@@ -25,7 +25,14 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_FROM_LONG
 		);
 		invoke(handle, ptr, value);
-		return new BigInt(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		long rawAddr = ptr.get(ValueLayout.JAVA_LONG, 0);
+		System.err.println("fromLong rawAddr=" + Long.toHexString(rawAddr) + " size=" + ptr.byteSize());
+		if (rawAddr == 0) throw new RuntimeException("null pointer from bigint_from_long");
+		MemorySegment nativePtr = MemorySegment.ofAddress(rawAddr);
+		System.err.println("fromLong nativePtr addr=" + Long.toHexString(nativePtr.address()) + " size=" + nativePtr.byteSize());
+		nativePtr = nativePtr.reinterpret(arena, null);
+		System.err.println("fromLong after reinterpret size=" + nativePtr.byteSize());
+		return new BigInt(nativePtr, arena);
 	}
 
 	public static BigInt fromString(String value, int radix) {
@@ -253,6 +260,7 @@ public final class BigInt implements AutoCloseable {
 	}
 
 	public int signum() {
+		System.err.println("signum nativePtr addr=" + Long.toHexString(nativePtr.address()) + " size=" + nativePtr.byteSize());
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"bigint_sign",
 				FunctionDescriptors.BIGINT_SIGN
