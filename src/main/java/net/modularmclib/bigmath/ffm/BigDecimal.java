@@ -276,6 +276,7 @@ public final class BigDecimal implements AutoCloseable {
 					FunctionDescriptors.BIGDECIMAL_FREE_STRING
 			);
 			invoke(freeHandle, result);
+			System.err.println("toFormattedString(" + scale + "," + groupSize + "," + groupSep + ") = '" + str + "'");
 			return str;
 		}
 	}
