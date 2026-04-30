@@ -20,5 +20,5 @@
   "ignore_labels": ["ignore changelog"],
   "max_pull_requests": 500,
   "max_back_track_time_days": 90,
-  "base_branches": ["26.1", "main"]
+  "base_branches": ["main"]
 }

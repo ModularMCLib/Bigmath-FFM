@@ -27,5 +27,5 @@ runs:
       uses: gradle/actions/setup-gradle@v4
       with:
         cache-write-only: ${{ inputs.update-cache }}
-        cache-read-only: ${{ github.ref != 'refs/heads/26.1' }}
+        cache-read-only: ${{ github.ref != 'refs/heads/main' }}
         add-job-summary: 'on-failure'

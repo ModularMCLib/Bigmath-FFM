@@ -2,7 +2,7 @@ name: Latest Snapshot
 
 on:
   push:
-    branches: ['26.1']
+    branches: ['main']
     paths: ['src/**', '*.gradle', 'gradle.properties', 'gradle/**', 'settings.gradle']
 
 concurrency:

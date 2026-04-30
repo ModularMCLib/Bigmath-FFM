@@ -30,34 +30,34 @@ jobs:
           fetchViaCommits: true
           failOnError: false
 
-  publish-26:
-    name: Publish 26.1
+  publish:
+    name: Publish
     needs: [meta]
-    if: ${{ contains(github.ref_name, '26.1') && github.event.release.prerelease == false }}
+    if: ${{ github.event.release.prerelease == false }}
     secrets: inherit
     uses: ./.github/workflows/publish.yml
     with:
       simulate: ${{ startsWith(github.event.release.name, 'simulate') || github.repository_owner != 'ModularMCLib' }}
       tag-name: ${{ github.ref_name }}
-      version: '26.1'
+      version: main
       release-body: ${{ github.event.release.body }}
       changelog-body: ${{ needs.meta.outputs.CHANGELOG }}
 
-  publish-prerelease-26:
-    name: Publish 26.1 Pre-release
+  publish-prerelease:
+    name: Publish Pre-release
     needs: [meta]
-    if: ${{ contains(github.ref_name, '26.1') && github.event.release.prerelease == true }}
+    if: ${{ github.event.release.prerelease == true }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: '26.1'
+          ref: main
       - name: Setup Build
         uses: ./.github/actions/build_setup
         with:
-          ref: '26.1'
+          ref: main
       - run: chmod +x gradlew
       - name: Build
         run: ./gradlew assemble -x test
