@@ -1,0 +1,64 @@
+# CI control
+- name: ci:skip
+  color: "CCCCCC"
+  description: Skip all CI checks for this PR
+
+- name: ci:native
+  color: "0E8A16"
+  description: Run full native build matrix (5 platforms)
+
+- name: ci:android
+  color: "3DDC84"
+  description: Run Android NDK cross-compile builds
+
+# PR type labels
+- name: "type: feature"
+  color: "A2EEEF"
+  description: New feature or enhancement
+
+- name: "type: bugfix"
+  color: "D73A4A"
+  description: Bug fix
+
+- name: "type: refactor"
+  color: "FBCA04"
+  description: Code refactoring or cleanup
+
+- name: "type: tests"
+  color: "006B75"
+  description: Adding or updating tests
+
+- name: "type: build"
+  color: "BFDADC"
+  description: Build system or dependency changes
+
+- name: "type: ci"
+  color: "5319E7"
+  description: CI/CD pipeline changes
+
+- name: "type: docs"
+  color: "0075CA"
+  description: Documentation changes
+
+# Release management
+- name: ignore changelog
+  color: "808080"
+  description: Exclude this PR from the release changelog
+
+# Merge control
+- name: do not merge
+  color: "B60205"
+  description: Block this PR from being merged
+
+- name: admin merge
+  color: "B60205"
+  description: Admin override for merge restrictions
+
+# Test results (auto-applied)
+- name: "Tests: Passed"
+  color: "0E8A16"
+  description: All tests passed
+
+- name: "Tests: Failed"
+  color: "D73A4A"
+  description: One or more tests failed
