@@ -1,0 +1,30 @@
+changelog:
+  exclude:
+    labels:
+      - "ignore changelog"
+
+  categories:
+    - title: New Features
+      labels:
+        - "type: feature"
+
+    - title: Bug Fixes
+      labels:
+        - "type: bugfix"
+
+    - title: Refactors
+      labels:
+        - "type: refactor"
+
+    - title: Build & CI
+      labels:
+        - "type: build"
+        - "type: ci"
+
+    - title: Documentation
+      labels:
+        - "type: docs"
+
+    - title: Other Changes
+      labels:
+        - "*"

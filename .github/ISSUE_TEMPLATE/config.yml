@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discord
+    url: https://discord.gg/KqQx9DEJGm
+    about: Join us on Discord for questions and discussion. For bug reports, please use GitHub issues.

@@ -5,8 +5,34 @@ on:
     types: [released]
 
 jobs:
+  meta:
+    name: Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      CHANGELOG: ${{ steps.changelog.outputs.changelog }}
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Get Config
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          sparse-checkout: '.github/json'
+      - name: Generate changelog
+        id: changelog
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          configuration: './.github/json/config.json'
+          ignorePreReleases: true
+          fetchViaCommits: true
+          failOnError: false
+
   publish:
     name: Publish to Maven
+    needs: [meta]
     runs-on: ubuntu-latest
     steps:
       - name: Setup Build
@@ -22,3 +48,10 @@ jobs:
           ORG_GRADLE_PROJECT_bigmath_skipNative: true
           MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+
+      - name: Update release body
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit ${{ github.ref_name }} \
+            --notes-file <(echo "${{ needs.meta.outputs.CHANGELOG }}")

@@ -1,0 +1,84 @@
+name: Bug Report
+description: Report a bug or unexpected behavior.
+labels: ["type: bugfix"]
+body:
+  - type: checkboxes
+    id: existing-issue
+    attributes:
+      label: Checked for existing issues
+      description: You have checked for existing reports of this issue, open or closed.
+      options:
+        - label: "I have checked for existing issues, and have found none."
+          required: true
+  - type: checkboxes
+    id: latest-version
+    attributes:
+      label: Tested latest version
+      description: You have checked that this issue occurs on the latest version.
+      options:
+        - label: "I have checked that this occurs on the latest version."
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Bigmath-FFM Version
+      description: The version of Bigmath-FFM you were using.
+      placeholder: "Example: 0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: The operating system and architecture.
+      options:
+        - "Linux x86_64"
+        - "Linux aarch64"
+        - "macOS x86_64"
+        - "macOS aarch64"
+        - "Windows x86_64"
+    validations:
+      required: true
+  - type: dropdown
+    id: jdk
+    attributes:
+      label: JDK Version
+      options:
+        - "25"
+        - "24"
+        - "23"
+        - "22"
+        - "21"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened. Include stack traces if applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal code snippet or steps to reproduce.
+      placeholder: |
+        ```java
+        try (BigInt a = BigInt.fromLong(10)) { ... }
+        ```
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+    validations:
+      required: false
