@@ -50,7 +50,7 @@ else()
 	if(NOT USE_GMP)
 		message(STATUS "GMP/MPFR disabled by USE_GMP=OFF – building int128 only")
 	else()
-		message(WARNING "GMP/MPFR not found – building int128 only. "
-			"Install GMP/MPFR or set -DUSE_GMP=OFF to suppress this warning")
+		message(STATUS "GMP/MPFR not found – building int128 only. "
+			"Install GMP/MPFR and reconfigure to enable BigInt/BigDecimal")
 	endif()
 endif()
