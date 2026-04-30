@@ -244,7 +244,7 @@ public final class BigDecimal implements AutoCloseable {
 					FunctionDescriptors.BIGDECIMAL_TO_STRING
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr);
-			String str = result.reinterpret(tmp, null).getString(0);
+			String str = result.reinterpret(tmp, null).reinterpret(Long.MAX_VALUE).getString(0);
 			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
 					"bigdecimal_free_string",
 					FunctionDescriptors.BIGDECIMAL_FREE_STRING
@@ -270,7 +270,7 @@ public final class BigDecimal implements AutoCloseable {
 					FunctionDescriptors.BIGDECIMAL_FORMAT
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr, scale, groupSize, sep);
-			String str = result.reinterpret(tmp, null).getString(0);
+			String str = result.reinterpret(tmp, null).reinterpret(Long.MAX_VALUE).getString(0);
 			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
 					"bigdecimal_free_string",
 					FunctionDescriptors.BIGDECIMAL_FREE_STRING

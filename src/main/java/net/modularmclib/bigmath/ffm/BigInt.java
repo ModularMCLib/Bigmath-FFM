@@ -28,10 +28,10 @@ public final class BigInt implements AutoCloseable {
 		long rawAddr = ptr.get(ValueLayout.JAVA_LONG, 0);
 		System.err.println("fromLong rawAddr=" + Long.toHexString(rawAddr) + " size=" + ptr.byteSize());
 		if (rawAddr == 0) throw new RuntimeException("null pointer from bigint_from_long");
-		MemorySegment nativePtr = MemorySegment.ofAddress(rawAddr);
-		System.err.println("fromLong nativePtr addr=" + Long.toHexString(nativePtr.address()) + " size=" + nativePtr.byteSize());
-		nativePtr = nativePtr.reinterpret(arena, null);
-		System.err.println("fromLong after reinterpret size=" + nativePtr.byteSize());
+		MemorySegment nativePtr = MemorySegment.ofAddress(rawAddr)
+			.reinterpret(arena, null)
+			.reinterpret(Long.MAX_VALUE);
+		System.err.println("fromLong nativePtr final size=" + nativePtr.byteSize());
 		return new BigInt(nativePtr, arena);
 	}
 
@@ -284,7 +284,7 @@ public final class BigInt implements AutoCloseable {
 					FunctionDescriptors.BIGINT_TO_STRING
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr, radix);
-			String str = result.reinterpret(tmp, null).getString(0);
+			String str = result.reinterpret(tmp, null).reinterpret(Long.MAX_VALUE).getString(0);
 			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
 					"bigint_free_string",
 					FunctionDescriptors.BIGINT_FREE_STRING
@@ -310,7 +310,7 @@ public final class BigInt implements AutoCloseable {
 					FunctionDescriptors.BIGINT_FORMAT
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr, groupSize, sep);
-			String str = result.reinterpret(tmp, null).getString(0);
+			String str = result.reinterpret(tmp, null).reinterpret(Long.MAX_VALUE).getString(0);
 			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
 					"bigint_free_string",
 					FunctionDescriptors.BIGINT_FREE_STRING
