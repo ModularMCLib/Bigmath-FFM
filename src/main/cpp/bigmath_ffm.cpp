@@ -2,6 +2,8 @@
 #include <cstdlib>
 #include <cstring>
 
+#ifndef BIGMATH_NO_GMP
+
 /* BigInt */
 void bigint_from_long(mpz_t *out, long val) {
 	mpz_init(*out);
@@ -157,7 +159,6 @@ char *bigdecimal_format(const mpfr_t a, int scale, int group_size, const char *g
 	char *digits = raw + (neg ? 1 : 0);
 	size_t digit_len = strlen(digits);
 
-	// determine integer and fractional parts
 	int int_digits = (int)exp;
 	if (int_digits < 0) int_digits = 0;
 	size_t frac_len = (scale >= 0) ? (size_t)scale : 0;
@@ -165,7 +166,6 @@ char *bigdecimal_format(const mpfr_t a, int scale, int group_size, const char *g
 		frac_len = digit_len - int_digits;
 	}
 
-	// integer part
 	char *int_part = (char *)malloc(int_digits + 1);
 	if (!int_part) { free(raw); return nullptr; }
 	if (int_digits > 0) {
@@ -177,7 +177,6 @@ char *bigdecimal_format(const mpfr_t a, int scale, int group_size, const char *g
 		int_digits = 1;
 	}
 
-	// format integer part with grouping
 	size_t sep_len = (group_sep && group_size > 0) ? strlen(group_sep) : 0;
 	size_t ig_len = strlen(int_part);
 	size_t groups = (ig_len + group_size - 1) / group_size;
@@ -203,7 +202,6 @@ char *bigdecimal_format(const mpfr_t a, int scale, int group_size, const char *g
 	}
 	free(int_part);
 
-	// fractional part
 	size_t frac_copy = frac_len;
 	if (frac_copy > digit_len - int_digits) {
 		frac_copy = digit_len - int_digits;
@@ -214,19 +212,16 @@ char *bigdecimal_format(const mpfr_t a, int scale, int group_size, const char *g
 		memcpy(frac_str, digits + int_digits, frac_copy);
 	}
 	frac_str[frac_copy] = '\0';
-	// trim trailing zeros if scale < 0
 	if (scale < 0) {
 		while (frac_copy > 0 && frac_str[frac_copy - 1] == '0') frac_copy--;
 		frac_str[frac_copy] = '\0';
 	} else {
-		// pad with zeros
 		while (frac_copy < (size_t)scale) {
 			frac_str[frac_copy++] = '0';
 			frac_str[frac_copy] = '\0';
 		}
 	}
 
-	// build final string
 	size_t sign_len = (neg ? 1 : 0);
 	size_t int_fmt_len = strlen(int_fmt);
 	size_t total = sign_len + int_fmt_len + (frac_copy > 0 ? 1 + frac_copy : 0);
@@ -256,3 +251,38 @@ void bigdecimal_free_string(char *s) {
 void bigdecimal_free(mpfr_t a) {
 	mpfr_clear(a);
 }
+
+#else
+/* Stubs for CLion indexing when GMP/MPFR not available */
+
+void bigint_from_long(mpz_t *out, long) { }
+void bigint_from_string(mpz_t *out, const char *, int) { }
+void bigint_add(mpz_t *out, const mpz_t, const mpz_t) { }
+void bigint_sub(mpz_t *out, const mpz_t, const mpz_t) { }
+void bigint_mul(mpz_t *out, const mpz_t, const mpz_t) { }
+void bigint_div(mpz_t *out, const mpz_t, const mpz_t) { }
+void bigint_mod(mpz_t *out, const mpz_t, const mpz_t) { }
+void bigint_pow(mpz_t *out, const mpz_t, unsigned long) { }
+void bigint_neg(mpz_t *out, const mpz_t) { }
+void bigint_abs(mpz_t *out, const mpz_t) { }
+int bigint_cmp(const mpz_t, const mpz_t) { return 0; }
+char *bigint_to_string(const mpz_t, int) { return nullptr; }
+char *bigint_format(const mpz_t, int, const char *) { return nullptr; }
+void bigint_free_string(char *) { }
+void bigint_free(mpz_t) { }
+
+void bigdecimal_from_double(mpfr_t *, double, int) { }
+void bigdecimal_from_string(mpfr_t *, const char *, int) { }
+void bigdecimal_add(mpfr_t *out, const mpfr_t, const mpfr_t) { }
+void bigdecimal_sub(mpfr_t *out, const mpfr_t, const mpfr_t) { }
+void bigdecimal_mul(mpfr_t *out, const mpfr_t, const mpfr_t) { }
+void bigdecimal_div(mpfr_t *out, const mpfr_t, const mpfr_t) { }
+void bigdecimal_neg(mpfr_t *out, const mpfr_t) { }
+int bigdecimal_cmp(const mpfr_t, const mpfr_t) { return 0; }
+double bigdecimal_to_double(const mpfr_t) { return 0.0; }
+char *bigdecimal_to_string(const mpfr_t) { return nullptr; }
+char *bigdecimal_format(const mpfr_t, int, int, const char *) { return nullptr; }
+void bigdecimal_free_string(char *) { }
+void bigdecimal_free(mpfr_t) { }
+
+#endif /* BIGMATH_NO_GMP */
