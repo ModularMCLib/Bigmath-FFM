@@ -1,4 +1,13 @@
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+	cmake_minimum_required(VERSION 3.20)
+	project(bigmath-ffm-native VERSION 0.1.0 LANGUAGES CXX)
+endif()
+
 option(USE_GMP "Build with GMP/MPFR native bigint/bigdecimal support" ON)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if(USE_GMP)
 	find_package(GMP QUIET)
