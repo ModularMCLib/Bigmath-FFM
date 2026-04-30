@@ -6,9 +6,12 @@ import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.logging.Logger;
 
 @Getter
 public final class BigmathFFM {
+
+	public static final Logger LOGGER = Logger.getLogger(BigmathFFM.class.getName());
 
 	private static final Os CURRENT_OS = detectOs();
 	private static final Arch CURRENT_ARCH = detectArch();
@@ -82,31 +85,44 @@ public final class BigmathFFM {
 		if (classifier == null) {
 			classifier = platformClassifier();
 		}
+		String libName = platformLibName();
+
+		String finalClassifier = classifier;
+		LOGGER.info(() -> "OS: " + CURRENT_OS + ", Arch: " + CURRENT_ARCH + ", Classifier: " + finalClassifier + ", Lib: " + libName);
 
 		String explicitPath = System.getProperty("bigmath.native.path");
 		if (explicitPath != null) {
+			LOGGER.info(() -> "Trying explicit path: " + explicitPath);
 			System.load(explicitPath);
+			LOGGER.info(() -> "Loaded from explicit path: " + explicitPath);
 			return SymbolLookup.loaderLookup();
 		}
 
-		String libName = platformLibName();
 		Path nativePath = Path.of("native", classifier, libName);
+		Path absolutePath = nativePath.toAbsolutePath();
 
+		LOGGER.info(() -> "Checking: " + absolutePath + " (exists: " + Files.exists(nativePath) + ")");
 		if (Files.exists(nativePath)) {
-			System.load(nativePath.toAbsolutePath().toString());
+			System.load(absolutePath.toString());
+			LOGGER.info(() -> "Loaded from: " + absolutePath);
 			return SymbolLookup.loaderLookup();
 		}
 
+		LOGGER.info(() -> "Trying System.loadLibrary(\"bigmath_ffm\")");
 		try {
 			System.loadLibrary("bigmath_ffm");
+			LOGGER.info(() -> "Loaded via System.loadLibrary");
 			return SymbolLookup.loaderLookup();
 		} catch (UnsatisfiedLinkError e) {
-			// not found
+			LOGGER.warning(() -> "System.loadLibrary failed: " + e.getMessage());
 		}
 
+		String finalClassifier1 = classifier;
+		LOGGER.severe(() -> "Failed to load " + libName + " for " + finalClassifier1 +
+			". Tried: " + absolutePath + " and java.library.path=" + System.getProperty("java.library.path"));
 		throw new UnsatisfiedLinkError(
 			"Failed to load " + libName + " for " + classifier + ". " +
-			"Tried: " + nativePath.toAbsolutePath() + " and java.library.path"
+			"Tried: " + absolutePath + " and java.library.path"
 		);
 	}
 

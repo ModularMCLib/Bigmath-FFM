@@ -25,7 +25,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_FROM_LONG
 		);
 		invoke(handle, ptr, value);
-		return new BigInt(ptr.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public static BigInt fromString(String value, int radix) {
@@ -39,7 +39,7 @@ public final class BigInt implements AutoCloseable {
 			);
 			invoke(handle, ptr, str, radix);
 		}
-		return new BigInt(ptr.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public static BigInt fromBigInteger(BigInteger val) {
@@ -54,7 +54,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt subtract(BigInt other) {
@@ -65,7 +65,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt multiply(BigInt other) {
@@ -76,7 +76,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt divide(BigInt other) {
@@ -87,7 +87,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt mod(BigInt other) {
@@ -98,7 +98,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt pow(long exp) {
@@ -109,7 +109,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_POW
 		);
 		invoke(handle, result, nativePtr, exp);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt negate() {
@@ -120,7 +120,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt abs() {
@@ -131,7 +131,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt gcd(BigInt other) {
@@ -142,7 +142,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt lcm(BigInt other) {
@@ -153,7 +153,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt sqrt() {
@@ -164,7 +164,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt and(BigInt other) {
@@ -175,7 +175,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt or(BigInt other) {
@@ -186,7 +186,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt xor(BigInt other) {
@@ -197,7 +197,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt shiftLeft(long bits) {
@@ -208,7 +208,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_POW
 		);
 		invoke(handle, result, nativePtr, bits);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt shiftRight(long bits) {
@@ -219,7 +219,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_POW
 		);
 		invoke(handle, result, nativePtr, bits);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public static BigInt factorial(long n) {
@@ -230,7 +230,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_FROM_LONG
 		);
 		invoke(handle, result, n);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public BigInt nextPrime() {
@@ -241,7 +241,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(Long.MAX_VALUE), arena);
 	}
 
 	public int compareTo(BigInt other) {
