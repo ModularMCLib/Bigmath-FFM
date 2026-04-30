@@ -34,7 +34,7 @@ public final class BigmathFFM {
 		String name = System.getProperty("os.name", "").toLowerCase();
 		if (name.contains("win")) return Os.WINDOWS;
 		if (name.contains("mac") || name.contains("darwin")) return Os.MACOS;
-		if (name.contains("android") || "android".equals(System.getProperty("java.vendor", "").toLowerCase())) {
+		if (name.contains("android") || "android".equalsIgnoreCase(System.getProperty("java.vendor", ""))) {
 			return Os.ANDROID;
 		}
 		return Os.LINUX;
