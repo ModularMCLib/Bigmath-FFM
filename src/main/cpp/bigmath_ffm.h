@@ -6,7 +6,8 @@
 #if __has_include(<gmp.h>)
 #include <gmp.h>
 #include <mpfr.h>
-#else
+#elif !defined(BIGMATH_MPZ_STUB_DEFINED)
+#define BIGMATH_MPZ_STUB_DEFINED
 #include <cstdint>
 struct __bigmath_mpz { int _mp_alloc; int _mp_size; unsigned long *_mp_d; };
 struct __bigmath_mpfr { unsigned long _mpfr_prec; unsigned long _mpfr_sign; unsigned long _mpfr_exp; unsigned long *_mpfr_d; };

@@ -8,7 +8,8 @@
 
 #if __has_include(<gmp.h>)
 #include <gmp.h>
-#else
+#elif !defined(BIGMATH_MPZ_STUB_DEFINED)
+#define BIGMATH_MPZ_STUB_DEFINED
 struct __bigmath_mpz { int _mp_alloc; int _mp_size; unsigned long *_mp_d; };
 typedef struct __bigmath_mpz mpz_t[1];
 #endif

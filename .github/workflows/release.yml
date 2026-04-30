@@ -58,7 +58,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          vcpkg install gmp mpfr --triplet x64-windows
+          vcpkg install --triplet x64-windows
           echo "CMAKE_PREFIX_PATH=$env:VCPKG_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
 
       - name: Setup Gradle
