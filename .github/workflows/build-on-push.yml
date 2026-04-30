@@ -44,7 +44,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: native-libs
-          path: native/**
+          path: native/
           retention-days: 1
       - name: Rename Jars
         if: steps.filter.outputs.code == 'true'
@@ -63,17 +63,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install native dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgmp-dev libmpfr-dev cmake
+      - name: Download native libs
+        uses: actions/download-artifact@v4
+        with:
+          name: native-libs
+          path: ./
       - name: Setup Build
         uses: ./.github/actions/build_setup
       - run: chmod +x gradlew
       - name: Run Tests
         id: test
         continue-on-error: true
-        run: ./gradlew test -PrunTests
+        run: ./gradlew test -PrunTests -x buildNative -x cmakeConfigure -x copyNativeLib
       - name: Update "Tests Passed" / "Tests Failed" labels
         if: github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
