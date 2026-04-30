@@ -38,13 +38,16 @@ jobs:
         run: chmod +x gradlew
       - name: Build native + JAR
         if: steps.filter.outputs.code == 'true'
-        run: ./gradlew assemble -x test
+        run: |
+          ./gradlew assemble -x test
+          mkdir -p dist
+          cp native/linux-x86-64/libbigmath_ffm.so dist/libbigmath_ffm.so
       - name: Upload native libs
         if: steps.filter.outputs.code == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: native-libs
-          path: native/
+          path: dist/
           retention-days: 1
       - name: Rename Jars
         if: steps.filter.outputs.code == 'true'
@@ -67,9 +70,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: native-libs
-          path: native/
-      - name: Verify native libs
-        run: find native -type f || dir /s /b native
+          path: dist/
+      - name: Place native lib
+        run: |
+          mkdir -p native/linux-x86-64
+          cp dist/libbigmath_ffm.so native/linux-x86-64/libbigmath_ffm.so
+          ls -la native/linux-x86-64/
       - name: Setup Build
         uses: ./.github/actions/build_setup
       - run: chmod +x gradlew
