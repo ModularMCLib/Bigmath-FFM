@@ -5,76 +5,95 @@
 
 #ifndef BIGMATH_NO_GMP
 
-void bigint_from_long(mpz_t *out, long val) {
+void bigint_from_long(mpz_ptr *out, long val) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_set_si(*out, val);
 }
 
-void bigint_from_string(mpz_t *out, const char *str, int radix) {
+void bigint_from_string(mpz_ptr *out, const char *str, int radix) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_set_str(*out, str, radix);
 }
 
-void bigint_add(mpz_t *out, const mpz_t a, const mpz_t b) {
+void bigint_add(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_add(*out, a, b);
 }
 
-void bigint_sub(mpz_t *out, const mpz_t a, const mpz_t b) {
+void bigint_sub(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_sub(*out, a, b);
 }
 
-void bigint_mul(mpz_t *out, const mpz_t a, const mpz_t b) {
+void bigint_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	int alen = mpz_size(a);
 	int blen = mpz_size(b);
 	if (alen + blen >= bigmath::NTT_THRESHOLD) {
 		bigmath::fft_multiply(*out, a, b);
 	} else {
-		// GMP auto-selects: schoolbook -> Karatsuba -> Toom-Cook
 		mpz_mul(*out, a, b);
 	}
 }
 
-void bigint_div(mpz_t *out, const mpz_t a, const mpz_t b) {
+void bigint_div(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_tdiv_q(*out, a, b);
 }
 
-void bigint_mod(mpz_t *out, const mpz_t a, const mpz_t b) {
+void bigint_mod(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_tdiv_r(*out, a, b);
 }
 
-void bigint_pow(mpz_t *out, const mpz_t a, unsigned long exp) {
+void bigint_pow(mpz_ptr *out, mpz_ptr a, unsigned long exp) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	bigmath::fast_pow(*out, a, exp);
 }
 
-void bigint_neg(mpz_t *out, const mpz_t a) {
+void bigint_neg(mpz_ptr *out, mpz_ptr a) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_neg(*out, a);
 }
 
-void bigint_abs(mpz_t *out, const mpz_t a) {
+void bigint_abs(mpz_ptr *out, mpz_ptr a) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_abs(*out, a);
 }
 
-int bigint_cmp(const mpz_t a, const mpz_t b) {
+int bigint_cmp(mpz_ptr a, mpz_ptr b) {
 	return mpz_cmp(a, b);
 }
 
-int bigint_sign(const mpz_t a) {
+int bigint_sign(mpz_ptr a) {
 	return mpz_sgn(a);
 }
 
-char *bigint_to_string(const mpz_t a, int radix) {
+char *bigint_to_string(mpz_ptr a, int radix) {
 	return mpz_get_str(nullptr, radix, a);
 }
 
-char *bigint_format(const mpz_t a, int group_size, const char *group_sep) {
+char *bigint_format(mpz_ptr a, int group_size, const char *group_sep) {
 	char *raw = mpz_get_str(nullptr, 10, a);
 	if (group_size <= 0 || group_sep == nullptr || *group_sep == '\0') {
 		return raw;
@@ -108,11 +127,16 @@ void bigint_free_string(char *s) {
 	free(s);
 }
 
-void bigint_free(mpz_t a) {
-	mpz_clear(a);
+void bigint_free(mpz_ptr a) {
+	if (a) {
+		mpz_clear(a);
+		free(a);
+	}
 }
 
-void bigint_gcd(mpz_t *out, const mpz_t a, const mpz_t b) {
+void bigint_gcd(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	int abits = mpz_sizeinbase(a, 2);
 	int bbits = mpz_sizeinbase(b, 2);
@@ -123,83 +147,101 @@ void bigint_gcd(mpz_t *out, const mpz_t a, const mpz_t b) {
 	}
 }
 
-void bigint_lcm(mpz_t *out, const mpz_t a, const mpz_t b) {
+void bigint_lcm(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_lcm(*out, a, b);
 }
 
-void bigint_sqrt(mpz_t *out, const mpz_t a) {
+void bigint_sqrt(mpz_ptr *out, mpz_ptr a) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_sqrt(*out, a);
 }
 
-void bigint_and(mpz_t *out, const mpz_t a, const mpz_t b) {
+void bigint_and(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_and(*out, a, b);
 }
 
-void bigint_or(mpz_t *out, const mpz_t a, const mpz_t b) {
+void bigint_or(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_ior(*out, a, b);
 }
 
-void bigint_xor(mpz_t *out, const mpz_t a, const mpz_t b) {
+void bigint_xor(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_xor(*out, a, b);
 }
 
-void bigint_shl(mpz_t *out, const mpz_t a, unsigned long bits) {
+void bigint_shl(mpz_ptr *out, mpz_ptr a, unsigned long bits) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_mul_2exp(*out, a, bits);
 }
 
-void bigint_shr(mpz_t *out, const mpz_t a, unsigned long bits) {
+void bigint_shr(mpz_ptr *out, mpz_ptr a, unsigned long bits) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_tdiv_q_2exp(*out, a, bits);
 }
 
-int bigint_is_probably_prime(const mpz_t a, int reps) {
+int bigint_is_probably_prime(mpz_ptr a, int reps) {
 	return mpz_probab_prime_p(a, reps);
 }
 
-void bigint_factorial(mpz_t *out, unsigned long n) {
+void bigint_factorial(mpz_ptr *out, unsigned long n) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	bigmath::product_tree_factorial(*out, n);
 }
 
-void bigint_next_prime(mpz_t *out, const mpz_t a) {
+void bigint_next_prime(mpz_ptr *out, mpz_ptr a) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
 	mpz_init(*out);
 	mpz_nextprime(*out, a);
 }
 
 #else
 
-void bigint_from_long(mpz_t *out, long) { }
-void bigint_from_string(mpz_t *out, const char *, int) { }
-void bigint_add(mpz_t *out, const mpz_t, const mpz_t) { }
-void bigint_sub(mpz_t *out, const mpz_t, const mpz_t) { }
-void bigint_mul(mpz_t *out, const mpz_t, const mpz_t) { }
-void bigint_div(mpz_t *out, const mpz_t, const mpz_t) { }
-void bigint_mod(mpz_t *out, const mpz_t, const mpz_t) { }
-void bigint_pow(mpz_t *out, const mpz_t, unsigned long) { }
-void bigint_neg(mpz_t *out, const mpz_t) { }
-void bigint_abs(mpz_t *out, const mpz_t) { }
-int  bigint_cmp(const mpz_t, const mpz_t) { return 0; }
-int  bigint_sign(const mpz_t) { return 0; }
-char *bigint_to_string(const mpz_t, int) { return nullptr; }
-char *bigint_format(const mpz_t, int, const char *) { return nullptr; }
+void bigint_from_long(mpz_ptr *out, long) { *out = nullptr; }
+void bigint_from_string(mpz_ptr *out, const char *, int) { *out = nullptr; }
+void bigint_add(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_sub(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_mul(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_div(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_mod(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_pow(mpz_ptr *out, mpz_ptr, unsigned long) { *out = nullptr; }
+void bigint_neg(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
+void bigint_abs(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
+int  bigint_cmp(mpz_ptr, mpz_ptr) { return 0; }
+int  bigint_sign(mpz_ptr) { return 0; }
+char *bigint_to_string(mpz_ptr, int) { return nullptr; }
+char *bigint_format(mpz_ptr, int, const char *) { return nullptr; }
 void bigint_free_string(char *) { }
-void bigint_free(mpz_t) { }
-void bigint_gcd(mpz_t *out, const mpz_t, const mpz_t) { }
-void bigint_lcm(mpz_t *out, const mpz_t, const mpz_t) { }
-void bigint_sqrt(mpz_t *out, const mpz_t) { }
-void bigint_and(mpz_t *out, const mpz_t, const mpz_t) { }
-void bigint_or(mpz_t *out, const mpz_t, const mpz_t) { }
-void bigint_xor(mpz_t *out, const mpz_t, const mpz_t) { }
-void bigint_shl(mpz_t *out, const mpz_t, unsigned long) { }
-void bigint_shr(mpz_t *out, const mpz_t, unsigned long) { }
-int  bigint_is_probably_prime(const mpz_t, int) { return 0; }
-void bigint_factorial(mpz_t *out, unsigned long) { }
-void bigint_next_prime(mpz_t *out, const mpz_t) { }
+void bigint_free(mpz_ptr) { }
+void bigint_gcd(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_lcm(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_sqrt(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
+void bigint_and(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_or(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_xor(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_shl(mpz_ptr *out, mpz_ptr, unsigned long) { *out = nullptr; }
+void bigint_shr(mpz_ptr *out, mpz_ptr, unsigned long) { *out = nullptr; }
+int  bigint_is_probably_prime(mpz_ptr, int) { return 0; }
+void bigint_factorial(mpz_ptr *out, unsigned long) { *out = nullptr; }
+void bigint_next_prime(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
 
 #endif /* BIGMATH_NO_GMP */
