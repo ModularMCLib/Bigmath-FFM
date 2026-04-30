@@ -50,6 +50,14 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS
 	);
 
+	static final FunctionDescriptor BIGINT_SIGN = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT, ValueLayout.ADDRESS
+	);
+
+	static final FunctionDescriptor BIGINT_IS_PROBABLY_PRIME = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
+	);
+
 	static final FunctionDescriptor BIGDECIMAL_FROM_DOUBLE = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_INT
 	);

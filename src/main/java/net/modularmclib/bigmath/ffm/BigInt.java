@@ -42,6 +42,10 @@ public final class BigInt implements AutoCloseable {
 		return new BigInt(ptr.get(ValueLayout.ADDRESS, 0), arena);
 	}
 
+	public static BigInt fromBigInteger(BigInteger val) {
+		return fromString(val.toString(), 10);
+	}
+
 	public BigInt add(BigInt other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -130,12 +134,139 @@ public final class BigInt implements AutoCloseable {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
 	}
 
+	public BigInt gcd(BigInt other) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_gcd",
+				FunctionDescriptors.BIGINT_BINARY
+		);
+		invoke(handle, result, nativePtr, other.nativePtr);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigInt lcm(BigInt other) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_lcm",
+				FunctionDescriptors.BIGINT_BINARY
+		);
+		invoke(handle, result, nativePtr, other.nativePtr);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigInt sqrt() {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_sqrt",
+				FunctionDescriptors.BIGINT_UNARY
+		);
+		invoke(handle, result, nativePtr);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigInt and(BigInt other) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_and",
+				FunctionDescriptors.BIGINT_BINARY
+		);
+		invoke(handle, result, nativePtr, other.nativePtr);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigInt or(BigInt other) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_or",
+				FunctionDescriptors.BIGINT_BINARY
+		);
+		invoke(handle, result, nativePtr, other.nativePtr);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigInt xor(BigInt other) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_xor",
+				FunctionDescriptors.BIGINT_BINARY
+		);
+		invoke(handle, result, nativePtr, other.nativePtr);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigInt shiftLeft(long bits) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_shl",
+				FunctionDescriptors.BIGINT_POW
+		);
+		invoke(handle, result, nativePtr, bits);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigInt shiftRight(long bits) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_shr",
+				FunctionDescriptors.BIGINT_POW
+		);
+		invoke(handle, result, nativePtr, bits);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public static BigInt factorial(long n) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_factorial",
+				FunctionDescriptors.BIGINT_FROM_LONG
+		);
+		invoke(handle, result, n);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigInt nextPrime() {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_next_prime",
+				FunctionDescriptors.BIGINT_UNARY
+		);
+		invoke(handle, result, nativePtr);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
 	public int compareTo(BigInt other) {
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"bigint_cmp",
 				FunctionDescriptors.BIGINT_CMP
 		);
 		return (int) invoke(handle, nativePtr, other.nativePtr);
+	}
+
+	public int signum() {
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_sign",
+				FunctionDescriptors.BIGINT_SIGN
+		);
+		return (int) invoke(handle, nativePtr);
+	}
+
+	public boolean isProbablyPrime(int certainty) {
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_is_probably_prime",
+				FunctionDescriptors.BIGINT_IS_PROBABLY_PRIME
+		);
+		int result = (int) invoke(handle, nativePtr, certainty);
+		return result != 0;
 	}
 
 	public String toString(int radix) {
@@ -145,7 +276,13 @@ public final class BigInt implements AutoCloseable {
 					FunctionDescriptors.BIGINT_TO_STRING
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr, radix);
-			return result.getString(0);
+			String str = result.getString(0);
+			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
+					"bigint_free_string",
+					FunctionDescriptors.BIGINT_FREE_STRING
+			);
+			invoke(freeHandle, result);
+			return str;
 		}
 	}
 

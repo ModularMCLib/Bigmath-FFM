@@ -3,12 +3,12 @@
 #ifdef HAVE_INT128
 
 static __int128 to_i128(const int128_box *a) {
-	return (__int128)a->hi << 64 | (uint64_t)a->lo;
+	return static_cast<__int128>(a->hi) << 64 | static_cast<uint64_t>(a->lo);
 }
 
 static void from_i128(int128_box *out, __int128 v) {
-	out->lo = (int64_t)v;
-	out->hi = (int64_t)(v >> 64);
+	out->lo = static_cast<int64_t>(v);
+	out->hi = static_cast<int64_t>(v >> 64);
 }
 
 void int128_from_i64(int128_box *out, int64_t val) {
@@ -17,7 +17,7 @@ void int128_from_i64(int128_box *out, int64_t val) {
 }
 
 void int128_from_u64(int128_box *out, uint64_t val) {
-	out->lo = (int64_t)val;
+	out->lo = static_cast<int64_t>(val);
 	out->hi = 0;
 }
 
@@ -27,8 +27,8 @@ void int128_from_string(int128_box *out, const char *str, int radix) {
 	const char *p = str;
 	if (*p == '-') { neg = true; p++; }
 	while (*p) {
-		char c = *p++;
-		int d = (c >= '0' && c <= '9') ? c - '0'
+		const char c = *p++;
+		const int d = (c >= '0' && c <= '9') ? c - '0'
 			: (c >= 'a' && c <= 'f') ? c - 'a' + 10
 			: (c >= 'A' && c <= 'F') ? c - 'A' + 10
 			: -1;
@@ -79,24 +79,24 @@ int int128_sign(const int128_box *a) {
 }
 
 char *int128_to_string(const int128_box *a, int radix) {
-	static const char digits[] = "0123456789abcdef";
+	static constexpr char digits[] = "0123456789abcdef";
 	__int128 v = to_i128(a);
 	if (v == 0) {
-		char *s = (char *)malloc(2);
+		const auto s = static_cast<char *>(malloc(2));
 		s[0] = '0'; s[1] = '\0';
 		return s;
 	}
-	bool neg = (v < 0);
+	const bool neg = (v < 0);
 	if (neg) v = -v;
 	char buf[256];
 	int pos = 255;
 	buf[pos] = '\0';
 	while (v > 0) {
-		buf[--pos] = digits[(int)(v % radix)];
+		buf[--pos] = digits[static_cast<int>(v % radix)];
 		v /= radix;
 	}
 	if (neg) buf[--pos] = '-';
-	char *s = (char *)malloc(255 - pos + 1);
+	auto s = static_cast<char *>(malloc(255 - pos + 1));
 	if (s) strcpy(s, &buf[pos]);
 	return s;
 }
@@ -396,13 +396,13 @@ char *int128_format(const int128_box *a, int group_size, const char *group_sep) 
 	if (!raw || group_size <= 0 || !group_sep || !*group_sep) {
 		return raw;
 	}
-	bool neg = (raw[0] == '-');
+	const bool neg = (raw[0] == '-');
 	const char *digits = raw + (neg ? 1 : 0);
-	size_t len = strlen(digits);
-	size_t sep_len = strlen(group_sep);
-	size_t groups = (len + group_size - 1) / group_size;
-	size_t new_len = (neg ? 1 : 0) + len + (groups - 1) * sep_len;
-	char *out = (char *)malloc(new_len + 1);
+	const size_t len = strlen(digits);
+	const size_t sep_len = strlen(group_sep);
+	const size_t groups = (len + group_size - 1) / group_size;
+	const size_t new_len = (neg ? 1 : 0) + len + (groups - 1) * sep_len;
+	const auto out = static_cast<char *>(malloc(new_len + 1));
 	if (!out) { free(raw); return nullptr; }
 	size_t pos = 0;
 	if (neg) out[pos++] = '-';

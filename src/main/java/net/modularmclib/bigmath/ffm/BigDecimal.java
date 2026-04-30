@@ -94,7 +94,128 @@ public final class BigDecimal implements AutoCloseable {
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"bigdecimal_neg",
+				FunctionDescriptors.BIGDECIMAL_UNARY
+		);
+		invoke(handle, result, nativePtr);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigDecimal abs() {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigdecimal_abs",
+				FunctionDescriptors.BIGDECIMAL_UNARY
+		);
+		invoke(handle, result, nativePtr);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigDecimal sqrt() {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigdecimal_sqrt",
+				FunctionDescriptors.BIGDECIMAL_UNARY
+		);
+		invoke(handle, result, nativePtr);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigDecimal pow(BigDecimal exponent) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigdecimal_pow",
 				FunctionDescriptors.BIGDECIMAL_BINARY
+		);
+		invoke(handle, result, nativePtr, exponent.nativePtr);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigDecimal log() {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigdecimal_log",
+				FunctionDescriptors.BIGDECIMAL_UNARY
+		);
+		invoke(handle, result, nativePtr);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigDecimal exp() {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigdecimal_exp",
+				FunctionDescriptors.BIGDECIMAL_UNARY
+		);
+		invoke(handle, result, nativePtr);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigDecimal sin() {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigdecimal_sin",
+				FunctionDescriptors.BIGDECIMAL_UNARY
+		);
+		invoke(handle, result, nativePtr);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigDecimal cos() {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigdecimal_cos",
+				FunctionDescriptors.BIGDECIMAL_UNARY
+		);
+		invoke(handle, result, nativePtr);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigDecimal tan() {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigdecimal_tan",
+				FunctionDescriptors.BIGDECIMAL_UNARY
+		);
+		invoke(handle, result, nativePtr);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigDecimal ceil() {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigdecimal_ceil",
+				FunctionDescriptors.BIGDECIMAL_UNARY
+		);
+		invoke(handle, result, nativePtr);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigDecimal floor() {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigdecimal_floor",
+				FunctionDescriptors.BIGDECIMAL_UNARY
+		);
+		invoke(handle, result, nativePtr);
+		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0), arena);
+	}
+
+	public BigDecimal round() {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigdecimal_round",
+				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0), arena);
@@ -123,7 +244,13 @@ public final class BigDecimal implements AutoCloseable {
 					FunctionDescriptors.BIGDECIMAL_TO_STRING
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr);
-			return result.getString(0);
+			String str = result.getString(0);
+			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
+					"bigdecimal_free_string",
+					FunctionDescriptors.BIGDECIMAL_FREE_STRING
+			);
+			invoke(freeHandle, result);
+			return str;
 		}
 	}
 
