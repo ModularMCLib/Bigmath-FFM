@@ -85,23 +85,28 @@ public final class BigmathFFM {
 
 		String explicitPath = System.getProperty("bigmath.native.path");
 		if (explicitPath != null) {
+			System.err.println("[BigmathFFM] Loading native library from explicit path: " + explicitPath);
 			System.load(explicitPath);
 			return SymbolLookup.loaderLookup();
 		}
 
 		String libName = platformLibName();
 		Path nativePath = Path.of("native", classifier, libName);
+		System.err.println("[BigmathFFM] Looking for native library: " + nativePath.toAbsolutePath());
 
 		if (Files.exists(nativePath)) {
+			System.err.println("[BigmathFFM] Found, loading: " + nativePath);
 			System.load(nativePath.toAbsolutePath().toString());
 			return SymbolLookup.loaderLookup();
 		}
+		System.err.println("[BigmathFFM] Not found at: " + nativePath.toAbsolutePath());
 
 		try {
 			System.loadLibrary("bigmath_ffm");
+			System.err.println("[BigmathFFM] Loaded via java.library.path");
 			return SymbolLookup.loaderLookup();
 		} catch (UnsatisfiedLinkError e) {
-			// not found
+			System.err.println("[BigmathFFM] java.library.path failed: " + e);
 		}
 
 		throw new UnsatisfiedLinkError(
