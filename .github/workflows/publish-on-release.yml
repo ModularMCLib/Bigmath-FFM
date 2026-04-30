@@ -1,0 +1,24 @@
+name: Publish on Release
+
+on:
+  release:
+    types: [released]
+
+jobs:
+  publish:
+    name: Publish to Maven
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Build
+        uses: ./.github/actions/build_setup
+        with:
+          update-cache: true
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      - name: Publish
+        run: ./gradlew publish -x buildNative -x test
+        shell: bash
+        env:
+          ORG_GRADLE_PROJECT_bigmath_skipNative: true
+          MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}

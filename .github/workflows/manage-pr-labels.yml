@@ -1,0 +1,32 @@
+name: Pull Request Labels
+
+on:
+  pull_request:
+    types: [opened, labeled, unlabeled]
+
+concurrency:
+  group: pr-labels-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  labels:
+    name: Label Check
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Check for Merge-Blocking Labels
+        uses: mheap/github-action-required-labels@v5
+        with:
+          mode: exactly
+          count: 0
+          labels: 'do not merge, admin merge'
+          exit_type: failure
+
+      - name: Check for Required Type Labels
+        uses: mheap/github-action-required-labels@v5
+        with:
+          mode: minimum
+          count: 1
+          labels: 'type: feature, type: bugfix, type: refactor, type: tests, type: build, type: docs, ignore changelog'
+          exit_type: failure

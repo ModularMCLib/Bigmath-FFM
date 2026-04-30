@@ -1,46 +1,29 @@
-name: Build
+name: Native Build
 
 on:
   pull_request:
-    branches: [main, 26.1]
-    types: [opened, synchronize, reopened, labeled]
+    types: [labeled]
+
+concurrency:
+  group: native-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  check-skip:
+  check-label:
     runs-on: ubuntu-latest
     outputs:
-      skip: ${{ contains(github.event.pull_request.labels.*.name, 'ci:skip') }}
-      full: ${{ contains(github.event.pull_request.labels.*.name, 'ci:native') }}
+      run: ${{ contains(github.event.pull_request.labels.*.name, 'ci:native') }}
       android: ${{ contains(github.event.pull_request.labels.*.name, 'ci:android') }}
+      skip: ${{ contains(github.event.pull_request.labels.*.name, 'ci:skip') }}
     steps:
       - run: |
-          echo "skip=${{ contains(github.event.pull_request.labels.*.name, 'ci:skip') }}"
-          echo "full=${{ contains(github.event.pull_request.labels.*.name, 'ci:native') }}"
+          echo "run=${{ contains(github.event.pull_request.labels.*.name, 'ci:native') }}"
           echo "android=${{ contains(github.event.pull_request.labels.*.name, 'ci:android') }}"
-
-  linux-quick:
-    needs: check-skip
-    if: needs.check-skip.outputs.skip != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '25'
-          distribution: 'temurin'
-      - run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake
-      - uses: gradle/actions/setup-gradle@v4
-      - run: chmod +x gradlew
-      - run: ./gradlew build -x buildNative -x test
-        shell: bash
-      - run: ./gradlew spotlessCheck
-        shell: bash
+          echo "skip=${{ contains(github.event.pull_request.labels.*.name, 'ci:skip') }}"
 
   native-full:
-    needs: check-skip
-    if: needs.check-skip.outputs.skip != 'true' && needs.check-skip.outputs.full == 'true'
+    needs: check-label
+    if: needs.check-label.outputs.run == 'true' && needs.check-label.outputs.skip != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -65,7 +48,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
           java-version: '25'
@@ -79,8 +61,7 @@ jobs:
 
       - name: Install macOS deps
         if: runner.os == 'macOS'
-        run: |
-          brew install gmp mpfr cmake
+        run: brew install gmp mpfr cmake
 
       - name: Install Windows deps
         if: runner.os == 'Windows'
@@ -90,10 +71,9 @@ jobs:
           echo "CMAKE_PREFIX_PATH=$env:VCPKG_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
 
       - uses: gradle/actions/setup-gradle@v4
-
-      - name: Build
+      - name: Build native
         run: |
-          chmod +x gradlew
+          chmod +x gradlew 2>/dev/null || true
           ./gradlew build -x test -Dbigmath.native.classifier=${{ matrix.label }}
         shell: bash
 
@@ -101,10 +81,11 @@ jobs:
         with:
           name: native-libs-${{ matrix.label }}
           path: build/native/resources/**
+          retention-days: 7
 
   android-build:
-    needs: check-skip
-    if: needs.check-skip.outputs.skip != 'true' && needs.check-skip.outputs.android == 'true'
+    needs: check-label
+    if: needs.check-label.outputs.android == 'true' && needs.check-label.outputs.skip != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -119,7 +100,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
           java-version: '25'
@@ -151,3 +131,4 @@ jobs:
         with:
           name: native-libs-${{ matrix.label }}
           path: build/native/resources/**
+          retention-days: 7
