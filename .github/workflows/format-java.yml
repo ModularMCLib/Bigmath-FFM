@@ -5,6 +5,7 @@ on:
     branches: ['main']
     paths: ['src/main/java/**', 'src/test/**']
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths: ['**']
 
 concurrency:
@@ -15,6 +16,9 @@ jobs:
   formatting:
     name: Formatting
     runs-on: ubuntu-latest
+    if: |
+      github.event_name != 'pull_request' ||
+      !contains(github.event.pull_request.labels.*.name, 'ci:skip')
     permissions:
       pull-requests: read
     steps:
