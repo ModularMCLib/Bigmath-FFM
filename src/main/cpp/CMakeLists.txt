@@ -57,10 +57,6 @@ if(GMP_FOUND AND MPFR_FOUND)
 			BUILD_WITH_INSTALL_RPATH TRUE
 		)
 	endif()
-	install(TARGETS bigmath_ffm
-		LIBRARY DESTINATION lib
-		RUNTIME DESTINATION lib
-	)
 else()
 	target_compile_definitions(bigmath_ffm PRIVATE BIGMATH_NO_GMP)
 	if(NOT USE_GMP)
@@ -70,3 +66,8 @@ else()
 			"Install GMP/MPFR and reconfigure to enable BigInt/BigDecimal")
 	endif()
 endif()
+
+install(TARGETS bigmath_ffm
+	LIBRARY DESTINATION lib
+	RUNTIME DESTINATION lib
+)
