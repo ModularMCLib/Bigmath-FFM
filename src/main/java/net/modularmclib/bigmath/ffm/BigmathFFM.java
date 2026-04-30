@@ -136,7 +136,11 @@ public final class BigmathFFM {
 
 	public MethodHandle downcall(String name, FunctionDescriptor descriptor) {
 		return lookup.find(name)
-				.map(addr -> linker().downcallHandle(addr, descriptor))
+				.map(addr -> {
+					MethodHandle mh = linker().downcallHandle(addr, descriptor);
+					LOGGER.info(() -> name + " → " + mh.type());
+					return mh;
+				})
 				.orElseThrow(() -> new UnsatisfiedLinkError("Symbol not found: " + name));
 	}
 
@@ -144,6 +148,9 @@ public final class BigmathFFM {
 		try {
 			return handle.invokeWithArguments(args);
 		} catch (RuntimeException | Error e) {
+			System.err.println("INVOKE FAILED: " + e.getClass().getName() + " " + e.getMessage());
+			System.err.println("  handle type: " + handle.type());
+			System.err.println("  args: " + java.util.Arrays.deepToString(args));
 			throw e;
 		} catch (Throwable t) {
 			throw new RuntimeException(t);
