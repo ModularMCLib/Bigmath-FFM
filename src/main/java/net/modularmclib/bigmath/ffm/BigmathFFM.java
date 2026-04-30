@@ -10,6 +10,8 @@ import java.nio.file.Path;
 @Getter
 public final class BigmathFFM {
 
+	private static final Os CURRENT_OS = detectOs();
+	private static final Arch CURRENT_ARCH = detectArch();
 	private static final BigmathFFM INSTANCE = new BigmathFFM();
 
 	private final Arena arena = Arena.ofAuto();
@@ -26,9 +28,6 @@ public final class BigmathFFM {
 	private enum Arch {
 		X86_64, AARCH64, UNKNOWN
 	}
-
-	private static final Os CURRENT_OS = detectOs();
-	private static final Arch CURRENT_ARCH = detectArch();
 
 	private static Os detectOs() {
 		String name = System.getProperty("os.name", "").toLowerCase();
