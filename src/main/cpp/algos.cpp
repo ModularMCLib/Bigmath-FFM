@@ -7,6 +7,7 @@ namespace bigmath {
 
 // ---- Helper: add/sub limb arrays (no GMP dependency) ----
 static void add_limbs(limb_t *out, const limb_t *a, int n) {
+	if (!out || !a || n <= 0) return;
 	limb_t carry = 0;
 	for (int i = 0; i < n; i++) {
 		limb_t sum = out[i] + a[i] + carry;
@@ -21,6 +22,7 @@ static void add_limbs(limb_t *out, const limb_t *a, int n) {
 }
 
 static void sub_limbs(limb_t *out, const limb_t *a, int n) {
+	if (!out || !a || n <= 0) return;
 	limb_t borrow = 0;
 	for (int i = 0; i < n; i++) {
 		limb_t diff = out[i] - a[i] - borrow;
@@ -36,6 +38,7 @@ static void sub_limbs(limb_t *out, const limb_t *a, int n) {
 
 // ---- Schoolbook multiplication (base case for Karatsuba) ----
 static void schoolbook_mul(limb_t *out, const limb_t *a, int alen, const limb_t *b, int blen) {
+	if (!out || !a || !b || alen <= 0 || blen <= 0) return;
 	for (int i = 0; i < alen + blen; i++) out[i] = 0;
 	for (int i = 0; i < alen; i++) {
 		limb_t carry = 0;
@@ -96,6 +99,11 @@ void karatsuba_mul(limb_t *out, const limb_t *a, int alen, const limb_t *b, int 
 	auto sum_b = limb_alloc(sum_b_len);
 	auto prod_lo = limb_alloc(max_size);
 	auto prod_sum = limb_alloc(max_size);
+
+	if (!sum_a || !sum_b || !prod_lo || !prod_sum) {
+		free(sum_a); free(sum_b); free(prod_lo); free(prod_sum);
+		return;
+	}
 
 	for (int i = 0; i < sum_a_len; i++) sum_a[i] = 0;
 	if (a_lo_len > 0) memcpy(sum_a, a_lo, a_lo_len * sizeof(limb_t));
