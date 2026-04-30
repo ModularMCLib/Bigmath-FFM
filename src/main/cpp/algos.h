@@ -14,6 +14,7 @@ namespace bigmath {
 
 constexpr int KARATSUBA_THRESHOLD = 32;
 constexpr int ALGO_THRESHOLD     = 64;
+constexpr int NTT_THRESHOLD      = 512;
 
 using limb_t = unsigned long;
 
@@ -44,6 +45,9 @@ void fast_pow(mpz_t out, const mpz_t base, unsigned long exp);
 
 // ---- Product tree factorial for large n ----
 void product_tree_factorial(mpz_t out, unsigned long n);
+
+// ---- FFT/NTT-based multiplication for very large integers ----
+void fft_multiply(mpz_t out, const mpz_t a, const mpz_t b);
 
 // ---- Helper: allocate limb buffer ----
 inline limb_t *limb_alloc(int n) {

@@ -27,9 +27,14 @@ void bigint_sub(mpz_t *out, const mpz_t a, const mpz_t b) {
 
 void bigint_mul(mpz_t *out, const mpz_t a, const mpz_t b) {
 	mpz_init(*out);
-	// GMP internally uses tiered algorithms (schoolbook -> Karatsuba -> Toom-Cook -> FFT)
-	// based on operand size, automatically selecting the optimal algorithm
-	mpz_mul(*out, a, b);
+	int alen = bigmath::limb_count(a);
+	int blen = bigmath::limb_count(b);
+	if (alen + blen >= bigmath::NTT_THRESHOLD) {
+		bigmath::fft_multiply(*out, a, b);
+	} else {
+		// GMP auto-selects: schoolbook -> Karatsuba -> Toom-Cook
+		mpz_mul(*out, a, b);
+	}
 }
 
 void bigint_div(mpz_t *out, const mpz_t a, const mpz_t b) {

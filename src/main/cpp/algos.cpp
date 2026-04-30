@@ -1,5 +1,7 @@
 #include "algos.h"
+#include "ntt.h"
 #include <cstring>
+#include <vector>
 
 namespace bigmath {
 
@@ -214,11 +216,76 @@ void product_tree_factorial(mpz_t out, unsigned long n) {
 	product_tree(out, 2, n);
 }
 
+// ---- FFT/NTT-based multiplication ----
+void fft_multiply(mpz_t out, const mpz_t a, const mpz_t b) {
+	int alen = mpz_size(a);
+	int blen = mpz_size(b);
+	if (alen == 0 || blen == 0) { mpz_set_ui(out, 0); return; }
+
+	bool a_neg = (mpz_sgn(a) < 0);
+	bool b_neg = (mpz_sgn(b) < 0);
+
+	mpz_t abs_a, abs_b;
+	mpz_init(abs_a); mpz_abs(abs_a, a);
+	mpz_init(abs_b); mpz_abs(abs_b, b);
+
+	static constexpr uint64_t BASE = 1ULL << 16;
+	static constexpr uint64_t BASE_MASK = BASE - 1;
+
+	// Convert to base-2^16 digits
+	std::vector<uint64_t> ad, bd;
+	mpz_t tmp, digit;
+	mpz_init(tmp);
+	mpz_init(digit);
+	mpz_set(tmp, abs_a);
+	while (mpz_sgn(tmp) > 0) {
+		mpz_tdiv_r_2exp(digit, tmp, 16);
+		ad.push_back(mpz_get_ui(digit));
+		mpz_tdiv_q_2exp(tmp, tmp, 16);
+	}
+	if (ad.empty()) ad.push_back(0);
+
+	mpz_set(tmp, abs_b);
+	while (mpz_sgn(tmp) > 0) {
+		mpz_tdiv_r_2exp(digit, tmp, 16);
+		bd.push_back(mpz_get_ui(digit));
+		mpz_tdiv_q_2exp(tmp, tmp, 16);
+	}
+	if (bd.empty()) bd.push_back(0);
+
+	mpz_clear(tmp);
+	mpz_clear(digit);
+	mpz_clear(abs_a);
+	mpz_clear(abs_b);
+
+	// NTT convolution
+	auto conv = ntt::convolve(ad, bd, BASE);
+
+	// Carry propagation
+	uint64_t carry = 0;
+	for (size_t i = 0; i < conv.size(); i++) {
+		uint64_t val = conv[i] + carry;
+		conv[i] = val & BASE_MASK;
+		carry = val >> 16;
+	}
+	conv.push_back(carry);
+
+	// Build result: most significant digit first
+	mpz_set_ui(out, 0);
+	for (int i = (int)conv.size() - 1; i >= 0; i--) {
+		mpz_mul_2exp(out, out, 16);
+		mpz_add_ui(out, out, conv[i]);
+	}
+
+	if (a_neg != b_neg) mpz_neg(out, out);
+}
+
 #else
 // Stubs when GMP not available
 void binary_gcd(mpz_t, const mpz_t, const mpz_t) {}
 void fast_pow(mpz_t, const mpz_t, unsigned long) {}
 void product_tree_factorial(mpz_t, unsigned long) {}
+void fft_multiply(mpz_t, const mpz_t, const mpz_t) {}
 #endif // BIGMATH_NO_GMP
 
 }
