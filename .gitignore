@@ -86,6 +86,7 @@ replay_pid*
 *.com
 
 # --- CMake ---
+/cmake-build-debug/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
@@ -119,4 +120,3 @@ Testing/
 
 # --- Generated ---
 src/generated/
-

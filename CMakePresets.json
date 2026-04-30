@@ -1,0 +1,50 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default (with GMP/MPFR)",
+      "description": "Build with GMP/MPFR native support",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/native",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "USE_GMP": "ON"
+      }
+    },
+    {
+      "name": "noint128",
+      "displayName": "Int128 only (no GMP/MPFR)",
+      "description": "Build Int128 without GMP/MPFR dependencies",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/native",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "USE_GMP": "OFF"
+      }
+    },
+    {
+      "name": "vcpkg",
+      "displayName": "vcpkg (with GMP/MPFR)",
+      "description": "Build using vcpkg-managed GMP/MPFR",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/native",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "USE_GMP": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug (with GMP/MPFR)",
+      "description": "Debug build with GMP/MPFR",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/native",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "USE_GMP": "ON"
+      }
+    }
+  ]
+}

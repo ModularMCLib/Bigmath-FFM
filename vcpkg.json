@@ -1,0 +1,10 @@
+{
+  "name": "bigmath-ffm",
+  "version": "0.1.0",
+  "description": "Cross-platform high-performance big integer & decimal library for Java FFM",
+  "homepage": "https://github.com/ModularMCLib/Bigmath-FFM",
+  "dependencies": [
+    "gmp",
+    "mpfr"
+  ]
+}
