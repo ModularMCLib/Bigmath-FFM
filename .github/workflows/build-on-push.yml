@@ -63,18 +63,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download native libs
-        uses: actions/download-artifact@v4
-        with:
-          name: native-libs
-          path: native/
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgmp-dev libmpfr-dev cmake
       - name: Setup Build
         uses: ./.github/actions/build_setup
       - run: chmod +x gradlew
       - name: Run Tests
         id: test
         continue-on-error: true
-        run: ./gradlew test -PrunTests -x buildNative -x cmakeConfigure
+        run: ./gradlew test -PrunTests
       - name: Update "Tests Passed" / "Tests Failed" labels
         if: github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
