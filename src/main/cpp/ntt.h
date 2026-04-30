@@ -18,7 +18,6 @@ inline constexpr uint64_t MOD3 = 469762049;   //    7 * 2^26 + 1
 inline constexpr uint64_t PRIMITIVE_ROOT = 3;
 
 using u64 = uint64_t;
-using i64 = int64_t;
 
 // Modular multiplication (portable, binary exponentiation)
 inline u64 mod_mul(u64 a, u64 b, u64 mod) {

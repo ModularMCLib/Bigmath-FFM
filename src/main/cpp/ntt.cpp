@@ -1,5 +1,4 @@
 #include "ntt.h"
-#include <cmath>
 
 namespace bigmath::ntt {
 

@@ -27,8 +27,8 @@ void bigint_sub(mpz_t *out, const mpz_t a, const mpz_t b) {
 
 void bigint_mul(mpz_t *out, const mpz_t a, const mpz_t b) {
 	mpz_init(*out);
-	int alen = bigmath::limb_count(a);
-	int blen = bigmath::limb_count(b);
+	int alen = mpz_size(a);
+	int blen = mpz_size(b);
 	if (alen + blen >= bigmath::NTT_THRESHOLD) {
 		bigmath::fft_multiply(*out, a, b);
 	} else {
@@ -114,8 +114,8 @@ void bigint_free(mpz_t a) {
 
 void bigint_gcd(mpz_t *out, const mpz_t a, const mpz_t b) {
 	mpz_init(*out);
-	int abits = bigmath::limb_bits(a);
-	int bbits = bigmath::limb_bits(b);
+	int abits = mpz_sizeinbase(a, 2);
+	int bbits = mpz_sizeinbase(b, 2);
 	if (abits + bbits <= bigmath::ALGO_THRESHOLD) {
 		bigmath::binary_gcd(*out, a, b);
 	} else {
