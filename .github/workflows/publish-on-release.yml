@@ -6,7 +6,7 @@ on:
 
 jobs:
   meta:
-    name: Metadata
+    name: Generate Changelog
     runs-on: ubuntu-latest
     outputs:
       CHANGELOG: ${{ steps.changelog.outputs.changelog }}
@@ -30,28 +30,15 @@ jobs:
           fetchViaCommits: true
           failOnError: false
 
-  publish:
-    name: Publish to Maven
+  publish-26:
+    name: Publish 26.1
     needs: [meta]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Setup Build
-        uses: ./.github/actions/build_setup
-        with:
-          update-cache: true
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-      - name: Publish
-        run: ./gradlew publish -x buildNative -x test
-        shell: bash
-        env:
-          ORG_GRADLE_PROJECT_bigmath_skipNative: true
-          MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
-          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
-
-      - name: Update release body
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          gh release edit ${{ github.ref_name }} \
-            --notes-file <(echo "${{ needs.meta.outputs.CHANGELOG }}")
+    if: ${{ contains(github.ref_name, '26.1') }}
+    secrets: inherit
+    uses: ./.github/workflows/publish.yml
+    with:
+      simulate: ${{ startsWith(github.event.release.name, 'simulate') || github.repository_owner != 'ModularMCLib' }}
+      tag-name: ${{ github.ref_name }}
+      version: '26.1'
+      release-body: ${{ github.event.release.body }}
+      changelog-body: ${{ needs.meta.outputs.CHANGELOG }}
