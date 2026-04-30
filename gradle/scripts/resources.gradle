@@ -49,16 +49,20 @@ tasks.register('buildNativeSkip', Task) {
     }
 }
 
-def nativeResourcesDir = layout.buildDirectory.dir("native/resources/main/${nativeClassifier}").get().asFile
+def nativeResourcesDir = layout.projectDirectory.dir("native/${nativeClassifier}").asFile
 
 tasks.register('copyNativeLib', Copy) {
-    description = 'Copy native library into resources for JAR packaging'
-    from("${cmakeBuildDir}/lib") {
-        include nativeLibName
-    }
-    into nativeResourcesDir
+	description = 'Copy native library into resources for JAR packaging'
+	dependsOn buildNative
+	from("${cmakeBuildDir}/lib") {
+		include nativeLibName
+	}
+	into nativeResourcesDir
 }
 
 tasks.named('processResources') {
-    dependsOn copyNativeLib
+	dependsOn copyNativeLib
+	from(nativeResourcesDir) {
+		into "native/${nativeClassifier}"
+	}
 }
