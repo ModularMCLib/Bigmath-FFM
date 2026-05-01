@@ -78,17 +78,22 @@ jobs:
           - os: windows-latest
             label: windows-x86-64
             lib: bigmath_ffm.dll
+            vcpkg_triplet: x64-windows
+          - os: windows-11-arm
+            label: windows-aarch64
+            lib: bigmath_ffm.dll
+            vcpkg_triplet: arm64-windows
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - shell: pwsh
         run: |
-          vcpkg install --triplet x64-windows
-          echo "CMAKE_PREFIX_PATH=$env:VCPKG_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
+          vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
+          echo "CMAKE_PREFIX_PATH=$env:VCPKG_ROOT\installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
       - name: Build
         shell: pwsh
         run: |
-          mkdir -p build/native native/${{ matrix.label }}
+          New-Item -Force -ItemType Directory -Path build/native, "native/${{ matrix.label }}"
           cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
           cmake --build build/native --config Release --target install
           cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
@@ -100,9 +105,55 @@ jobs:
           path: native/${{ matrix.label }}/${{ matrix.lib }}
           retention-days: 1
 
+  native-android:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            label: android-aarch64
+            lib: libbigmath_ffm.so
+          - abi: x86_64
+            label: android-x86-64
+            lib: libbigmath_ffm.so
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '23'
+          distribution: 'temurin'
+      - name: Setup Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28
+          add-to-path: false
+      - name: Build
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          mkdir -p build/native native/${{ matrix.label }}
+          cmake -S src/main/cpp -B build/native \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_PLATFORM=android-21 \
+            -DUSE_GMP=OFF
+          cmake --build build/native --target bigmath_ffm -j$(nproc)
+          find build/native -name "*.so" -exec cp {} native/${{ matrix.label }}/ \;
+          echo "=== built ==="
+          ls -la native/${{ matrix.label }}/
+          file native/${{ matrix.label }}/${{ matrix.lib }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.label }}
+          path: native/${{ matrix.label }}/${{ matrix.lib }}
+          retention-days: 1
+
   package:
     name: Package & Release
-    needs: [native-linux, native-macos, native-windows]
+    needs: [native-linux, native-macos, native-windows, native-android]
     runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ github.token }}
