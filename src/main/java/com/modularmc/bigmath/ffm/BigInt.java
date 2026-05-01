@@ -11,6 +11,17 @@ import java.math.BigInteger;
 
 import static com.modularmc.bigmath.ffm.BigmathFFM.invoke;
 
+/**
+ * Arbitrary-precision integer backed by the native bigmath library (GMP).
+ * <p>
+ * Supports arithmetic, bitwise, comparison, primality testing, and formatted
+ * string conversion. Each instance wraps a native heap pointer; call
+ * {@link #close()} to free the underlying resource, or use
+ * try-with-resources.
+ * <p>
+ * Constants {@link #ZERO}, {@link #ONE}, {@link #TWO}, {@link #TEN}, and
+ * {@link #NEGATIVE_ONE} use a global arena and should not be closed.
+ */
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 
@@ -23,6 +34,12 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 	private final MemorySegment nativePtr;
 	private final Arena arena;
 
+	/**
+	 * Creates a {@code BigInt} from a primitive {@code long}.
+	 *
+	 * @param value the source value
+	 * @return a new {@code BigInt}
+	 */
 	public static BigInt fromLong(long value) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
@@ -39,6 +56,13 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(nativePtr, arena);
 	}
 
+	/**
+	 * Parses a string representation in the given radix.
+	 *
+	 * @param value the string to parse
+	 * @param radix the base, between 2 and 62 inclusive
+	 * @return a new {@code BigInt}
+	 */
 	public static BigInt fromString(String value, int radix) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
@@ -53,10 +77,22 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Converts a {@link BigInteger} to a {@code BigInt}.
+	 *
+	 * @param val the source value
+	 * @return a new {@code BigInt}
+	 */
 	public static BigInt fromBigInteger(BigInteger val) {
 		return fromString(val.toString(), 10);
 	}
 
+	/**
+	 * Returns {@code this + other}.
+	 *
+	 * @param other the value to add
+	 * @return the sum
+	 */
 	public BigInt add(BigInt other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -68,6 +104,12 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns {@code this - other}.
+	 *
+	 * @param other the value to subtract
+	 * @return the difference
+	 */
 	public BigInt subtract(BigInt other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -79,6 +121,12 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns {@code this * other}.
+	 *
+	 * @param other the value to multiply by
+	 * @return the product
+	 */
 	public BigInt multiply(BigInt other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -90,6 +138,12 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns {@code this / other} (integer division, truncating toward zero).
+	 *
+	 * @param other the divisor
+	 * @return the quotient
+	 */
 	public BigInt divide(BigInt other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -101,6 +155,12 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns {@code this % other} (non-negative remainder).
+	 *
+	 * @param other the modulus
+	 * @return the remainder
+	 */
 	public BigInt mod(BigInt other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -112,6 +172,12 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns {@code this}<sup>{@code exp}</sup>.
+	 *
+	 * @param exp the exponent
+	 * @return the power
+	 */
 	public BigInt pow(long exp) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -123,6 +189,11 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns {@code -this}.
+	 *
+	 * @return the negated value
+	 */
 	public BigInt negate() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -134,6 +205,11 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the absolute value.
+	 *
+	 * @return {@code |this|}
+	 */
 	public BigInt abs() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -145,6 +221,12 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the greatest common divisor of {@code this} and {@code other}.
+	 *
+	 * @param other the other value
+	 * @return the GCD
+	 */
 	public BigInt gcd(BigInt other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -156,6 +238,12 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the least common multiple of {@code this} and {@code other}.
+	 *
+	 * @param other the other value
+	 * @return the LCM
+	 */
 	public BigInt lcm(BigInt other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -167,6 +255,11 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the integer square root (truncated).
+	 *
+	 * @return floor(sqrt(this))
+	 */
 	public BigInt sqrt() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -178,6 +271,9 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns bitwise AND of {@code this} and {@code other}.
+	 */
 	public BigInt and(BigInt other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -189,6 +285,9 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns bitwise OR of {@code this} and {@code other}.
+	 */
 	public BigInt or(BigInt other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -200,6 +299,9 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns bitwise XOR of {@code this} and {@code other}.
+	 */
 	public BigInt xor(BigInt other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -211,6 +313,11 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns {@code this << bits}.
+	 *
+	 * @param bits number of bits to shift left
+	 */
 	public BigInt shiftLeft(long bits) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -222,6 +329,11 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns {@code this >> bits} (arithmetic right shift).
+	 *
+	 * @param bits number of bits to shift right
+	 */
 	public BigInt shiftRight(long bits) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -233,6 +345,12 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the factorial of {@code n}.
+	 *
+	 * @param n non-negative integer
+	 * @return {@code n!}
+	 */
 	public static BigInt factorial(long n) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -244,6 +362,11 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the smallest prime greater than {@code this}.
+	 *
+	 * @return the next prime
+	 */
 	public BigInt nextPrime() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -255,6 +378,7 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	@Override
 	public int compareTo(BigInt other) {
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"bigint_cmp",
@@ -263,6 +387,10 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return (int) invoke(handle, nativePtr, other.nativePtr);
 	}
 
+	/**
+	 * Returns the signum: {@code -1} (negative), {@code 0} (zero), or
+	 * {@code 1} (positive).
+	 */
 	public int signum() {
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"bigint_sign",
@@ -271,6 +399,12 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return (int) invoke(handle, nativePtr);
 	}
 
+	/**
+	 * Miller-Rabin probabilistic primality test.
+	 *
+	 * @param certainty number of iterations
+	 * @return {@code true} if probably prime
+	 */
 	public boolean isProbablyPrime(int certainty) {
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"bigint_is_probably_prime",
@@ -280,6 +414,11 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		return result != 0;
 	}
 
+	/**
+	 * Returns the string representation in the given radix.
+	 *
+	 * @param radix base, between 2 and 62 inclusive
+	 */
 	public String toString(int radix) {
 		try (Arena tmp = Arena.ofConfined()) {
 			MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -297,14 +436,27 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		}
 	}
 
+	/**
+	 * Converts to {@link BigInteger}.
+	 */
 	public BigInteger toBigInteger() {
 		return new BigInteger(toString(10));
 	}
 
+	/**
+	 * Returns the formatted string with default grouping (group size 3,
+	 * comma separator).
+	 */
 	public String toFormattedString() {
 		return toFormattedString(3, ",");
 	}
 
+	/**
+	 * Returns the formatted string with custom digit grouping.
+	 *
+	 * @param groupSize number of digits per group
+	 * @param groupSep  the separator string
+	 */
 	public String toFormattedString(int groupSize, String groupSep) {
 		try (Arena tmp = Arena.ofConfined()) {
 			MemorySegment sep = tmp.allocateFrom(groupSep, java.nio.charset.StandardCharsets.UTF_8);
@@ -323,6 +475,9 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 		}
 	}
 
+	/**
+	 * Returns the base-10 string representation.
+	 */
 	@Override
 	public String toString() {
 		return toString(10);
