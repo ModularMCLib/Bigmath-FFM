@@ -184,6 +184,12 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return new Int128(result, arena);
 	}
 
+	/**
+	 * Compares this value with the specified value.
+	 *
+	 * @param other the value to compare
+	 * @return 0 if equal, less than 0 if this is less, greater than 0 if this is greater
+	 */
 	@Override
 	public int compareTo(Int128 other) {
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -267,11 +273,20 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return toString(10);
 	}
 
+	/**
+	 * Releases the arena backing this instance.
+	 */
 	@Override
 	public void close() {
 		arena.close();
 	}
 
+	/**
+	 * Creates a constant {@code Int128} in the global arena.
+	 *
+	 * @param value the source value
+	 * @return a new constant {@code Int128}
+	 */
 	private static Int128 createConstant(long value) {
 		Arena arena = Arena.global();
 		MemorySegment ptr = arena.allocate(STRUCT_SIZE);
@@ -283,6 +298,12 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return new Int128(ptr, arena);
 	}
 
+	/**
+	 * Checks equality by comparing lo and hi words.
+	 *
+	 * @param o the object to compare
+	 * @return {@code true} if both lo and hi are equal
+	 */
 	@Override
 	public boolean equals(Object o) {
 		if (this == o) return true;
@@ -290,6 +311,11 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return lo() == other.lo() && hi() == other.hi();
 	}
 
+	/**
+	 * Returns a hash code based on the lo and hi words.
+	 *
+	 * @return the hash code
+	 */
 	@Override
 	public int hashCode() {
 		return Long.hashCode(lo()) ^ Long.hashCode(hi());

@@ -312,6 +312,12 @@ public final class BigDeci implements AutoCloseable, Comparable<BigDeci> {
 		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Compares this value with the specified value.
+	 *
+	 * @param other the value to compare
+	 * @return 0 if equal, less than 0 if this is less, greater than 0 if this is greater
+	 */
 	@Override
 	public int compareTo(BigDeci other) {
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -396,6 +402,9 @@ public final class BigDeci implements AutoCloseable, Comparable<BigDeci> {
 		}
 	}
 
+	/**
+	 * Frees the native MPFR memory backing this instance.
+	 */
 	@Override
 	public void close() {
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -406,6 +415,13 @@ public final class BigDeci implements AutoCloseable, Comparable<BigDeci> {
 		arena.close();
 	}
 
+	/**
+	 * Creates a constant {@code BigDeci} in the global arena.
+	 *
+	 * @param value     the source value
+	 * @param precision the MPFR precision in bits
+	 * @return a new constant {@code BigDeci}
+	 */
 	private static BigDeci createConstant(double value, int precision) {
 		Arena arena = Arena.global();
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
