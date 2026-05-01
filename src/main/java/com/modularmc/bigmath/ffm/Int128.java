@@ -21,7 +21,7 @@ import static com.modularmc.bigmath.ffm.BigmathFFM.invoke;
  * {@link #NEGATIVE_ONE} use a global arena and should not be closed.
  */
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-public final class Int128 implements AutoCloseable, Comparable<Int128> {
+public final class Int128 extends Number implements AutoCloseable, Comparable<Int128> {
 
 	private static final long STRUCT_SIZE = 16L;
 
@@ -197,6 +197,26 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 				FunctionDescriptors.INT128_CMP
 		);
 		return (int) invoke(handle, nativePtr, other.nativePtr);
+	}
+
+	@Override
+	public int intValue() {
+		return (int) lo();
+	}
+
+	@Override
+	public long longValue() {
+		return lo();
+	}
+
+	@Override
+	public float floatValue() {
+		return (float) doubleValue();
+	}
+
+	@Override
+	public double doubleValue() {
+		return Double.parseDouble(toString());
 	}
 
 	/**

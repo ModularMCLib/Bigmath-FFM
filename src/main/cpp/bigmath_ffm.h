@@ -48,6 +48,8 @@ BIGMATH_EXPORT int   bigint_is_probably_prime(mpz_ptr a, int reps);
 BIGMATH_EXPORT void  bigint_factorial(mpz_ptr *out, unsigned long n);
 BIGMATH_EXPORT void  bigint_next_prime(mpz_ptr *out, mpz_ptr a);
 BIGMATH_EXPORT int   bigint_sign(mpz_ptr a);
+BIGMATH_EXPORT long  bigint_to_long(mpz_ptr a);
+BIGMATH_EXPORT double bigint_to_double(mpz_ptr a);
 
 /* BigDecimal */
 BIGMATH_EXPORT void   bigdecimal_from_double(mpfr_ptr *out, double val, int precision);

@@ -208,4 +208,32 @@ class BigDeciTest {
 			assertEquals("3.14", bd.toFormattedString(2));
 		}
 	}
+
+	@Test
+	void intValue() {
+		try (BigDeci bd = BigDeci.fromDouble(42.7, 64)) {
+			assertEquals(42, bd.intValue());
+		}
+	}
+
+	@Test
+	void longValue() {
+		try (BigDeci bd = BigDeci.fromDouble(1e12, 64)) {
+			assertEquals(1000000000000L, bd.longValue());
+		}
+	}
+
+	@Test
+	void floatValue() {
+		try (BigDeci bd = BigDeci.fromDouble(3.14, 64)) {
+			assertEquals(3.14f, bd.floatValue(), 1e-6f);
+		}
+	}
+
+	@Test
+	void doubleValue() {
+		try (BigDeci bd = BigDeci.fromDouble(3.1415926535, 128)) {
+			assertEquals(3.1415926535, bd.doubleValue(), 1e-12);
+		}
+	}
 }

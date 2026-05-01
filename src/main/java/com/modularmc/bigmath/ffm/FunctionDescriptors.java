@@ -73,6 +73,16 @@ final class FunctionDescriptors {
 			ValueLayout.JAVA_INT, ValueLayout.ADDRESS
 	);
 
+	/** {@code long bigint_to_long(void* a)} */
+	static final FunctionDescriptor BIGINT_TO_LONG = FunctionDescriptor.of(
+			ValueLayout.JAVA_LONG, ValueLayout.ADDRESS
+	);
+
+	/** {@code double bigint_to_double(void* a)} */
+	static final FunctionDescriptor BIGINT_TO_DOUBLE = FunctionDescriptor.of(
+			ValueLayout.JAVA_DOUBLE, ValueLayout.ADDRESS
+	);
+
 	/** {@code int bigint_is_probably_prime(void* a, int certainty)} */
 	static final FunctionDescriptor BIGINT_IS_PROBABLY_PRIME = FunctionDescriptor.of(
 			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT

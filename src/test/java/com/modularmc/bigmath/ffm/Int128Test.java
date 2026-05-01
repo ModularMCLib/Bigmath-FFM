@@ -148,4 +148,32 @@ class Int128Test {
 			assertEquals(0, i.hi());
 		}
 	}
+
+	@Test
+	void intValue() {
+		try (Int128 i = Int128.fromLong(42)) {
+			assertEquals(42, i.intValue());
+		}
+	}
+
+	@Test
+	void longValue() {
+		try (Int128 i = Int128.fromLong(Long.MAX_VALUE)) {
+			assertEquals(Long.MAX_VALUE, i.longValue());
+		}
+	}
+
+	@Test
+	void doubleValue() {
+		try (Int128 i = Int128.fromLong(42)) {
+			assertEquals(42.0, i.doubleValue(), 0.0);
+		}
+	}
+
+	@Test
+	void floatValue() {
+		try (Int128 i = Int128.fromLong(42)) {
+			assertEquals(42.0f, i.floatValue(), 0.0f);
+		}
+	}
 }

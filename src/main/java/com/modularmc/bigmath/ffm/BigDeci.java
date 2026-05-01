@@ -22,7 +22,7 @@ import static com.modularmc.bigmath.ffm.BigmathFFM.invoke;
  * {@link #NEGATIVE_ONE} use a global arena and should not be closed.
  */
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-public final class BigDeci implements AutoCloseable, Comparable<BigDeci> {
+public final class BigDeci extends Number implements AutoCloseable, Comparable<BigDeci> {
 
 	private static final int CONSTANT_PRECISION = 128;
 	public static final BigDeci ZERO = createConstant(0.0, CONSTANT_PRECISION);
@@ -325,6 +325,30 @@ public final class BigDeci implements AutoCloseable, Comparable<BigDeci> {
 				FunctionDescriptors.BIGDECIMAL_CMP
 		);
 		return (int) invoke(handle, nativePtr, other.nativePtr);
+	}
+
+	@Override
+	public int intValue() {
+		return (int) longValue();
+	}
+
+	@Override
+	public long longValue() {
+		return (long) doubleValue();
+	}
+
+	@Override
+	public float floatValue() {
+		return (float) doubleValue();
+	}
+
+	/**
+	 * Converts to a primitive {@code double}, possibly with loss of
+	 * precision.
+	 */
+	@Override
+	public double doubleValue() {
+		return toDouble();
 	}
 
 	/**

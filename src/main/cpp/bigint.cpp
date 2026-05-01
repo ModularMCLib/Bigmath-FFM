@@ -89,6 +89,14 @@ int bigint_sign(mpz_ptr a) {
 	return mpz_sgn(a);
 }
 
+long bigint_to_long(mpz_ptr a) {
+	return mpz_get_si(a);
+}
+
+double bigint_to_double(mpz_ptr a) {
+	return mpz_get_d(a);
+}
+
 char *bigint_to_string(mpz_ptr a, int radix) {
 	return mpz_get_str(nullptr, radix, a);
 }
@@ -228,8 +236,9 @@ void bigint_neg(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
 void bigint_abs(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
 int  bigint_cmp(mpz_ptr, mpz_ptr) { return 0; }
 int  bigint_sign(mpz_ptr) { return 0; }
-char *bigint_to_string(mpz_ptr, int) { return nullptr; }
-char *bigint_format(mpz_ptr, int, const char *) { return nullptr; }
+long bigint_to_long(mpz_ptr) { return 0; }
+double bigint_to_double(mpz_ptr) { return 0.0; }
+
 void bigint_free_string(char *) { }
 void bigint_free(mpz_ptr) { }
 void bigint_gcd(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
