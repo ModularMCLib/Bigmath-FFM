@@ -21,7 +21,7 @@ constexpr int KARATSUBA_THRESHOLD = 32;
 constexpr int ALGO_THRESHOLD     = 64;
 constexpr int NTT_THRESHOLD      = 512;
 
-using limb_t = unsigned long;
+using limb_t = uint64_t;
 
 void karatsuba_mul(limb_t *out, const limb_t *a, int alen, const limb_t *b, int blen);
 

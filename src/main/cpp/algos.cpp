@@ -41,28 +41,33 @@ static void schoolbook_mul(limb_t *out, const limb_t *a, int alen, const limb_t 
 	if (!out || !a || !b || alen <= 0 || blen <= 0) return;
 	for (int i = 0; i < alen + blen; i++) out[i] = 0;
 	for (int i = 0; i < alen; i++) {
-		limb_t carry = 0;
+		uint64_t carry = 0;
+		uint32_t a_lo32 = (uint32_t)a[i];
+		uint32_t a_hi32 = (uint32_t)(a[i] >> 32);
 		for (int j = 0; j < blen; j++) {
-			limb_t value = out[i + j];
-			limb_t a_lo = a[i] & 0xFFFFFFFF;
-			limb_t a_hi = a[i] >> 32;
-			limb_t b_lo = b[j] & 0xFFFFFFFF;
-			limb_t b_hi = b[j] >> 32;
+			uint32_t b_lo32 = (uint32_t)b[j];
+			uint32_t b_hi32 = (uint32_t)(b[j] >> 32);
 
-			limb_t p00 = a_lo * b_lo;
-			limb_t p01 = a_lo * b_hi;
-			limb_t p10 = a_hi * b_lo;
-			limb_t p11 = a_hi * b_hi;
+			uint64_t p00 = (uint64_t)a_lo32 * b_lo32;
+			uint64_t p01 = (uint64_t)a_lo32 * b_hi32;
+			uint64_t p10 = (uint64_t)a_hi32 * b_lo32;
+			uint64_t p11 = (uint64_t)a_hi32 * b_hi32;
 
-			limb_t mid = p01 + p10;
-			limb_t mid_lo = (mid & 0xFFFFFFFF) << 32;
-			limb_t mid_hi = mid >> 32;
-			limb_t p00_hi = p00 >> 32;
+			uint64_t mid = p01 + p10;
+			uint64_t mid_carry = (mid < p01) ? (1ULL << 32) : 0;
 
-			limb_t lo = p00 + mid_lo + carry + value;
-			carry = p11 + mid_hi + p00_hi;
-			if (lo < value || lo < carry) carry++;
+			uint64_t mid_lo = (mid & 0xFFFFFFFFULL) << 32;
+			uint64_t mid_hi = (mid >> 32) | mid_carry;
+
+			uint64_t lo = p00 + mid_lo;
+			uint64_t lo_carry = (lo < p00) ? 1ULL : 0ULL;
+			uint64_t hi = p11 + mid_hi + lo_carry + carry;
+
+			lo += out[i + j];
+			if (lo < out[i + j]) hi++;
+
 			out[i + j] = lo;
+			carry = hi;
 		}
 		out[i + blen] += carry;
 	}
