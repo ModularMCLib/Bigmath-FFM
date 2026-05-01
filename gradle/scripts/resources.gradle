@@ -52,6 +52,7 @@ tasks.register('copyNativeLib', Copy) {
 tasks.named('processResources') {
 	dependsOn copyNativeLib
 	from(layout.projectDirectory.dir('native')) {
+		into('native')
 		includeEmptyDirs = false
 		include '**/*.so', '**/*.dylib', '**/*.dll'
 	}
