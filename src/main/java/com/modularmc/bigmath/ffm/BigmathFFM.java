@@ -1,4 +1,4 @@
-package net.modularmclib.bigmath.ffm;
+package com.modularmc.bigmath.ffm;
 
 import lombok.Getter;
 

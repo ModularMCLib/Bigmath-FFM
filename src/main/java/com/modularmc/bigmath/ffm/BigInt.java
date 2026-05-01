@@ -1,4 +1,4 @@
-package net.modularmclib.bigmath.ffm;
+package com.modularmc.bigmath.ffm;
 
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -9,7 +9,7 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.math.BigInteger;
 
-import static net.modularmclib.bigmath.ffm.BigmathFFM.invoke;
+import static com.modularmc.bigmath.ffm.BigmathFFM.invoke;
 
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class BigInt implements AutoCloseable {

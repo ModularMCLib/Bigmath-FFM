@@ -1,4 +1,4 @@
-package net.modularmclib.bigmath.ffm;
+package com.modularmc.bigmath.ffm;
 
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;

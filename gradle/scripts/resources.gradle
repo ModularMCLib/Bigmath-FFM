@@ -58,4 +58,7 @@ tasks.named('processResources') {
 	from(nativeResourcesDir) {
 		into "native/${nativeClassifier}"
 	}
+	from(rootProject.file('LICENSE')) {
+		into 'META-INF'
+	}
 }
