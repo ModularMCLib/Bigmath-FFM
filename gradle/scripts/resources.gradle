@@ -50,6 +50,7 @@ tasks.register('copyNativeLib', Copy) {
 }
 
 tasks.named('processResources') {
+	dependsOn copyNativeLib
 	def nativeDir = layout.projectDirectory.dir('native')
 	if (nativeDir.asFile.exists()) {
 		from(nativeDir) {
