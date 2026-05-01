@@ -84,6 +84,8 @@ jobs:
             lib: bigmath_ffm.dll
             vcpkg_triplet: arm64-windows
     runs-on: ${{ matrix.os }}
+    env:
+      VCPKG_BINARY_SOURCES: "clear;ghactions,export"
     steps:
       - uses: actions/checkout@v4
       - shell: pwsh
@@ -94,8 +96,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -Force -ItemType Directory -Path build/native, "native/${{ matrix.label }}"
-          cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
-          cmake --build build/native --config Release --target install
+          cmake -S src/main/cpp -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
+          cmake --build build/native --target install
           cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
           echo "=== built ==="
           cmd /c "dir native\${{ matrix.label }} & file native\${{ matrix.label }}\${{ matrix.lib }}"

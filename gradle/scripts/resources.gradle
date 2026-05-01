@@ -23,6 +23,7 @@ def cmakeConfigure = tasks.register('cmakeConfigure', Exec) {
 	commandLine 'cmake',
 			'-S', file("src/main/cpp").absolutePath,
 			'-B', cmakeBuildDir.absolutePath,
+			'-G', 'Ninja',
 			"-DCMAKE_BUILD_TYPE=${project.findProperty('buildType') ?: 'Release'}",
 			"-DCMAKE_INSTALL_PREFIX=${cmakeBuildDir}"
 }
@@ -34,9 +35,7 @@ tasks.register('buildNative', Exec) {
 	inputs.file("${cmakeBuildDir}/CMakeCache.txt")
 	outputs.file("${cmakeBuildDir}/lib/${nativeLibName}")
 	if (System.getProperty("os.name").toLowerCase().contains("win")) {
-		commandLine 'cmake', '--build', '.',
-				'--config', project.findProperty('buildType') ?: 'Release',
-				'--target', 'install'
+		commandLine 'cmake', '--build', '.', '--target', 'install'
 	} else {
 		commandLine 'cmake', '--build', '.', '--target', 'install'
 	}
