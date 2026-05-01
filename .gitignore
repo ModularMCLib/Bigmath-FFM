@@ -1,6 +1,7 @@
 # --- Gradle ---
 .gradle/
 build/
+bin/
 
 # --- IDE ---
 .idea/
@@ -86,7 +87,7 @@ replay_pid*
 *.com
 
 # --- CMake ---
-/cmake-build-debug/
+cmake-build-debug/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
