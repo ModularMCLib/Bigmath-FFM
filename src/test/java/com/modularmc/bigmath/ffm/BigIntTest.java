@@ -340,32 +340,120 @@ class BigIntTest {
 	}
 
 	@Test
-	void intValue() {
+	void intValuePositive() {
 		try (BigInt bi = BigInt.fromLong(42)) {
 			assertEquals(42, bi.intValue());
-			assertEquals(42, (int) bi.longValue());
 		}
 	}
 
 	@Test
-	void longValue() {
+	void intValueNegative() {
+		try (BigInt bi = BigInt.fromLong(-42)) {
+			assertEquals(-42, bi.intValue());
+		}
+	}
+
+	@Test
+	void intValueZero() {
+		assertEquals(0, BigInt.ZERO.intValue());
+	}
+
+	@Test
+	void longValuePositive() {
+		try (BigInt bi = BigInt.fromLong(42)) {
+			assertEquals(42L, bi.longValue());
+		}
+	}
+
+	@Test
+	void longValueNegative() {
+		try (BigInt bi = BigInt.fromLong(-42)) {
+			assertEquals(-42L, bi.longValue());
+		}
+	}
+
+	@Test
+	void longValueMax() {
 		try (BigInt bi = BigInt.fromLong(Long.MAX_VALUE)) {
 			assertEquals(Long.MAX_VALUE, bi.longValue());
 		}
 	}
 
 	@Test
-	void doubleValue() {
+	void longValueMin() {
+		try (BigInt bi = BigInt.fromLong(Long.MIN_VALUE)) {
+			assertEquals(Long.MIN_VALUE, bi.longValue());
+		}
+	}
+
+	@Test
+	void longValueZero() {
+		assertEquals(0L, BigInt.ZERO.longValue());
+	}
+
+	@Test
+	void floatValuePositive() {
+		try (BigInt bi = BigInt.fromLong(42)) {
+			assertEquals(42.0f, bi.floatValue(), 0.0f);
+		}
+	}
+
+	@Test
+	void floatValueNegative() {
+		try (BigInt bi = BigInt.fromLong(-42)) {
+			assertEquals(-42.0f, bi.floatValue(), 0.0f);
+		}
+	}
+
+	@Test
+	void floatValueZero() {
+		assertEquals(0.0f, BigInt.ZERO.floatValue(), 0.0f);
+	}
+
+	@Test
+	void doubleValuePositive() {
 		try (BigInt bi = BigInt.fromLong(42)) {
 			assertEquals(42.0, bi.doubleValue(), 0.0);
 		}
 	}
 
 	@Test
-	void numberConversionsLarge() {
+	void doubleValueNegative() {
+		try (BigInt bi = BigInt.fromLong(-42)) {
+			assertEquals(-42.0, bi.doubleValue(), 0.0);
+		}
+	}
+
+	@Test
+	void doubleValueZero() {
+		assertEquals(0.0, BigInt.ZERO.doubleValue(), 0.0);
+	}
+
+	@Test
+	void doubleValueLarge() {
 		try (BigInt bi = BigInt.fromString("12345678901234567890", 10)) {
 			assertEquals(1.2345678901234567e19, bi.doubleValue(), 1e12);
+		}
+	}
+
+	@Test
+	void floatValueLarge() {
+		try (BigInt bi = BigInt.fromString("12345678901234567890", 10)) {
 			assertEquals(1.23456789e19f, bi.floatValue(), 1e15f);
+		}
+	}
+
+	@Test
+	void doubleValueFractional() {
+		try (BigInt bi = BigInt.fromString("3", 10)) {
+			assertEquals(3.0, bi.doubleValue(), 0.0);
+		}
+	}
+
+	@Test
+	void intValueLargeTruncation() {
+		try (BigInt bi = BigInt.fromLong(0x1_0000_0000L)) {
+			assertTrue(bi.intValue() == (int) bi.longValue());
 		}
 	}
 }

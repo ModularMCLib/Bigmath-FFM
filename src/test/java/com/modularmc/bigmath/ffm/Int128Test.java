@@ -150,30 +150,99 @@ class Int128Test {
 	}
 
 	@Test
-	void intValue() {
+	void intValuePositive() {
 		try (Int128 i = Int128.fromLong(42)) {
 			assertEquals(42, i.intValue());
 		}
 	}
 
 	@Test
-	void longValue() {
+	void intValueNegative() {
+		try (Int128 i = Int128.fromLong(-127)) {
+			assertEquals(-127, i.intValue());
+		}
+	}
+
+	@Test
+	void intValueZero() {
+		assertEquals(0, Int128.ZERO.intValue());
+	}
+
+	@Test
+	void longValuePositive() {
+		try (Int128 i = Int128.fromLong(42)) {
+			assertEquals(42L, i.longValue());
+		}
+	}
+
+	@Test
+	void longValueNegative() {
+		try (Int128 i = Int128.fromLong(-1000)) {
+			assertEquals(-1000L, i.longValue());
+		}
+	}
+
+	@Test
+	void longValueMax() {
 		try (Int128 i = Int128.fromLong(Long.MAX_VALUE)) {
 			assertEquals(Long.MAX_VALUE, i.longValue());
 		}
 	}
 
 	@Test
-	void doubleValue() {
+	void longValueMin() {
+		try (Int128 i = Int128.fromLong(Long.MIN_VALUE)) {
+			assertEquals(Long.MIN_VALUE, i.longValue());
+		}
+	}
+
+	@Test
+	void longValueZero() {
+		assertEquals(0L, Int128.ZERO.longValue());
+	}
+
+	@Test
+	void floatValuePositive() {
+		try (Int128 i = Int128.fromLong(42)) {
+			assertEquals(42.0f, i.floatValue(), 0.0f);
+		}
+	}
+
+	@Test
+	void floatValueNegative() {
+		try (Int128 i = Int128.fromLong(-42)) {
+			assertEquals(-42.0f, i.floatValue(), 0.0f);
+		}
+	}
+
+	@Test
+	void floatValueZero() {
+		assertEquals(0.0f, Int128.ZERO.floatValue(), 0.0f);
+	}
+
+	@Test
+	void doubleValuePositive() {
 		try (Int128 i = Int128.fromLong(42)) {
 			assertEquals(42.0, i.doubleValue(), 0.0);
 		}
 	}
 
 	@Test
-	void floatValue() {
-		try (Int128 i = Int128.fromLong(42)) {
-			assertEquals(42.0f, i.floatValue(), 0.0f);
+	void doubleValueNegative() {
+		try (Int128 i = Int128.fromLong(-42)) {
+			assertEquals(-42.0, i.doubleValue(), 0.0);
+		}
+	}
+
+	@Test
+	void doubleValueZero() {
+		assertEquals(0.0, Int128.ZERO.doubleValue(), 0.0);
+	}
+
+	@Test
+	void doubleValueLarge() {
+		try (Int128 i = Int128.fromString("170141183460469231731687303715884105727", 10)) {
+			assertTrue(i.doubleValue() > 1e38);
 		}
 	}
 }
