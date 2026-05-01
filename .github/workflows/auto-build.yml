@@ -181,7 +181,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: native-*
-          path: ./
+          path: native/
           merge-multiple: true
       - name: Build JAR
         run: ./gradlew assemble -x test
