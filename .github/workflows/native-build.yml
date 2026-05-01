@@ -63,6 +63,8 @@ jobs:
             vcpkg_triplet: arm64-windows
 
     runs-on: ${{ matrix.os }}
+    env:
+      VCPKG_BINARY_SOURCES: "clear;ghactions,export"
 
     steps:
       - uses: actions/checkout@v4
