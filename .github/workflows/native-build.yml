@@ -57,8 +57,10 @@ jobs:
             label: macos-aarch64
           - os: windows-latest
             label: windows-x86-64
+            vcpkg_triplet: x64-windows
           - os: windows-11-arm
             label: windows-aarch64
+            vcpkg_triplet: arm64-windows
 
     runs-on: ${{ matrix.os }}
 
@@ -83,8 +85,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          vcpkg install --triplet x64-windows
-          echo "CMAKE_PREFIX_PATH=$env:VCPKG_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
+          vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
+          echo "CMAKE_PREFIX_PATH=$env:VCPKG_ROOT\installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
 
       - uses: gradle/actions/setup-gradle@v4
       - name: Build native
