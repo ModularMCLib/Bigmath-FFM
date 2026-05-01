@@ -98,7 +98,7 @@ jobs:
           cmake --build build/native --config Release --target install
           cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
           echo "=== built ==="
-          ls -la native/${{ matrix.label }}/
+          Get-ChildItem "native/${{ matrix.label }}"/
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.label }}
