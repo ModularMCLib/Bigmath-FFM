@@ -22,27 +22,27 @@ import static com.modularmc.bigmath.ffm.BigmathFFM.invoke;
  * {@link #NEGATIVE_ONE} use a global arena and should not be closed.
  */
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
+public final class BigDeci implements AutoCloseable, Comparable<BigDeci> {
 
 	private static final int CONSTANT_PRECISION = 128;
-	public static final BigDecimal ZERO = createConstant(0.0, CONSTANT_PRECISION);
-	public static final BigDecimal ONE = createConstant(1.0, CONSTANT_PRECISION);
-	public static final BigDecimal TWO = createConstant(2.0, CONSTANT_PRECISION);
-	public static final BigDecimal TEN = createConstant(10.0, CONSTANT_PRECISION);
-	public static final BigDecimal NEGATIVE_ONE = createConstant(-1.0, CONSTANT_PRECISION);
+	public static final BigDeci ZERO = createConstant(0.0, CONSTANT_PRECISION);
+	public static final BigDeci ONE = createConstant(1.0, CONSTANT_PRECISION);
+	public static final BigDeci TWO = createConstant(2.0, CONSTANT_PRECISION);
+	public static final BigDeci TEN = createConstant(10.0, CONSTANT_PRECISION);
+	public static final BigDeci NEGATIVE_ONE = createConstant(-1.0, CONSTANT_PRECISION);
 
 	private final MemorySegment nativePtr;
 	private final Arena arena;
 
 	/**
-	 * Creates a {@code BigDecimal} from a {@code double} with the given
+	 * Creates a {@code BigDeci} from a {@code double} with the given
 	 * precision (in bits).
 	 *
 	 * @param value     the source value
 	 * @param precision the MPFR precision in bits
-	 * @return a new {@code BigDecimal}
+	 * @return a new {@code BigDeci}
 	 */
-	public static BigDecimal fromDouble(double value, int precision) {
+	public static BigDeci fromDouble(double value, int precision) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -50,7 +50,7 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_FROM_DOUBLE
 		);
 		invoke(handle, ptr, value, precision);
-		return new BigDecimal(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
@@ -58,9 +58,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 	 *
 	 * @param value     the string to parse
 	 * @param precision the MPFR precision in bits
-	 * @return a new {@code BigDecimal}
+	 * @return a new {@code BigDeci}
 	 */
-	public static BigDecimal fromString(String value, int precision) {
+	public static BigDeci fromString(String value, int precision) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
 		try (Arena tmp = Arena.ofConfined()) {
@@ -71,25 +71,25 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 			);
 			invoke(handle, ptr, str, precision);
 		}
-		return new BigDecimal(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
-	 * Creates a {@code BigDecimal} from a {@link BigInt} with the given
+	 * Creates a {@code BigDeci} from a {@link BigInt} with the given
 	 * precision.
 	 *
 	 * @param value     the source integer
 	 * @param precision the MPFR precision in bits
-	 * @return a new {@code BigDecimal}
+	 * @return a new {@code BigDeci}
 	 */
-	public static BigDecimal fromBigInt(BigInt value, int precision) {
+	public static BigDeci fromBigInt(BigInt value, int precision) {
 		return fromString(value.toString(), precision);
 	}
 
 	/**
 	 * Returns {@code this + other}.
 	 */
-	public BigDecimal add(BigDecimal other) {
+	public BigDeci add(BigDeci other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -97,13 +97,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns {@code this - other}.
 	 */
-	public BigDecimal subtract(BigDecimal other) {
+	public BigDeci subtract(BigDeci other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -111,13 +111,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns {@code this * other}.
 	 */
-	public BigDecimal multiply(BigDecimal other) {
+	public BigDeci multiply(BigDeci other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -125,13 +125,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns {@code this / other}.
 	 */
-	public BigDecimal divide(BigDecimal other) {
+	public BigDeci divide(BigDeci other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -139,13 +139,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns {@code -this}.
 	 */
-	public BigDecimal negate() {
+	public BigDeci negate() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -153,13 +153,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns the absolute value.
 	 */
-	public BigDecimal abs() {
+	public BigDeci abs() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -167,13 +167,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns the square root.
 	 */
-	public BigDecimal sqrt() {
+	public BigDeci sqrt() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -181,15 +181,15 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns {@code this}<sup>{@code exponent}</sup>.
 	 *
-	 * @param exponent the exponent as a {@code BigDecimal}
+	 * @param exponent the exponent as a {@code BigDeci}
 	 */
-	public BigDecimal pow(BigDecimal exponent) {
+	public BigDeci pow(BigDeci exponent) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -197,13 +197,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_BINARY
 		);
 		invoke(handle, result, nativePtr, exponent.nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns the natural logarithm.
 	 */
-	public BigDecimal log() {
+	public BigDeci log() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -211,13 +211,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns <i>e</i><sup>this</sup>.
 	 */
-	public BigDecimal exp() {
+	public BigDeci exp() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -225,13 +225,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns the sine.
 	 */
-	public BigDecimal sin() {
+	public BigDeci sin() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -239,13 +239,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns the cosine.
 	 */
-	public BigDecimal cos() {
+	public BigDeci cos() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -253,13 +253,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns the tangent.
 	 */
-	public BigDecimal tan() {
+	public BigDeci tan() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -267,13 +267,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns the smallest integer greater than or equal to this value.
 	 */
-	public BigDecimal ceil() {
+	public BigDeci ceil() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -281,13 +281,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns the largest integer less than or equal to this value.
 	 */
-	public BigDecimal floor() {
+	public BigDeci floor() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -295,13 +295,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
 	 * Returns the nearest integer (rounds half away from zero).
 	 */
-	public BigDecimal round() {
+	public BigDeci round() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -309,11 +309,11 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	@Override
-	public int compareTo(BigDecimal other) {
+	public int compareTo(BigDeci other) {
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"bigdecimal_cmp",
 				FunctionDescriptors.BIGDECIMAL_CMP
@@ -406,7 +406,7 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		arena.close();
 	}
 
-	private static BigDecimal createConstant(double value, int precision) {
+	private static BigDeci createConstant(double value, int precision) {
 		Arena arena = Arena.global();
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -414,6 +414,6 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 				FunctionDescriptors.BIGDECIMAL_FROM_DOUBLE
 		);
 		invoke(handle, ptr, value, precision);
-		return new BigDecimal(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		return new BigDeci(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 }
