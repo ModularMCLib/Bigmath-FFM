@@ -19,6 +19,7 @@ def cmakeConfigure = tasks.register('cmakeConfigure', Exec) {
 	workingDir = cmakeBuildDir
 	inputs.dir("src/main/cpp").withPathSensitivity(PathSensitivity.RELATIVE)
 	outputs.file("${cmakeBuildDir}/CMakeCache.txt")
+	onlyIf { !file("native/${nativeClassifier}/${nativeLibName}").exists() }
 	doFirst { cmakeBuildDir.mkdirs() }
 	commandLine 'cmake',
 			'-S', file("src/main/cpp").absolutePath,
@@ -34,28 +35,27 @@ tasks.register('buildNative', Exec) {
 	workingDir = cmakeBuildDir
 	inputs.file("${cmakeBuildDir}/CMakeCache.txt")
 	outputs.file("${cmakeBuildDir}/lib/${nativeLibName}")
-	if (System.getProperty("os.name").toLowerCase().contains("win")) {
-		commandLine 'cmake', '--build', '.', '--target', 'install'
-	} else {
-		commandLine 'cmake', '--build', '.', '--target', 'install'
-	}
+	onlyIf { !file("native/${nativeClassifier}/${nativeLibName}").exists() }
+	commandLine 'cmake', '--build', '.', '--target', 'install'
 }
 
-def nativeResourcesDir = layout.projectDirectory.dir("native/${nativeClassifier}").asFile
-
 tasks.register('copyNativeLib', Copy) {
-	description = 'Copy native library into resources for JAR packaging'
+	description = 'Copy native library into native resources directory'
 	dependsOn buildNative
+	onlyIf { !file("native/${nativeClassifier}/${nativeLibName}").exists() }
 	from("${cmakeBuildDir}/lib") {
 		include nativeLibName
 	}
-	into nativeResourcesDir
+	into layout.projectDirectory.dir("native/${nativeClassifier}").asFile
 }
 
 tasks.named('processResources') {
 	dependsOn copyNativeLib
-	from(nativeResourcesDir) {
-		into "native/${nativeClassifier}"
+	def nativeDir = layout.projectDirectory.dir('native')
+	if (nativeDir.asFile.exists()) {
+		from(nativeDir) {
+			include '**/*'
+		}
 	}
 	from(rootProject.file('LICENSE')) {
 		into 'META-INF'

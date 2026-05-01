@@ -1,14 +1,43 @@
 plugins {
     id 'java-library'
+    id 'maven-publish'
     alias libs.plugins.kotlin.jvm
 }
 
+version = rootProject.version
+group = rootProject.group
+
 java {
     toolchain.languageVersion = JavaLanguageVersion.of(23)
+    withSourcesJar()
+    withJavadocJar()
 }
 
 dependencies {
     api project(':')
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            pom {
+                name = "${mod_name} Kotlin Extensions"
+                description = "${mod_description} — Kotlin operator extensions"
+                url = mod_url
+                licenses {
+                    license {
+                        name = mod_license
+                        url = 'https://www.gnu.org/licenses/lgpl-3.0.txt'
+                    }
+                }
+                issueManagement {
+                    system = 'GitHub'
+                    url = mod_issue_tracker
+                }
+            }
+        }
+    }
 }
 
 tasks.withType(JavaCompile).configureEach {
