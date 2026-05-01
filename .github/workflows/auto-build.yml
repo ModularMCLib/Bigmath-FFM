@@ -85,18 +85,20 @@ jobs:
             vcpkg_triplet: arm64-windows
     runs-on: ${{ matrix.os }}
     env:
-      VCPKG_BINARY_SOURCES: "clear;ghactions,export"
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite"
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}
       - shell: pwsh
-        run: |
-          vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
-          echo "CMAKE_PREFIX_PATH=$env:VCPKG_ROOT\installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
+        run: vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
       - name: Build
         shell: pwsh
         run: |
           New-Item -Force -ItemType Directory -Path build/native, "native/${{ matrix.label }}"
-          cmake -S src/main/cpp -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
+          cmake -S src/main/cpp -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native "-DCMAKE_PREFIX_PATH=$env:VCPKG_ROOT/installed/${{ matrix.vcpkg_triplet }}"
           cmake --build build/native --target install
           cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
           echo "=== built ==="
@@ -168,6 +170,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - run: sudo apt-get update && sudo apt-get install -y libgmp-dev libmpfr-dev cmake
       - uses: actions/setup-java@v4
         with:
           java-version: '23'

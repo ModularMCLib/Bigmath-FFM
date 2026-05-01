@@ -64,10 +64,16 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     env:
-      VCPKG_BINARY_SOURCES: "clear;ghactions,export"
+      VCPKG_BINARY_SOURCES: ${{ runner.os == 'Windows' && format('clear;files,{0}/.vcpkg-cache,readwrite', github.workspace) || '' }}
 
     steps:
       - uses: actions/checkout@v4
+      - name: Restore vcpkg binary cache
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}
       - uses: actions/setup-java@v4
         with:
           java-version: '23'
