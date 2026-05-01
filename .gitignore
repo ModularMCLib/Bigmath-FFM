@@ -119,5 +119,8 @@ Testing/
 *.gcno
 *.gcov
 
+# Allow native libraries in native/ for packaging
+!/native/**
+
 # --- Generated ---
 src/generated/
