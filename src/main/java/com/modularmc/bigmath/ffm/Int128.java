@@ -10,6 +10,16 @@ import java.lang.invoke.MethodHandle;
 
 import static com.modularmc.bigmath.ffm.BigmathFFM.invoke;
 
+/**
+ * 128-bit signed integer backed by the native bigmath library.
+ * <p>
+ * Unlike {@link BigInt}, this type is stack-allocated (16-byte struct) and
+ * does not use dynamic heap memory. Supports full arithmetic and comparison
+ * operations within the 128-bit range.
+ * <p>
+ * Constants {@link #ZERO}, {@link #ONE}, {@link #TWO}, {@link #TEN}, and
+ * {@link #NEGATIVE_ONE} use a global arena and should not be closed.
+ */
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Int128 implements AutoCloseable, Comparable<Int128> {
 
@@ -24,6 +34,12 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 	private final MemorySegment nativePtr;
 	private final Arena arena;
 
+	/**
+	 * Creates an {@code Int128} from a primitive {@code long}.
+	 *
+	 * @param value the source value
+	 * @return a new {@code Int128}
+	 */
 	public static Int128 fromLong(long value) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment ptr = arena.allocate(STRUCT_SIZE);
@@ -35,6 +51,13 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return new Int128(ptr, arena);
 	}
 
+	/**
+	 * Parses a string representation in the given radix.
+	 *
+	 * @param value the string to parse
+	 * @param radix the base, between 2 and 62 inclusive
+	 * @return a new {@code Int128}
+	 */
 	public static Int128 fromString(String value, int radix) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment ptr = arena.allocate(STRUCT_SIZE);
@@ -49,14 +72,23 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return new Int128(ptr, arena);
 	}
 
+	/**
+	 * Returns the low 64 bits.
+	 */
 	public long lo() {
 		return nativePtr.get(ValueLayout.JAVA_LONG, 0);
 	}
 
+	/**
+	 * Returns the high 64 bits.
+	 */
 	public long hi() {
 		return nativePtr.get(ValueLayout.JAVA_LONG, 8);
 	}
 
+	/**
+	 * Returns {@code this + other}.
+	 */
 	public Int128 add(Int128 other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(STRUCT_SIZE);
@@ -68,6 +100,9 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return new Int128(result, arena);
 	}
 
+	/**
+	 * Returns {@code this - other}.
+	 */
 	public Int128 subtract(Int128 other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(STRUCT_SIZE);
@@ -79,6 +114,9 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return new Int128(result, arena);
 	}
 
+	/**
+	 * Returns {@code this * other}.
+	 */
 	public Int128 multiply(Int128 other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(STRUCT_SIZE);
@@ -90,6 +128,9 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return new Int128(result, arena);
 	}
 
+	/**
+	 * Returns {@code this / other} (truncating toward zero).
+	 */
 	public Int128 divide(Int128 other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(STRUCT_SIZE);
@@ -101,6 +142,9 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return new Int128(result, arena);
 	}
 
+	/**
+	 * Returns {@code this % other}.
+	 */
 	public Int128 mod(Int128 other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(STRUCT_SIZE);
@@ -112,6 +156,9 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return new Int128(result, arena);
 	}
 
+	/**
+	 * Returns {@code -this}.
+	 */
 	public Int128 negate() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(STRUCT_SIZE);
@@ -123,6 +170,9 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return new Int128(result, arena);
 	}
 
+	/**
+	 * Returns the absolute value.
+	 */
 	public Int128 abs() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(STRUCT_SIZE);
@@ -134,6 +184,7 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return new Int128(result, arena);
 	}
 
+	@Override
 	public int compareTo(Int128 other) {
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"int128_cmp",
@@ -142,6 +193,10 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return (int) invoke(handle, nativePtr, other.nativePtr);
 	}
 
+	/**
+	 * Returns the signum: {@code -1} (negative), {@code 0} (zero), or
+	 * {@code 1} (positive).
+	 */
 	public int signum() {
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"int128_sign",
@@ -150,6 +205,11 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		return (int) invoke(handle, nativePtr);
 	}
 
+	/**
+	 * Returns the string representation in the given radix.
+	 *
+	 * @param radix base, between 2 and 62 inclusive
+	 */
 	public String toString(int radix) {
 		try (Arena tmp = Arena.ofConfined()) {
 			MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -167,10 +227,20 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		}
 	}
 
+	/**
+	 * Returns the formatted string with default grouping (group size 3,
+	 * comma separator).
+	 */
 	public String toFormattedString() {
 		return toFormattedString(3, ",");
 	}
 
+	/**
+	 * Returns the formatted string with custom digit grouping.
+	 *
+	 * @param groupSize number of digits per group
+	 * @param groupSep  the separator string
+	 */
 	public String toFormattedString(int groupSize, String groupSep) {
 		try (Arena tmp = Arena.ofConfined()) {
 			MemorySegment sep = tmp.allocateFrom(groupSep, java.nio.charset.StandardCharsets.UTF_8);
@@ -189,6 +259,9 @@ public final class Int128 implements AutoCloseable, Comparable<Int128> {
 		}
 	}
 
+	/**
+	 * Returns the base-10 string representation.
+	 */
 	@Override
 	public String toString() {
 		return toString(10);

@@ -8,6 +8,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.logging.Logger;
 
+/**
+ * Singleton bridge to the native {@code bigmath_ffm} shared library via Java FFM API.
+ * <p>
+ * Auto-detects the host OS and CPU architecture to locate and load the correct
+ * platform-native library from the bundled resources. Provides {@link #downcall}
+ * for linking native symbols and {@link #invoke} for calling them safely.
+ * <p>
+ * The native library path can be overridden via system property
+ * {@code bigmath.native.path} (absolute file path) or the platform classifier
+ * via {@code bigmath.native.classifier} (e.g. {@code linux-x86-64}).
+ */
 @Getter
 public final class BigmathFFM {
 
@@ -49,6 +60,10 @@ public final class BigmathFFM {
 		return Arch.UNKNOWN;
 	}
 
+	/**
+	 * Returns the platform classifier string for the current host,
+	 * e.g. {@code windows-x86-64} or {@code android-arm64-v8a}.
+	 */
 	public static String platformClassifier() {
 		StringBuilder sb = new StringBuilder();
 		switch (CURRENT_OS) {
@@ -80,6 +95,17 @@ public final class BigmathFFM {
 		};
 	}
 
+	/**
+	 * Loads the platform-native shared library. Resolution order:
+	 * <ol>
+	 *   <li>{@code bigmath.native.path} system property (absolute file path)</li>
+	 *   <li>Bundled resource at {@code native/<classifier>/<libname>}</li>
+	 *   <li>{@link System#loadLibrary} fallback</li>
+	 * </ol>
+	 *
+	 * @return a {@link SymbolLookup} over the loaded library
+	 * @throws UnsatisfiedLinkError if the library cannot be found or loaded
+	 */
 	private static SymbolLookup loadLibrary() {
 		String classifier = System.getProperty("bigmath.native.classifier");
 		if (classifier == null) {
@@ -126,14 +152,29 @@ public final class BigmathFFM {
 		);
 	}
 
+	/**
+	 * Returns the singleton instance (lazy-evaluated at class init time).
+	 */
 	public static BigmathFFM getInstance() {
 		return INSTANCE;
 	}
 
+	/**
+	 * Returns the native linker for the current platform.
+	 */
 	public Linker linker() {
 		return Linker.nativeLinker();
 	}
 
+	/**
+	 * Looks up a native function by name and creates a downcall method handle
+	 * with the given function descriptor.
+	 *
+	 * @param name       the C symbol name
+	 * @param descriptor the FFM function descriptor
+	 * @return a {@link MethodHandle} bound to the native function
+	 * @throws UnsatisfiedLinkError if the symbol is not found
+	 */
 	public MethodHandle downcall(String name, FunctionDescriptor descriptor) {
 		return lookup.find(name)
 				.map(addr -> {
@@ -143,6 +184,14 @@ public final class BigmathFFM {
 				.orElseThrow(() -> new UnsatisfiedLinkError("Symbol not found: " + name));
 	}
 
+	/**
+	 * Invokes a method handle with the given arguments, wrapping checked
+	 * exceptions in {@link RuntimeException}.
+	 *
+	 * @param handle the method handle to invoke
+	 * @param args   the arguments to pass
+	 * @return the return value of the native call
+	 */
 	public static Object invoke(MethodHandle handle, Object... args) {
 		try {
 			return handle.invokeWithArguments(args);

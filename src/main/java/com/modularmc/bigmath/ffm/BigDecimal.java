@@ -10,6 +10,17 @@ import java.lang.invoke.MethodHandle;
 
 import static com.modularmc.bigmath.ffm.BigmathFFM.invoke;
 
+/**
+ * Arbitrary-precision decimal floating-point backed by the native bigmath
+ * library (MPFR).
+ * <p>
+ * Supports arithmetic, trigonometric, logarithmic, exponential, and rounding
+ * operations. Each instance wraps a native heap pointer; call
+ * {@link #close()} to free the underlying resource.
+ * <p>
+ * Constants {@link #ZERO}, {@link #ONE}, {@link #TWO}, {@link #TEN}, and
+ * {@link #NEGATIVE_ONE} use a global arena and should not be closed.
+ */
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 
@@ -23,6 +34,14 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 	private final MemorySegment nativePtr;
 	private final Arena arena;
 
+	/**
+	 * Creates a {@code BigDecimal} from a {@code double} with the given
+	 * precision (in bits).
+	 *
+	 * @param value     the source value
+	 * @param precision the MPFR precision in bits
+	 * @return a new {@code BigDecimal}
+	 */
 	public static BigDecimal fromDouble(double value, int precision) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
@@ -34,6 +53,13 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Parses a decimal string with the given precision (in bits).
+	 *
+	 * @param value     the string to parse
+	 * @param precision the MPFR precision in bits
+	 * @return a new {@code BigDecimal}
+	 */
 	public static BigDecimal fromString(String value, int precision) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
@@ -48,10 +74,21 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Creates a {@code BigDecimal} from a {@link BigInt} with the given
+	 * precision.
+	 *
+	 * @param value     the source integer
+	 * @param precision the MPFR precision in bits
+	 * @return a new {@code BigDecimal}
+	 */
 	public static BigDecimal fromBigInt(BigInt value, int precision) {
 		return fromString(value.toString(), precision);
 	}
 
+	/**
+	 * Returns {@code this + other}.
+	 */
 	public BigDecimal add(BigDecimal other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -63,6 +100,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns {@code this - other}.
+	 */
 	public BigDecimal subtract(BigDecimal other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -74,6 +114,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns {@code this * other}.
+	 */
 	public BigDecimal multiply(BigDecimal other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -85,6 +128,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns {@code this / other}.
+	 */
 	public BigDecimal divide(BigDecimal other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -96,6 +142,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns {@code -this}.
+	 */
 	public BigDecimal negate() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -107,6 +156,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the absolute value.
+	 */
 	public BigDecimal abs() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -118,6 +170,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the square root.
+	 */
 	public BigDecimal sqrt() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -129,6 +184,11 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns {@code this}<sup>{@code exponent}</sup>.
+	 *
+	 * @param exponent the exponent as a {@code BigDecimal}
+	 */
 	public BigDecimal pow(BigDecimal exponent) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -140,6 +200,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the natural logarithm.
+	 */
 	public BigDecimal log() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -151,6 +214,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns <i>e</i><sup>this</sup>.
+	 */
 	public BigDecimal exp() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -162,6 +228,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the sine.
+	 */
 	public BigDecimal sin() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -173,6 +242,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the cosine.
+	 */
 	public BigDecimal cos() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -184,6 +256,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the tangent.
+	 */
 	public BigDecimal tan() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -195,6 +270,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the smallest integer greater than or equal to this value.
+	 */
 	public BigDecimal ceil() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -206,6 +284,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the largest integer less than or equal to this value.
+	 */
 	public BigDecimal floor() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -217,6 +298,9 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	/**
+	 * Returns the nearest integer (rounds half away from zero).
+	 */
 	public BigDecimal round() {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
@@ -228,6 +312,7 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return new BigDecimal(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	@Override
 	public int compareTo(BigDecimal other) {
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"bigdecimal_cmp",
@@ -236,6 +321,10 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return (int) invoke(handle, nativePtr, other.nativePtr);
 	}
 
+	/**
+	 * Converts to a primitive {@code double}, possibly with loss of
+	 * precision.
+	 */
 	public double toDouble() {
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"bigdecimal_to_double",
@@ -244,6 +333,10 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		return (double) invoke(handle, nativePtr);
 	}
 
+	/**
+	 * Returns the full-precision decimal string representation.
+	 */
+	@Override
 	public String toString() {
 		try (Arena tmp = Arena.ofConfined()) {
 			MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -261,14 +354,30 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 		}
 	}
 
+	/**
+	 * Returns the formatted string with auto-scaled fractional part, default
+	 * group size 3, and comma separator.
+	 */
 	public String toFormattedString() {
 		return toFormattedString(-1, 3, ",");
 	}
 
+	/**
+	 * Returns the formatted string with a fixed scale.
+	 *
+	 * @param scale number of fractional digits, or {@code -1} for auto-scale
+	 */
 	public String toFormattedString(int scale) {
 		return toFormattedString(scale, 3, ",");
 	}
 
+	/**
+	 * Returns the formatted string with custom scale and digit grouping.
+	 *
+	 * @param scale     number of fractional digits, or {@code -1} for auto-scale
+	 * @param groupSize number of integer digits per group
+	 * @param groupSep  the group separator string
+	 */
 	public String toFormattedString(int scale, int groupSize, String groupSep) {
 		try (Arena tmp = Arena.ofConfined()) {
 			MemorySegment sep = tmp.allocateFrom(groupSep, java.nio.charset.StandardCharsets.UTF_8);
@@ -283,7 +392,6 @@ public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
 					FunctionDescriptors.BIGDECIMAL_FREE_STRING
 			);
 			invoke(freeHandle, result);
-			System.err.println("toFormattedString(" + scale + "," + groupSize + "," + groupSep + ") = '" + str + "'");
 			return str;
 		}
 	}
