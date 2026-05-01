@@ -338,4 +338,34 @@ class BigIntTest {
 			assertEquals("1234 5678", bi.toFormattedString(4, " "));
 		}
 	}
+
+	@Test
+	void intValue() {
+		try (BigInt bi = BigInt.fromLong(42)) {
+			assertEquals(42, bi.intValue());
+			assertEquals(42, (int) bi.longValue());
+		}
+	}
+
+	@Test
+	void longValue() {
+		try (BigInt bi = BigInt.fromLong(Long.MAX_VALUE)) {
+			assertEquals(Long.MAX_VALUE, bi.longValue());
+		}
+	}
+
+	@Test
+	void doubleValue() {
+		try (BigInt bi = BigInt.fromLong(42)) {
+			assertEquals(42.0, bi.doubleValue(), 0.0);
+		}
+	}
+
+	@Test
+	void numberConversionsLarge() {
+		try (BigInt bi = BigInt.fromString("12345678901234567890", 10)) {
+			assertEquals(1.2345678901234567e19, bi.doubleValue(), 1e12);
+			assertEquals(1.23456789e19f, bi.floatValue(), 1e15f);
+		}
+	}
 }

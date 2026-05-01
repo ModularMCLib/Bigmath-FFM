@@ -23,7 +23,7 @@ import static com.modularmc.bigmath.ffm.BigmathFFM.invoke;
  * {@link #NEGATIVE_ONE} use a global arena and should not be closed.
  */
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-public final class BigInt implements AutoCloseable, Comparable<BigInt> {
+public final class BigInt extends Number implements AutoCloseable, Comparable<BigInt> {
 
 	public static final BigInt ZERO = createConstant(0);
 	public static final BigInt ONE = createConstant(1);
@@ -492,6 +492,34 @@ public final class BigInt implements AutoCloseable, Comparable<BigInt> {
 	/**
 	 * Frees the native memory backing this instance.
 	 */
+	@Override
+	public int intValue() {
+		return (int) longValue();
+	}
+
+	@Override
+	public long longValue() {
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_to_long",
+				FunctionDescriptors.BIGINT_TO_LONG
+		);
+		return (long) invoke(handle, nativePtr);
+	}
+
+	@Override
+	public float floatValue() {
+		return (float) doubleValue();
+	}
+
+	@Override
+	public double doubleValue() {
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_to_double",
+				FunctionDescriptors.BIGINT_TO_DOUBLE
+		);
+		return (double) invoke(handle, nativePtr);
+	}
+
 	@Override
 	public void close() {
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
