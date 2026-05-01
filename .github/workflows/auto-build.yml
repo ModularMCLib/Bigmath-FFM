@@ -77,11 +77,11 @@ jobs:
         include:
           - os: windows-latest
             label: windows-x86-64
-            lib: libbigmath_ffm.dll
+            lib: bigmath_ffm.dll
             vcpkg_triplet: x64-windows
           - os: windows-11-arm
             label: windows-aarch64
-            lib: libbigmath_ffm.dll
+            lib: bigmath_ffm.dll
             vcpkg_triplet: arm64-windows
     runs-on: ${{ matrix.os }}
     env:

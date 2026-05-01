@@ -43,6 +43,10 @@ add_library(bigmath_ffm SHARED
 )
 target_include_directories(bigmath_ffm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+if(WIN32)
+	set_target_properties(bigmath_ffm PROPERTIES PREFIX "")
+endif()
+
 if(GMP_FOUND AND MPFR_FOUND)
 	target_link_libraries(bigmath_ffm PRIVATE GMP::GMP MPFR::MPFR)
 	target_compile_definitions(bigmath_ffm PRIVATE BIGMATH_HAS_GMP)
