@@ -30,8 +30,176 @@ jobs:
           fetchViaCommits: true
           failOnError: false
 
+  native-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x86-64
+            lib: libbigmath_ffm.so
+          - os: ubuntu-24.04-arm
+            label: linux-aarch64
+            lib: libbigmath_ffm.so
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libgmp-dev libmpfr-dev cmake
+      - name: Build
+        run: |
+          mkdir -p build/native native/${{ matrix.label }}
+          cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
+          cmake --build build/native --target install -j$(nproc)
+          cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.label }}
+          path: native/${{ matrix.label }}/${{ matrix.lib }}
+          retention-days: 3
+
+  native-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            label: macos-x86-64
+            lib: libbigmath_ffm.dylib
+          - os: macos-latest
+            label: macos-aarch64
+            lib: libbigmath_ffm.dylib
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install gmp mpfr cmake
+      - name: Build
+        run: |
+          mkdir -p build/native native/${{ matrix.label }}
+          cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
+          cmake --build build/native --target install -j$(sysctl -n hw.ncpu)
+          cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.label }}
+          path: native/${{ matrix.label }}/${{ matrix.lib }}
+          retention-days: 3
+
+  native-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows-x86-64
+            lib: bigmath_ffm.dll
+            vcpkg_triplet: x64-windows
+          - os: windows-11-arm
+            label: windows-aarch64
+            lib: bigmath_ffm.dll
+            vcpkg_triplet: arm64-windows
+    runs-on: ${{ matrix.os }}
+    env:
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}
+      - shell: pwsh
+        run: vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
+      - name: Build
+        shell: pwsh
+        run: |
+          New-Item -Force -ItemType Directory -Path build/native, "native/${{ matrix.label }}"
+          cmake -S src/main/cpp -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native "-DCMAKE_PREFIX_PATH=$env:VCPKG_ROOT/installed/${{ matrix.vcpkg_triplet }}"
+          cmake --build build/native --target install
+          cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.label }}
+          path: native/${{ matrix.label }}/${{ matrix.lib }}
+          retention-days: 3
+
+  native-android:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            label: android-arm64-v8a
+            lib: libbigmath_ffm.so
+          - abi: x86_64
+            label: android-x86-64
+            lib: libbigmath_ffm.so
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '23'
+          distribution: 'temurin'
+      - name: Setup Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28
+          add-to-path: false
+      - name: Build
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          mkdir -p build/native native/${{ matrix.label }}
+          cmake -S src/main/cpp -B build/native \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_PLATFORM=android-21 \
+            -DUSE_GMP=OFF
+          cmake --build build/native --target bigmath_ffm -j$(nproc)
+          find build/native -name "*.so" -exec cp {} native/${{ matrix.label }}/ \;
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.label }}
+          path: native/${{ matrix.label }}/${{ matrix.lib }}
+          retention-days: 3
+
+  package:
+    name: Package JAR & Upload to Release
+    needs: [meta, native-linux, native-macos, native-windows, native-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '23'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew
+      - name: Download native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: ./
+          merge-multiple: true
+      - name: Build JAR
+        run: ./gradlew assemble -x test
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            build/libs/*.jar
+            bigmath-ffm-kt/build/libs/*.jar
+            native/**/*.so
+            native/**/*.dylib
+            native/**/*.dll
+          fail_on_unmatched_files: false
+
   publish:
-    name: Publish
+    name: Publish to Maven
     needs: [meta]
     if: ${{ github.event.release.prerelease == false }}
     secrets: inherit
@@ -42,28 +210,3 @@ jobs:
       version: main
       release-body: ${{ github.event.release.body }}
       changelog-body: ${{ needs.meta.outputs.CHANGELOG }}
-
-  publish-prerelease:
-    name: Publish Pre-release
-    needs: [meta]
-    if: ${{ github.event.release.prerelease == true }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-      - name: Setup Build
-        uses: ./.github/actions/build_setup
-        with:
-          ref: main
-      - run: chmod +x gradlew
-      - name: Build
-        run: ./gradlew assemble -x test
-      - name: Upload JARs to release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: build/libs/*.jar
-          fail_on_unmatched_files: true

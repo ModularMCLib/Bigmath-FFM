@@ -42,6 +42,8 @@ jobs:
         uses: ./.github/actions/build_setup
         with:
           ref: ${{ inputs.version }}
+      - name: Install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgmp-dev libmpfr-dev cmake
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
       - name: Get Version
@@ -53,7 +55,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-artifacts-${{ inputs.tag-name }}
-          path: build/libs/*
+          path: |
+            build/libs/*
+            bigmath-ffm-kt/build/libs/*
           if-no-files-found: error
           retention-days: 3
       - name: Publish
@@ -78,7 +82,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag-name }}
-          files: ./*.jar
+          files: |
+            build/libs/*.jar
+            bigmath-ffm-kt/build/libs/*.jar
           fail_on_unmatched_files: true
 
   bump-version-and-changelog:
