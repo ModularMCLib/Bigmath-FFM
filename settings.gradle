@@ -16,3 +16,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "${mod_id}"
+
+include 'bigmath-ffm-kt'

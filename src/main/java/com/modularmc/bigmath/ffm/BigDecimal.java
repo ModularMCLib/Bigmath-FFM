@@ -11,7 +11,14 @@ import java.lang.invoke.MethodHandle;
 import static com.modularmc.bigmath.ffm.BigmathFFM.invoke;
 
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-public final class BigDecimal implements AutoCloseable {
+public final class BigDecimal implements AutoCloseable, Comparable<BigDecimal> {
+
+	private static final int CONSTANT_PRECISION = 128;
+	public static final BigDecimal ZERO = createConstant(0.0, CONSTANT_PRECISION);
+	public static final BigDecimal ONE = createConstant(1.0, CONSTANT_PRECISION);
+	public static final BigDecimal TWO = createConstant(2.0, CONSTANT_PRECISION);
+	public static final BigDecimal TEN = createConstant(10.0, CONSTANT_PRECISION);
+	public static final BigDecimal NEGATIVE_ONE = createConstant(-1.0, CONSTANT_PRECISION);
 
 	private final MemorySegment nativePtr;
 	private final Arena arena;
@@ -289,5 +296,16 @@ public final class BigDecimal implements AutoCloseable {
 		);
 		invoke(handle, nativePtr);
 		arena.close();
+	}
+
+	private static BigDecimal createConstant(double value, int precision) {
+		Arena arena = Arena.global();
+		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigdecimal_from_double",
+				FunctionDescriptors.BIGDECIMAL_FROM_DOUBLE
+		);
+		invoke(handle, ptr, value, precision);
+		return new BigDecimal(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 }

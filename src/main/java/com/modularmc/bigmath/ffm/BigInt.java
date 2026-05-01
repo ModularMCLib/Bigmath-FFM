@@ -12,7 +12,13 @@ import java.math.BigInteger;
 import static com.modularmc.bigmath.ffm.BigmathFFM.invoke;
 
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-public final class BigInt implements AutoCloseable {
+public final class BigInt implements AutoCloseable, Comparable<BigInt> {
+
+	public static final BigInt ZERO = createConstant(0);
+	public static final BigInt ONE = createConstant(1);
+	public static final BigInt TWO = createConstant(2);
+	public static final BigInt TEN = createConstant(10);
+	public static final BigInt NEGATIVE_ONE = createConstant(-1);
 
 	private final MemorySegment nativePtr;
 	private final Arena arena;
@@ -330,5 +336,21 @@ public final class BigInt implements AutoCloseable {
 		);
 		invoke(handle, nativePtr);
 		arena.close();
+	}
+
+	private static BigInt createConstant(long value) {
+		Arena arena = Arena.global();
+		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"bigint_from_long",
+				FunctionDescriptors.BIGINT_FROM_LONG
+		);
+		invoke(handle, ptr, value);
+		long rawAddr = ptr.get(ValueLayout.JAVA_LONG, 0);
+		if (rawAddr == 0) throw new RuntimeException("null pointer from bigint_from_long");
+		MemorySegment nativePtr = MemorySegment.ofAddress(rawAddr)
+				.reinterpret(arena, null)
+				.reinterpret(Long.MAX_VALUE);
+		return new BigInt(nativePtr, arena);
 	}
 }

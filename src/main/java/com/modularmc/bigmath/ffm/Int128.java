@@ -11,9 +11,15 @@ import java.lang.invoke.MethodHandle;
 import static com.modularmc.bigmath.ffm.BigmathFFM.invoke;
 
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-public final class Int128 implements AutoCloseable {
+public final class Int128 implements AutoCloseable, Comparable<Int128> {
 
 	private static final long STRUCT_SIZE = 16L;
+
+	public static final Int128 ZERO = createConstant(0);
+	public static final Int128 ONE = createConstant(1);
+	public static final Int128 TWO = createConstant(2);
+	public static final Int128 TEN = createConstant(10);
+	public static final Int128 NEGATIVE_ONE = createConstant(-1);
 
 	private final MemorySegment nativePtr;
 	private final Arena arena;
@@ -191,6 +197,17 @@ public final class Int128 implements AutoCloseable {
 	@Override
 	public void close() {
 		arena.close();
+	}
+
+	private static Int128 createConstant(long value) {
+		Arena arena = Arena.global();
+		MemorySegment ptr = arena.allocate(STRUCT_SIZE);
+		MethodHandle handle = BigmathFFM.getInstance().downcall(
+				"int128_from_i64",
+				FunctionDescriptors.INT128_FROM_I64
+		);
+		invoke(handle, ptr, value);
+		return new Int128(ptr, arena);
 	}
 
 	@Override

@@ -1,0 +1,16 @@
+plugins {
+    id 'java-library'
+    alias libs.plugins.kotlin.jvm
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(23)
+}
+
+dependencies {
+    api project(':')
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+}
