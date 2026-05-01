@@ -1,4 +1,4 @@
-package com.modularmc.bigmath.ffm;
+package com.modularmc.bigmath;
 
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -210,30 +210,85 @@ class BigDeciTest {
 	}
 
 	@Test
-	void intValue() {
+	void intValueTruncatesFraction() {
 		try (BigDeci bd = BigDeci.fromDouble(42.7, 64)) {
 			assertEquals(42, bd.intValue());
 		}
 	}
 
 	@Test
-	void longValue() {
+	void intValueNegative() {
+		try (BigDeci bd = BigDeci.fromDouble(-3.14, 64)) {
+			assertEquals(-3, bd.intValue());
+		}
+	}
+
+	@Test
+	void intValueZero() {
+		assertEquals(0, BigDeci.ZERO.intValue());
+	}
+
+	@Test
+	void longValueLarge() {
 		try (BigDeci bd = BigDeci.fromDouble(1e12, 64)) {
 			assertEquals(1000000000000L, bd.longValue());
 		}
 	}
 
 	@Test
-	void floatValue() {
+	void longValueNegative() {
+		try (BigDeci bd = BigDeci.fromDouble(-99.9, 64)) {
+			assertEquals(-99L, bd.longValue());
+		}
+	}
+
+	@Test
+	void longValueZero() {
+		assertEquals(0L, BigDeci.ZERO.longValue());
+	}
+
+	@Test
+	void floatValuePrecise() {
 		try (BigDeci bd = BigDeci.fromDouble(3.14, 64)) {
 			assertEquals(3.14f, bd.floatValue(), 1e-6f);
 		}
 	}
 
 	@Test
-	void doubleValue() {
+	void floatValueNegative() {
+		try (BigDeci bd = BigDeci.fromDouble(-2.5, 64)) {
+			assertEquals(-2.5f, bd.floatValue(), 1e-6f);
+		}
+	}
+
+	@Test
+	void floatValueZero() {
+		assertEquals(0.0f, BigDeci.ZERO.floatValue(), 0.0f);
+	}
+
+	@Test
+	void doubleValueHighPrecision() {
 		try (BigDeci bd = BigDeci.fromDouble(3.1415926535, 128)) {
 			assertEquals(3.1415926535, bd.doubleValue(), 1e-12);
+		}
+	}
+
+	@Test
+	void doubleValueNegative() {
+		try (BigDeci bd = BigDeci.fromDouble(-1.5, 64)) {
+			assertEquals(-1.5, bd.doubleValue(), 1e-10);
+		}
+	}
+
+	@Test
+	void doubleValueZero() {
+		assertEquals(0.0, BigDeci.ZERO.doubleValue(), 0.0);
+	}
+
+	@Test
+	void longValueFractionTruncation() {
+		try (BigDeci bd = BigDeci.fromString("123.999", 64)) {
+			assertEquals(123L, bd.longValue());
 		}
 	}
 }

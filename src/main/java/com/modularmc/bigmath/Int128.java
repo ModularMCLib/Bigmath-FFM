@@ -1,4 +1,4 @@
-package com.modularmc.bigmath.ffm;
+package com.modularmc.bigmath;
 
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -8,7 +8,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 
-import static com.modularmc.bigmath.ffm.BigmathFFM.invoke;
+import static com.modularmc.bigmath.BigmathFFM.invoke;
 
 /**
  * 128-bit signed integer backed by the native bigmath library.
