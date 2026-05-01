@@ -22,8 +22,8 @@ Cross-platform high-performance big integer & decimal library for Java FFM (back
 ## Quick Start
 
 ```java
-import com.modularmc.bigmath.ffm.BigInt;
-import com.modularmc.bigmath.ffm.BigDecimal;
+import com.modularmc.bigmath.BigInt;
+import com.modularmc.bigmath.BigDeci;
 
 BigInt a = BigInt.fromString("12345678901234567890", 10);
 BigInt b = BigInt.fromLong(42);

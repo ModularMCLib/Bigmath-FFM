@@ -1,4 +1,4 @@
-package com.modularmc.bigmath.ffm
+package com.modularmc.bigmath
 
 /** Arithmetic addition operator. */
 operator fun Int128.plus(other: Int128): Int128 = add(other)

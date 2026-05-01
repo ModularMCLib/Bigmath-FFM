@@ -1,4 +1,4 @@
-package com.modularmc.bigmath.ffm
+package com.modularmc.bigmath
 
 /** Arithmetic addition operator. */
 operator fun BigInt.plus(other: BigInt): BigInt = add(other)
