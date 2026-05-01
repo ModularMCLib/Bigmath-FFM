@@ -3,6 +3,7 @@ junit = "5.12.2"
 lombok = "1.18.38"
 lombokPlugin = "8.13"
 spotless = "8.4.0"
+kotlin = "2.1.20"
 
 [libraries]
 junit-bom                = { module = "org.junit:junit-bom", version.ref = "junit" }
@@ -11,5 +12,6 @@ junit-platform-launcher  = { module = "org.junit.platform:junit-platform-launche
 lombok                   = { module = "org.projectlombok:lombok", version.ref = "lombok" }
 
 [plugins]
-spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
-lombok   = { id = "io.freefair.lombok", version.ref = "lombokPlugin" }
+spotless   = { id = "com.diffplug.spotless", version.ref = "spotless" }
+lombok     = { id = "io.freefair.lombok", version.ref = "lombokPlugin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
