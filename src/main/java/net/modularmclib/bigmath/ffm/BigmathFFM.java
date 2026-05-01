@@ -6,10 +6,15 @@ import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.logging.Logger;
 
 @Getter
 public final class BigmathFFM {
 
+	public static final Logger LOGGER = Logger.getLogger(BigmathFFM.class.getName());
+
+	private static final Os CURRENT_OS = detectOs();
+	private static final Arch CURRENT_ARCH = detectArch();
 	private static final BigmathFFM INSTANCE = new BigmathFFM();
 
 	private final Arena arena = Arena.ofAuto();
@@ -26,9 +31,6 @@ public final class BigmathFFM {
 	private enum Arch {
 		X86_64, AARCH64, UNKNOWN
 	}
-
-	private static final Os CURRENT_OS = detectOs();
-	private static final Arch CURRENT_ARCH = detectArch();
 
 	private static Os detectOs() {
 		String name = System.getProperty("os.name", "").toLowerCase();
@@ -83,42 +85,44 @@ public final class BigmathFFM {
 		if (classifier == null) {
 			classifier = platformClassifier();
 		}
+		String libName = platformLibName();
+
+		String finalClassifier = classifier;
+		LOGGER.info(() -> "OS: " + CURRENT_OS + ", Arch: " + CURRENT_ARCH + ", Classifier: " + finalClassifier + ", Lib: " + libName);
 
 		String explicitPath = System.getProperty("bigmath.native.path");
 		if (explicitPath != null) {
-			return SymbolLookup.libraryLookup(explicitPath, Arena.ofAuto());
+			LOGGER.info(() -> "Trying explicit path: " + explicitPath);
+			System.load(explicitPath);
+			LOGGER.info(() -> "Loaded from explicit path: " + explicitPath);
+			return SymbolLookup.loaderLookup();
 		}
 
-		String[] searchPaths = {
-			"native/" + classifier + "/" + platformLibName(),
-			platformLibName(),
-		};
+		Path nativePath = Path.of("native", classifier, libName);
+		Path absolutePath = nativePath.toAbsolutePath();
 
-		for (String path : searchPaths) {
-			try {
-				Path p = Path.of(path);
-				if (path.equals(platformLibName()) || Files.exists(p)) {
-					return SymbolLookup.libraryLookup(p, Arena.ofAuto());
-				}
-			} catch (IllegalArgumentException e) {
-				// library not found at this path, try next
-			}
+		LOGGER.info(() -> "Checking: " + absolutePath + " (exists: " + Files.exists(nativePath) + ")");
+		if (Files.exists(nativePath)) {
+			System.load(absolutePath.toString());
+			LOGGER.info(() -> "Loaded from: " + absolutePath);
+			return SymbolLookup.loaderLookup();
 		}
 
-		// Try System.loadLibrary as last resort (uses java.library.path)
+		LOGGER.info(() -> "Trying System.loadLibrary(\"bigmath_ffm\")");
 		try {
 			System.loadLibrary("bigmath_ffm");
-			return SymbolLookup.libraryLookup(platformLibName(), Arena.ofAuto());
+			LOGGER.info(() -> "Loaded via System.loadLibrary");
+			return SymbolLookup.loaderLookup();
 		} catch (UnsatisfiedLinkError e) {
-			// give up
+			LOGGER.warning(() -> "System.loadLibrary failed: " + e.getMessage());
 		}
 
+		String finalClassifier1 = classifier;
+		LOGGER.severe(() -> "Failed to load " + libName + " for " + finalClassifier1 +
+			". Tried: " + absolutePath + " and java.library.path=" + System.getProperty("java.library.path"));
 		throw new UnsatisfiedLinkError(
-			"Failed to load native library '" + platformLibName() + "' " +
-			"for platform '" + platformClassifier() + "' " +
-			"(os=" + CURRENT_OS + ", arch=" + CURRENT_ARCH + "). " +
-			"Ensure the native library is built and placed in the correct path, " +
-			"or set -Dbigmath.native.path=/full/path/to/" + platformLibName()
+			"Failed to load " + libName + " for " + classifier + ". " +
+			"Tried: " + absolutePath + " and java.library.path"
 		);
 	}
 
@@ -132,13 +136,16 @@ public final class BigmathFFM {
 
 	public MethodHandle downcall(String name, FunctionDescriptor descriptor) {
 		return lookup.find(name)
-				.map(addr -> linker().downcallHandle(addr, descriptor))
+				.map(addr -> {
+					MethodHandle mh = linker().downcallHandle(addr, descriptor);
+					return mh;
+				})
 				.orElseThrow(() -> new UnsatisfiedLinkError("Symbol not found: " + name));
 	}
 
 	public static Object invoke(MethodHandle handle, Object... args) {
 		try {
-			return handle.invoke(args);
+			return handle.invokeWithArguments(args);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {

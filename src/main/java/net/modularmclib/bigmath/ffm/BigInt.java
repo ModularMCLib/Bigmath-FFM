@@ -25,7 +25,12 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_FROM_LONG
 		);
 		invoke(handle, ptr, value);
-		return new BigInt(ptr.get(ValueLayout.ADDRESS, 0), arena);
+		long rawAddr = ptr.get(ValueLayout.JAVA_LONG, 0);
+		if (rawAddr == 0) throw new RuntimeException("null pointer from bigint_from_long");
+		MemorySegment nativePtr = MemorySegment.ofAddress(rawAddr)
+			.reinterpret(arena, null)
+			.reinterpret(Long.MAX_VALUE);
+		return new BigInt(nativePtr, arena);
 	}
 
 	public static BigInt fromString(String value, int radix) {
@@ -39,7 +44,7 @@ public final class BigInt implements AutoCloseable {
 			);
 			invoke(handle, ptr, str, radix);
 		}
-		return new BigInt(ptr.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public static BigInt fromBigInteger(BigInteger val) {
@@ -54,7 +59,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt subtract(BigInt other) {
@@ -65,7 +70,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt multiply(BigInt other) {
@@ -76,7 +81,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt divide(BigInt other) {
@@ -87,7 +92,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt mod(BigInt other) {
@@ -98,7 +103,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt pow(long exp) {
@@ -109,7 +114,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_POW
 		);
 		invoke(handle, result, nativePtr, exp);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt negate() {
@@ -120,7 +125,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt abs() {
@@ -131,7 +136,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt gcd(BigInt other) {
@@ -142,7 +147,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt lcm(BigInt other) {
@@ -153,7 +158,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt sqrt() {
@@ -164,7 +169,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt and(BigInt other) {
@@ -175,7 +180,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt or(BigInt other) {
@@ -186,7 +191,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt xor(BigInt other) {
@@ -197,7 +202,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_BINARY
 		);
 		invoke(handle, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt shiftLeft(long bits) {
@@ -208,7 +213,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_POW
 		);
 		invoke(handle, result, nativePtr, bits);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt shiftRight(long bits) {
@@ -219,7 +224,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_POW
 		);
 		invoke(handle, result, nativePtr, bits);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public static BigInt factorial(long n) {
@@ -230,7 +235,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_FROM_LONG
 		);
 		invoke(handle, result, n);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public BigInt nextPrime() {
@@ -241,7 +246,7 @@ public final class BigInt implements AutoCloseable {
 				FunctionDescriptors.BIGINT_UNARY
 		);
 		invoke(handle, result, nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0), arena);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	public int compareTo(BigInt other) {
@@ -276,7 +281,7 @@ public final class BigInt implements AutoCloseable {
 					FunctionDescriptors.BIGINT_TO_STRING
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr, radix);
-			String str = result.getString(0);
+			String str = result.reinterpret(tmp, null).reinterpret(Long.MAX_VALUE).getString(0);
 			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
 					"bigint_free_string",
 					FunctionDescriptors.BIGINT_FREE_STRING
@@ -302,7 +307,7 @@ public final class BigInt implements AutoCloseable {
 					FunctionDescriptors.BIGINT_FORMAT
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr, groupSize, sep);
-			String str = result.getString(0);
+			String str = result.reinterpret(tmp, null).reinterpret(Long.MAX_VALUE).getString(0);
 			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
 					"bigint_free_string",
 					FunctionDescriptors.BIGINT_FREE_STRING

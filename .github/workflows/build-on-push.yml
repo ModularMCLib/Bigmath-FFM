@@ -1,51 +1,116 @@
-name: Build pull request on push
+name: Build and Test PR
 
 on:
   pull_request:
-    paths: ['**']
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 concurrency:
-  group: PR-build-${{ github.ref }}
+  group: PR-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  check:
+    name: Check Trigger Conditions
     runs-on: ubuntu-latest
-    env:
-      VERSION_SUFFIX: PR-${{ github.event.number }}
+    outputs:
+      skip: ${{ steps.labels.outputs.skip || '' }}
+      code: ${{ steps.filter.outputs.code || 'false' }}
+      native: ${{ steps.filter.outputs.native || 'false' }}
     steps:
       - uses: actions/checkout@v4
-      - name: Check Path Filter
+      - name: Check Labels
+        id: labels
+        run: |
+          LABELS='${{ toJson(github.event.pull_request.labels.*.name) }}'
+          if echo "$LABELS" | grep -q 'ci:skip'; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "::notice::ci:skip detected — all CI jobs will be skipped"
+          fi
+      - name: Path Filter
         uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
             code:
-              - 'src/**'
+              - 'src/main/java/**'
+              - 'src/test/**'
               - '*.gradle'
               - 'gradle.properties'
               - 'gradlew*'
               - 'gradle/**'
+              - 'settings.gradle'
+            native:
+              - 'src/main/cpp/**'
+              - '.github/workflows/**'
+
+  build:
+    name: Build
+    needs: check
+    if: needs.check.outputs.skip != 'true' && (needs.check.outputs.code == 'true' || needs.check.outputs.native == 'true')
+    runs-on: ubuntu-latest
+    env:
+      VERSION_SUFFIX: PR-${{ github.event.number }}
+    steps:
+      - uses: actions/checkout@v4
       - name: Install native dependencies
-        if: steps.filter.outputs.code == 'true'
+        if: needs.check.outputs.native == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgmp-dev libmpfr-dev cmake
       - name: Setup Build
-        if: steps.filter.outputs.code == 'true'
         uses: ./.github/actions/build_setup
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-      - name: Build & Test
-        if: steps.filter.outputs.code == 'true'
-        run: ./gradlew build -PrunTests
+      - name: Build JAR (with native)
+        if: needs.check.outputs.native == 'true'
+        run: ./gradlew assemble -x test
+      - name: Build JAR (no native)
+        if: needs.check.outputs.native != 'true'
+        run: ./gradlew assemble -x test -x buildNative -x cmakeConfigure
       - name: Rename Jars
-        if: steps.filter.outputs.code == 'true'
         run: for file in build/libs/*; do mv "$file" "${file/.jar/-${{ env.VERSION_SUFFIX }}.jar}"; done;
-      - name: Upload Artifacts
-        if: steps.filter.outputs.code == 'true'
+      - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
           name: Bigmath-FFM-PR-${{ github.event.number }}
           path: build/libs/*
           retention-days: 15
+
+  test:
+    name: Run Tests
+    needs: [check, build]
+    if: needs.check.outputs.skip != 'true' && (needs.check.outputs.code == 'true' || needs.check.outputs.native == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgmp-dev libmpfr-dev cmake
+      - name: Setup Build
+        uses: ./.github/actions/build_setup
+      - run: chmod +x gradlew
+      - name: Run Tests
+        id: test
+        continue-on-error: true
+        run: ./gradlew test -PrunTests
+      - name: Update "Tests Passed" / "Tests Failed" labels
+        if: always() && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const outcome = '${{ steps.test.outcome }}';
+            const [add, remove] = outcome === 'success'
+              ? ['Tests: Passed', 'Tests: Failed']
+              : ['Tests: Failed', 'Tests: Passed'];
+            const { owner, repo } = context.repo;
+            const issue_number    = context.payload.pull_request.number;
+            await github.rest.issues
+              .addLabels({ owner, repo, issue_number, labels: [add] })
+              .catch(() => {});
+            await github.rest.issues
+              .removeLabel({ owner, repo, issue_number, name: remove })
+              .catch(() => {});
+      - name: Fail on test failures
+        if: steps.test.outcome == 'failure'
+        run: exit 1

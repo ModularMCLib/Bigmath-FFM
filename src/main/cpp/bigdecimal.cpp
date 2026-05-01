@@ -4,79 +4,100 @@
 
 #ifndef BIGMATH_NO_GMP
 
-void bigdecimal_from_double(mpfr_t *out, double val, int precision) {
+void bigdecimal_from_double(mpfr_ptr *out, double val, int precision) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, precision);
 	mpfr_set_d(*out, val, MPFR_RNDN);
 }
 
-void bigdecimal_from_string(mpfr_t *out, const char *str, int precision) {
+void bigdecimal_from_string(mpfr_ptr *out, const char *str, int precision) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, precision);
 	mpfr_set_str(*out, str, 10, MPFR_RNDN);
 }
 
-void bigdecimal_add(mpfr_t *out, const mpfr_t a, const mpfr_t b) {
+void bigdecimal_add(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_add(*out, a, b, MPFR_RNDN);
 }
 
-void bigdecimal_sub(mpfr_t *out, const mpfr_t a, const mpfr_t b) {
+void bigdecimal_sub(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_sub(*out, a, b, MPFR_RNDN);
 }
 
-void bigdecimal_mul(mpfr_t *out, const mpfr_t a, const mpfr_t b) {
+void bigdecimal_mul(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_mul(*out, a, b, MPFR_RNDN);
 }
 
-void bigdecimal_div(mpfr_t *out, const mpfr_t a, const mpfr_t b) {
+void bigdecimal_div(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_div(*out, a, b, MPFR_RNDN);
 }
 
-void bigdecimal_neg(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_neg(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_neg(*out, a, MPFR_RNDN);
 }
 
-void bigdecimal_abs(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_abs(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_abs(*out, a, MPFR_RNDN);
 }
 
-int bigdecimal_cmp(const mpfr_t a, const mpfr_t b) {
+int bigdecimal_cmp(mpfr_ptr a, mpfr_ptr b) {
 	return mpfr_cmp(a, b);
 }
 
-double bigdecimal_to_double(const mpfr_t a) {
+double bigdecimal_to_double(mpfr_ptr a) {
 	return mpfr_get_d(a, MPFR_RNDN);
 }
 
-char *bigdecimal_to_string(const mpfr_t a) {
+char *bigdecimal_to_string(mpfr_ptr a) {
 	mpfr_exp_t exp;
 	char *str = mpfr_get_str(nullptr, &exp, 10, 0, a, MPFR_RNDN);
 	return str;
 }
 
-char *bigdecimal_format(const mpfr_t a, int scale, int group_size, const char *group_sep) {
+char *bigdecimal_format(mpfr_ptr a, int scale, int group_size, const char *group_sep) {
+	int max_sig = (int)(mpfr_get_prec(a) * 0.30103);
+	if (max_sig < 8) max_sig = 8;
+	if (max_sig > 100) max_sig = 100;
+
 	mpfr_exp_t exp;
-	char *raw = mpfr_get_str(nullptr, &exp, 10, 0, a, MPFR_RNDN);
-	if (!raw) return nullptr;
-	bool neg = (raw[0] == '-');
-	char *digits = raw + (neg ? 1 : 0);
-	size_t digit_len = strlen(digits);
+	char *digits = mpfr_get_str(nullptr, &exp, 10, (size_t)max_sig, a, MPFR_RNDN);
+	if (!digits) return nullptr;
+
+	bool neg = (digits[0] == '-');
+	char *p = digits + (neg ? 1 : 0);
+	size_t digit_len = strlen(p);
 
 	int int_digits = (int)exp;
 	if (int_digits < 0) int_digits = 0;
-	size_t frac_len = (scale >= 0) ? (size_t)scale : 0;
+	size_t frac_len = (scale >= 0) ? (size_t)scale : (digit_len - int_digits);
 	if (frac_len > digit_len - int_digits) {
 		frac_len = digit_len - int_digits;
 	}
 
 	char *int_part = (char *)malloc(int_digits + 1);
-	if (!int_part) { free(raw); return nullptr; }
+	if (!int_part) { mpfr_free_str(digits); return nullptr; }
 	if (int_digits > 0) {
-		memcpy(int_part, digits, int_digits);
+		memcpy(int_part, p, int_digits);
 		int_part[int_digits] = '\0';
 	} else {
 		int_part[0] = '0';
@@ -86,24 +107,24 @@ char *bigdecimal_format(const mpfr_t a, int scale, int group_size, const char *g
 
 	size_t sep_len = (group_sep && group_size > 0) ? strlen(group_sep) : 0;
 	size_t ig_len = strlen(int_part);
-	size_t groups = (ig_len + group_size - 1) / group_size;
+	size_t groups = ig_len > 0 ? (ig_len + group_size - 1) / group_size : 0;
 	char *int_fmt;
-	if (sep_len > 0 && group_size > 0) {
+	if (sep_len > 0 && group_size > 0 && ig_len > 0) {
 		size_t fmt_len = ig_len + (groups - 1) * sep_len;
 		int_fmt = (char *)malloc(fmt_len + 1);
-		if (!int_fmt) { free(int_part); free(raw); return nullptr; }
+		if (!int_fmt) { free(int_part); mpfr_free_str(digits); return nullptr; }
 		size_t first_group = ig_len % group_size;
 		if (first_group == 0) first_group = group_size;
-		size_t pos = 0;
+		size_t out_pos = 0;
 		memcpy(int_fmt, int_part, first_group);
-		pos += first_group;
+		out_pos += first_group;
 		for (size_t i = first_group; i < ig_len; i += group_size) {
-			memcpy(int_fmt + pos, group_sep, sep_len);
-			pos += sep_len;
-			memcpy(int_fmt + pos, int_part + i, group_size);
-			pos += group_size;
+			memcpy(int_fmt + out_pos, group_sep, sep_len);
+			out_pos += sep_len;
+			memcpy(int_fmt + out_pos, int_part + i, group_size);
+			out_pos += group_size;
 		}
-		int_fmt[pos] = '\0';
+		int_fmt[out_pos] = '\0';
 	} else {
 		int_fmt = strdup(int_part);
 	}
@@ -114,9 +135,9 @@ char *bigdecimal_format(const mpfr_t a, int scale, int group_size, const char *g
 		frac_copy = digit_len - int_digits;
 	}
 	char *frac_str = (char *)malloc(frac_copy + 1);
-	if (!frac_str) { free(int_fmt); free(raw); return nullptr; }
+	if (!frac_str) { free(int_fmt); mpfr_free_str(digits); return nullptr; }
 	if (frac_copy > 0) {
-		memcpy(frac_str, digits + int_digits, frac_copy);
+		memcpy(frac_str, p + int_digits, frac_copy);
 	}
 	frac_str[frac_copy] = '\0';
 	if (scale < 0) {
@@ -133,7 +154,7 @@ char *bigdecimal_format(const mpfr_t a, int scale, int group_size, const char *g
 	size_t int_fmt_len = strlen(int_fmt);
 	size_t total = sign_len + int_fmt_len + (frac_copy > 0 ? 1 + frac_copy : 0);
 	char *out = (char *)malloc(total + 1);
-	if (!out) { free(int_fmt); free(frac_str); free(raw); return nullptr; }
+	if (!out) { free(frac_str); free(int_fmt); mpfr_free_str(digits); return nullptr; }
 	size_t pos = 0;
 	if (neg) out[pos++] = '-';
 	memcpy(out + pos, int_fmt, int_fmt_len);
@@ -145,9 +166,9 @@ char *bigdecimal_format(const mpfr_t a, int scale, int group_size, const char *g
 	}
 	out[pos] = '\0';
 
-	free(int_fmt);
 	free(frac_str);
-	free(raw);
+	free(int_fmt);
+	mpfr_free_str(digits);
 	return out;
 }
 
@@ -155,121 +176,156 @@ void bigdecimal_free_string(char *s) {
 	free(s);
 }
 
-void bigdecimal_free(mpfr_t a) {
-	mpfr_clear(a);
+void bigdecimal_free(mpfr_ptr a) {
+	if (a) {
+		mpfr_clear(a);
+		free(a);
+	}
 }
 
-void bigdecimal_sqrt(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_sqrt(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_sqrt(*out, a, MPFR_RNDN);
 }
 
-void bigdecimal_pow(mpfr_t *out, const mpfr_t a, const mpfr_t b) {
+void bigdecimal_pow(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_pow(*out, a, b, MPFR_RNDN);
 }
 
-void bigdecimal_log(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_log(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_log(*out, a, MPFR_RNDN);
 }
 
-void bigdecimal_exp(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_exp(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_exp(*out, a, MPFR_RNDN);
 }
 
-void bigdecimal_sin(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_sin(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_sin(*out, a, MPFR_RNDN);
 }
 
-void bigdecimal_cos(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_cos(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_cos(*out, a, MPFR_RNDN);
 }
 
-void bigdecimal_tan(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_tan(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_tan(*out, a, MPFR_RNDN);
 }
 
-void bigdecimal_ceil(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_ceil(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_ceil(*out, a);
 }
 
-void bigdecimal_floor(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_floor(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_floor(*out, a);
 }
 
-void bigdecimal_round(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_round(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_round(*out, a);
 }
 
-void bigdecimal_atan(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_atan(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_atan(*out, a, MPFR_RNDN);
 }
 
-void bigdecimal_asin(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_asin(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_asin(*out, a, MPFR_RNDN);
 }
 
-void bigdecimal_acos(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_acos(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_acos(*out, a, MPFR_RNDN);
 }
 
-void bigdecimal_sinh(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_sinh(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_sinh(*out, a, MPFR_RNDN);
 }
 
-void bigdecimal_cosh(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_cosh(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_cosh(*out, a, MPFR_RNDN);
 }
 
-void bigdecimal_tanh(mpfr_t *out, const mpfr_t a) {
+void bigdecimal_tanh(mpfr_ptr *out, mpfr_ptr a) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_tanh(*out, a, MPFR_RNDN);
 }
 
 #else
 
-void bigdecimal_from_double(mpfr_t *, double, int) { }
-void bigdecimal_from_string(mpfr_t *, const char *, int) { }
-void bigdecimal_add(mpfr_t *out, const mpfr_t, const mpfr_t) { }
-void bigdecimal_sub(mpfr_t *out, const mpfr_t, const mpfr_t) { }
-void bigdecimal_mul(mpfr_t *out, const mpfr_t, const mpfr_t) { }
-void bigdecimal_div(mpfr_t *out, const mpfr_t, const mpfr_t) { }
-void bigdecimal_neg(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_abs(mpfr_t *out, const mpfr_t) { }
-int  bigdecimal_cmp(const mpfr_t, const mpfr_t) { return 0; }
-double bigdecimal_to_double(const mpfr_t) { return 0.0; }
-char *bigdecimal_to_string(const mpfr_t) { return nullptr; }
-char *bigdecimal_format(const mpfr_t, int, int, const char *) { return nullptr; }
+void bigdecimal_from_double(mpfr_ptr *out, double, int) { *out = nullptr; }
+void bigdecimal_from_string(mpfr_ptr *out, const char *, int) { *out = nullptr; }
+void bigdecimal_add(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_sub(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_mul(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_div(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_neg(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_abs(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+int  bigdecimal_cmp(mpfr_ptr, mpfr_ptr) { return 0; }
+double bigdecimal_to_double(mpfr_ptr) { return 0.0; }
+char *bigdecimal_to_string(mpfr_ptr) { return nullptr; }
+char *bigdecimal_format(mpfr_ptr, int, int, const char *) { return nullptr; }
 void bigdecimal_free_string(char *) { }
-void bigdecimal_free(mpfr_t) { }
-void bigdecimal_sqrt(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_pow(mpfr_t *out, const mpfr_t, const mpfr_t) { }
-void bigdecimal_log(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_exp(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_sin(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_cos(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_tan(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_ceil(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_floor(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_round(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_atan(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_asin(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_acos(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_sinh(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_cosh(mpfr_t *out, const mpfr_t) { }
-void bigdecimal_tanh(mpfr_t *out, const mpfr_t) { }
+void bigdecimal_free(mpfr_ptr) { }
+void bigdecimal_sqrt(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_pow(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_log(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_exp(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_sin(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_cos(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_tan(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_ceil(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_floor(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_round(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_atan(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_asin(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_acos(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_sinh(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_cosh(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_tanh(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
 
 #endif /* BIGMATH_NO_GMP */

@@ -12,6 +12,7 @@
 #define BIGMATH_MPZ_STUB_DEFINED
 struct __bigmath_mpz { int _mp_alloc; int _mp_size; unsigned long *_mp_d; };
 typedef struct __bigmath_mpz mpz_t[1];
+typedef struct __bigmath_mpz *mpz_ptr;
 #endif
 
 namespace bigmath {
@@ -24,13 +25,13 @@ using limb_t = unsigned long;
 
 void karatsuba_mul(limb_t *out, const limb_t *a, int alen, const limb_t *b, int blen);
 
-void binary_gcd(mpz_t out, const mpz_t a, const mpz_t b);
+void binary_gcd(mpz_ptr out, mpz_ptr a, mpz_ptr b);
 
-void fast_pow(mpz_t out, const mpz_t base, unsigned long exp);
+void fast_pow(mpz_ptr out, mpz_ptr base, unsigned long exp);
 
-void product_tree_factorial(mpz_t out, unsigned long n);
+void product_tree_factorial(mpz_ptr out, unsigned long n);
 
-void fft_multiply(mpz_t out, const mpz_t a, const mpz_t b);
+void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b);
 
 inline limb_t *limb_alloc(int n) {
 	return static_cast<limb_t *>(calloc(n, sizeof(limb_t)));

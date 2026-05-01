@@ -48,7 +48,6 @@ body:
         - "24"
         - "23"
         - "22"
-        - "21"
     validations:
       required: true
   - type: textarea

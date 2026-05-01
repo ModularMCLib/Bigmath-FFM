@@ -12,7 +12,7 @@ group = maven_group
 version = mod_version
 
 java {
-    toolchain.languageVersion = JavaLanguageVersion.of(25)
+    toolchain.languageVersion = JavaLanguageVersion.of(23)
 }
 
 sourceSets {
@@ -33,15 +33,13 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 tasks.withType(Test).configureEach {
-    useJUnitPlatform()
-    jvmArgs += '--enable-native-access=ALL-UNNAMED'
-    def nativeDir = layout.buildDirectory.dir('native/resources').get().asFile
-    onlyIf { project.hasProperty('runTests') || nativeDir.exists() }
-    doFirst {
-        if (!nativeDir.exists()) {
-            logger.warn 'Skipping tests – native library not built. Use -PrunTests to force or build native first.'
-        }
-    }
+	useJUnitPlatform()
+	jvmArgs += '--enable-native-access=ALL-UNNAMED'
+	def nativeDir = layout.projectDirectory.dir('native').asFile
+	onlyIf { project.hasProperty('runTests') || nativeDir.exists() }
+	testLogging {
+		showStandardStreams = true
+	}
 }
 
 lombok {

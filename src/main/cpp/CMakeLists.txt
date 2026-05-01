@@ -12,6 +12,24 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 if(USE_GMP)
 	find_package(GMP QUIET)
 	find_package(MPFR QUIET)
+
+	if(NOT GMP_FOUND OR NOT MPFR_FOUND)
+		find_package(PkgConfig QUIET)
+	endif()
+	if(PkgConfig_FOUND AND (NOT GMP_FOUND OR NOT MPFR_FOUND))
+		if(NOT GMP_FOUND)
+			pkg_check_modules(GMP gmp IMPORTED_TARGET)
+		endif()
+		if(NOT MPFR_FOUND)
+			pkg_check_modules(MPFR mpfr IMPORTED_TARGET)
+		endif()
+		if(GMP_FOUND AND NOT TARGET GMP::GMP)
+			add_library(GMP::GMP ALIAS PkgConfig::GMP)
+		endif()
+		if(MPFR_FOUND AND NOT TARGET MPFR::MPFR)
+			add_library(MPFR::MPFR ALIAS PkgConfig::MPFR)
+		endif()
+	endif()
 endif()
 
 # Always add all sources so CLion indexes every file
@@ -39,10 +57,6 @@ if(GMP_FOUND AND MPFR_FOUND)
 			BUILD_WITH_INSTALL_RPATH TRUE
 		)
 	endif()
-	install(TARGETS bigmath_ffm
-		LIBRARY DESTINATION lib
-		RUNTIME DESTINATION lib
-	)
 else()
 	target_compile_definitions(bigmath_ffm PRIVATE BIGMATH_NO_GMP)
 	if(NOT USE_GMP)
@@ -52,3 +66,8 @@ else()
 			"Install GMP/MPFR and reconfigure to enable BigInt/BigDecimal")
 	endif()
 endif()
+
+install(TARGETS bigmath_ffm
+	LIBRARY DESTINATION lib
+	RUNTIME DESTINATION lib
+)

@@ -146,7 +146,7 @@ void karatsuba_mul(limb_t *out, const limb_t *a, int alen, const limb_t *b, int 
 #ifndef BIGMATH_NO_GMP
 
 // ---- Binary GCD (Stein's algorithm) ----
-void binary_gcd(mpz_t out, const mpz_t a, const mpz_t b) {
+void binary_gcd(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	if (mpz_sgn(a) == 0) { mpz_set(out, b); mpz_abs(out, out); return; }
 	if (mpz_sgn(b) == 0) { mpz_set(out, a); mpz_abs(out, out); return; }
 
@@ -179,7 +179,7 @@ void binary_gcd(mpz_t out, const mpz_t a, const mpz_t b) {
 }
 
 // ---- Exponentiation by Squaring ----
-void fast_pow(mpz_t out, const mpz_t base, unsigned long exp) {
+void fast_pow(mpz_ptr out, mpz_ptr base, unsigned long exp) {
 	mpz_set_ui(out, 1);
 	if (exp == 0) return;
 	mpz_t b;
@@ -194,7 +194,7 @@ void fast_pow(mpz_t out, const mpz_t base, unsigned long exp) {
 }
 
 // ---- Product Tree Factorial ----
-static void product_tree(mpz_t out, unsigned long a, unsigned long b) {
+static void product_tree(mpz_ptr out, unsigned long a, unsigned long b) {
 	if (a == b) {
 		mpz_set_ui(out, a);
 		return;
@@ -215,7 +215,7 @@ static void product_tree(mpz_t out, unsigned long a, unsigned long b) {
 	mpz_clear(right);
 }
 
-void product_tree_factorial(mpz_t out, unsigned long n) {
+void product_tree_factorial(mpz_ptr out, unsigned long n) {
 	if (n <= 1) { mpz_set_ui(out, 1); return; }
 	if (n < 128) {
 		mpz_fac_ui(out, n);
@@ -225,7 +225,7 @@ void product_tree_factorial(mpz_t out, unsigned long n) {
 }
 
 // ---- FFT/NTT-based multiplication ----
-void fft_multiply(mpz_t out, const mpz_t a, const mpz_t b) {
+void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	int alen = mpz_size(a);
 	int blen = mpz_size(b);
 	if (alen == 0 || blen == 0) { mpz_set_ui(out, 0); return; }
@@ -290,10 +290,10 @@ void fft_multiply(mpz_t out, const mpz_t a, const mpz_t b) {
 
 #else
 // Stubs when GMP not available
-void binary_gcd(mpz_t, const mpz_t, const mpz_t) {}
-void fast_pow(mpz_t, const mpz_t, unsigned long) {}
-void product_tree_factorial(mpz_t, unsigned long) {}
-void fft_multiply(mpz_t, const mpz_t, const mpz_t) {}
+void binary_gcd(mpz_ptr, mpz_ptr, mpz_ptr) {}
+void fast_pow(mpz_ptr, mpz_ptr, unsigned long) {}
+void product_tree_factorial(mpz_ptr, unsigned long) {}
+void fft_multiply(mpz_ptr, mpz_ptr, mpz_ptr) {}
 #endif // BIGMATH_NO_GMP
 
 }

@@ -4,40 +4,23 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 
 import java.lang.foreign.Arena;
-import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.VarHandle;
 
 import static net.modularmclib.bigmath.ffm.BigmathFFM.invoke;
 
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Int128 implements AutoCloseable {
 
-	private static final MemoryLayout LAYOUT = MemoryLayout.structLayout(
-			ValueLayout.JAVA_LONG.withName("lo"),
-			ValueLayout.JAVA_LONG.withName("hi")
-	);
-
-	private static final VarHandle LO_HANDLE = LAYOUT.varHandle(MemoryLayout.PathElement.groupElement("lo"));
-	private static final VarHandle HI_HANDLE = LAYOUT.varHandle(MemoryLayout.PathElement.groupElement("hi"));
+	private static final long STRUCT_SIZE = 16L;
 
 	private final MemorySegment nativePtr;
 	private final Arena arena;
 
-	private static Int128 create(Arena arena, MemorySegment ptr) {
-		return new Int128(ptr, arena);
-	}
-
-	private static Int128 alloc(Arena arena) {
-		MemorySegment ptr = arena.allocate(LAYOUT);
-		return new Int128(ptr, arena);
-	}
-
 	public static Int128 fromLong(long value) {
 		Arena arena = Arena.ofConfined();
-		MemorySegment ptr = arena.allocate(LAYOUT);
+		MemorySegment ptr = arena.allocate(STRUCT_SIZE);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"int128_from_i64",
 				FunctionDescriptors.INT128_FROM_I64
@@ -48,7 +31,7 @@ public final class Int128 implements AutoCloseable {
 
 	public static Int128 fromString(String value, int radix) {
 		Arena arena = Arena.ofConfined();
-		MemorySegment ptr = arena.allocate(LAYOUT);
+		MemorySegment ptr = arena.allocate(STRUCT_SIZE);
 		try (Arena tmp = Arena.ofConfined()) {
 			MemorySegment str = tmp.allocateFrom(value, java.nio.charset.StandardCharsets.UTF_8);
 			MethodHandle handle = BigmathFFM.getInstance().downcall(
@@ -61,16 +44,16 @@ public final class Int128 implements AutoCloseable {
 	}
 
 	public long lo() {
-		return (long) LO_HANDLE.get(nativePtr);
+		return nativePtr.get(ValueLayout.JAVA_LONG, 0);
 	}
 
 	public long hi() {
-		return (long) HI_HANDLE.get(nativePtr);
+		return nativePtr.get(ValueLayout.JAVA_LONG, 8);
 	}
 
 	public Int128 add(Int128 other) {
 		Arena arena = Arena.ofConfined();
-		MemorySegment result = arena.allocate(LAYOUT);
+		MemorySegment result = arena.allocate(STRUCT_SIZE);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"int128_add",
 				FunctionDescriptors.INT128_BINARY
@@ -81,7 +64,7 @@ public final class Int128 implements AutoCloseable {
 
 	public Int128 subtract(Int128 other) {
 		Arena arena = Arena.ofConfined();
-		MemorySegment result = arena.allocate(LAYOUT);
+		MemorySegment result = arena.allocate(STRUCT_SIZE);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"int128_sub",
 				FunctionDescriptors.INT128_BINARY
@@ -92,7 +75,7 @@ public final class Int128 implements AutoCloseable {
 
 	public Int128 multiply(Int128 other) {
 		Arena arena = Arena.ofConfined();
-		MemorySegment result = arena.allocate(LAYOUT);
+		MemorySegment result = arena.allocate(STRUCT_SIZE);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"int128_mul",
 				FunctionDescriptors.INT128_BINARY
@@ -103,7 +86,7 @@ public final class Int128 implements AutoCloseable {
 
 	public Int128 divide(Int128 other) {
 		Arena arena = Arena.ofConfined();
-		MemorySegment result = arena.allocate(LAYOUT);
+		MemorySegment result = arena.allocate(STRUCT_SIZE);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"int128_div",
 				FunctionDescriptors.INT128_BINARY
@@ -114,7 +97,7 @@ public final class Int128 implements AutoCloseable {
 
 	public Int128 mod(Int128 other) {
 		Arena arena = Arena.ofConfined();
-		MemorySegment result = arena.allocate(LAYOUT);
+		MemorySegment result = arena.allocate(STRUCT_SIZE);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"int128_mod",
 				FunctionDescriptors.INT128_BINARY
@@ -125,7 +108,7 @@ public final class Int128 implements AutoCloseable {
 
 	public Int128 negate() {
 		Arena arena = Arena.ofConfined();
-		MemorySegment result = arena.allocate(LAYOUT);
+		MemorySegment result = arena.allocate(STRUCT_SIZE);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"int128_neg",
 				FunctionDescriptors.INT128_UNARY
@@ -136,7 +119,7 @@ public final class Int128 implements AutoCloseable {
 
 	public Int128 abs() {
 		Arena arena = Arena.ofConfined();
-		MemorySegment result = arena.allocate(LAYOUT);
+		MemorySegment result = arena.allocate(STRUCT_SIZE);
 		MethodHandle handle = BigmathFFM.getInstance().downcall(
 				"int128_abs",
 				FunctionDescriptors.INT128_UNARY
@@ -168,7 +151,7 @@ public final class Int128 implements AutoCloseable {
 					FunctionDescriptors.INT128_TO_STRING
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr, radix);
-			String str = result.getString(0);
+			String str = result.reinterpret(tmp, null).reinterpret(Long.MAX_VALUE).getString(0);
 			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
 					"int128_free_string",
 					FunctionDescriptors.INT128_FREE_STRING
@@ -190,7 +173,7 @@ public final class Int128 implements AutoCloseable {
 					FunctionDescriptors.INT128_FORMAT
 			);
 			MemorySegment result = (MemorySegment) invoke(handle, nativePtr, groupSize, sep);
-			String str = result.getString(0);
+			String str = result.reinterpret(tmp, null).reinterpret(Long.MAX_VALUE).getString(0);
 			MethodHandle freeHandle = BigmathFFM.getInstance().downcall(
 					"int128_free_string",
 					FunctionDescriptors.INT128_FREE_STRING

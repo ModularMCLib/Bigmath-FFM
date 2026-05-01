@@ -1,4 +1,4 @@
-name: Latest Snapshot
+name: Snapshot Release
 
 on:
   push:
@@ -6,15 +6,107 @@ on:
     paths: ['src/**', '*.gradle', 'gradle.properties', 'gradle/**', 'settings.gradle']
 
 concurrency:
-  group: auto-build-${{ github.ref }}
+  group: snapshot-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  native-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x86-64
+            lib: libbigmath_ffm.so
+          - os: ubuntu-24.04-arm
+            label: linux-aarch64
+            lib: libbigmath_ffm.so
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libgmp-dev libmpfr-dev cmake
+      - name: Build
+        run: |
+          mkdir -p build/native native/${{ matrix.label }}
+          cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
+          cmake --build build/native --target install -j$(nproc)
+          cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
+          echo "=== built ==="
+          ls -la native/${{ matrix.label }}/
+          file native/${{ matrix.label }}/${{ matrix.lib }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.label }}
+          path: native/${{ matrix.label }}/${{ matrix.lib }}
+          retention-days: 1
+
+  native-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            label: macos-x86-64
+            lib: libbigmath_ffm.dylib
+          - os: macos-latest
+            label: macos-aarch64
+            lib: libbigmath_ffm.dylib
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install gmp mpfr cmake
+      - name: Build
+        run: |
+          mkdir -p build/native native/${{ matrix.label }}
+          cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
+          cmake --build build/native --target install -j$(sysctl -n hw.ncpu)
+          cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
+          echo "=== built ==="
+          ls -la native/${{ matrix.label }}/
+          file native/${{ matrix.label }}/${{ matrix.lib }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.label }}
+          path: native/${{ matrix.label }}/${{ matrix.lib }}
+          retention-days: 1
+
+  native-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows-x86-64
+            lib: bigmath_ffm.dll
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        run: |
+          vcpkg install --triplet x64-windows
+          echo "CMAKE_PREFIX_PATH=$env:VCPKG_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
+      - name: Build
+        shell: pwsh
+        run: |
+          mkdir -p build/native native/${{ matrix.label }}
+          cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
+          cmake --build build/native --config Release --target install
+          cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
+          echo "=== built ==="
+          ls -la native/${{ matrix.label }}/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.label }}
+          path: native/${{ matrix.label }}/${{ matrix.lib }}
+          retention-days: 1
+
+  package:
+    name: Package & Release
+    needs: [native-linux, native-macos, native-windows]
     runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ github.token }}
-      PUBLISH: ${{ !contains(github.event.commits[0].message, '[no-snapshot]') }}
+      PUBLISH: ${{ !contains(github.event.head_commit.message, '[no-snapshot]') }}
       SNAPSHOT: true
       CI: true
     permissions:
@@ -23,47 +115,52 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Install native dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgmp-dev libmpfr-dev cmake
-      - name: Setup Build
-        uses: ./.github/actions/build_setup
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-      - name: Get Mod Version
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '23'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew
+      - name: Download and organize native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: ./
+          merge-multiple: true
+      - name: Build JAR
+        run: ./gradlew assemble -x test
+      - name: Get Version
         id: ver
-        run: echo "version=$(./gradlew -q printVersion 2>/dev/null || grep -oP 'mod_version\s*=\s*\K.*' gradle.properties | head -1)" >> $GITHUB_OUTPUT
-      - name: Version Suffix
-        id: suffix
-        run: echo "VERSION_SUFFIX=$(echo "${{ github.sha }}" | cut -c 1-7)" >> $GITHUB_ENV
-      - name: Build
-        run: ./gradlew build -x test
+        run: echo "version=$(grep -oP 'mod_version\s*=\s*\K.*' gradle.properties | head -1)" >> $GITHUB_OUTPUT
+      - run: echo "VERSION_SUFFIX=$(echo "${{ github.sha }}" | cut -c 1-7)" >> $GITHUB_ENV
       - name: Rename Jars
-        if: ${{ env.PUBLISH == 'true' }}
+        if: env.PUBLISH == 'true'
         run: for file in build/libs/*; do mv "$file" "${file/-SNAPSHOT/-SNAPSHOT+$(date --utc '+%Y%m%d-%H%M%S')-${{ env.VERSION_SUFFIX }}}"; done;
       - name: Changelog
         id: changelog
-        if: ${{ env.PUBLISH == 'true' }}
+        if: env.PUBLISH == 'true'
         uses: mikepenz/release-changelog-builder-action@v5
         with:
           configuration: "./.github/json/config-latest.json"
           toTag: ${{ github.ref }}
           fetchViaCommits: true
           failOnError: false
-      - name: Release Latest
-        if: ${{ env.PUBLISH == 'true' }}
+      - name: Release Snapshot
+        if: env.PUBLISH == 'true'
         uses: andelf/nightly-release@v1
         with:
-          tag_name: latest-${{ github.ref_name }}
+          tag_name: latest
           name: '${{ steps.ver.outputs.version }}-SNAPSHOT+${{ env.VERSION_SUFFIX }}'
           prerelease: true
           body: |
-            ## Bigmath-FFM Snapshot Build
-            Branch: `${{ github.ref_name }}` | Commit: `${{ github.sha }}`
+            ## Bigmath-FFM Snapshot
+
+            **${{ steps.ver.outputs.version }}-SNAPSHOT+${{ env.VERSION_SUFFIX }}** | `${{ github.sha }}`
 
             ${{ steps.changelog.outputs.changelog }}
 
             > [!WARNING]
-            > This is a pre-release snapshot. Use with caution.
-          files: build/libs/*.jar
+            > Pre-release snapshot — not for production use.
+          files: |
+            build/libs/*.jar
+            native/**/*
