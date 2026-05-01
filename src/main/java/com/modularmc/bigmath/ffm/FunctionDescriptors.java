@@ -78,7 +78,7 @@ final class FunctionDescriptors {
 			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
 	);
 
-	// --- BigDecimal ---
+	// --- BigDeci ---
 
 	/** {@code void bigdecimal_from_double(void** out, double value, int precision)} */
 	static final FunctionDescriptor BIGDECIMAL_FROM_DOUBLE = FunctionDescriptor.ofVoid(
