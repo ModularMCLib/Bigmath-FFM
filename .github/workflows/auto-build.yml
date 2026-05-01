@@ -219,4 +219,6 @@ jobs:
             > Pre-release snapshot — not for production use.
           files: |
             build/libs/*.jar
-            native/**/*
+            native/**/*.so
+            native/**/*.dylib
+            native/**/*.dll
