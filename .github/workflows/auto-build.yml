@@ -86,15 +86,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - shell: pwsh
-        run: |
-          vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
-          echo "CMAKE_PREFIX_PATH=$env:VCPKG_ROOT\installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
       - name: Build
         shell: pwsh
         run: |
           New-Item -Force -ItemType Directory -Path build/native, "native/${{ matrix.label }}"
-          cmake -S src/main/cpp -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
+          cmake -S src/main/cpp -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native -DUSE_GMP=OFF
           cmake --build build/native --target install
           cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
           echo "=== built ==="
