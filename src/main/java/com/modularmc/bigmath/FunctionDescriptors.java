@@ -28,17 +28,17 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
 	);
 
-	/** {@code void bigint_op(void** out, void* a, void* b)} â€?add/sub/mul/div/mod/gcd/lcm/and/or/xor */
+	/** {@code void bigint_op(void** out, void* a, void* b)} â€” add/sub/mul/div/mod/gcd/lcm/and/or/xor */
 	static final FunctionDescriptor BIGINT_BINARY = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
 	);
 
-	/** {@code void bigint_op(void** out, void* a)} â€?neg/abs/sqrt/next_prime */
+	/** {@code void bigint_op(void** out, void* a)} â€” neg/abs/sqrt/next_prime */
 	static final FunctionDescriptor BIGINT_UNARY = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS
 	);
 
-	/** {@code void bigint_pow(void** out, void* a, long exp)} â€?pow/shl/shr */
+	/** {@code void bigint_pow(void** out, void* a, long exp)} â€” pow/shl/shr */
 	static final FunctionDescriptor BIGINT_POW = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG
 	);
@@ -100,12 +100,12 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
 	);
 
-	/** {@code void bigdecimal_op(void** out, void* a, void* b)} â€?add/sub/mul/div/pow */
+	/** {@code void bigdecimal_op(void** out, void* a, void* b)} â€” add/sub/mul/div/pow */
 	static final FunctionDescriptor BIGDECIMAL_BINARY = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
 	);
 
-	/** {@code void bigdecimal_op(void** out, void* a)} â€?neg/abs/sqrt/log/exp/sin/cos/tan/ceil/floor/round */
+	/** {@code void bigdecimal_op(void** out, void* a)} â€” neg/abs/sqrt/log/exp/sin/cos/tan/ceil/floor/round */
 	static final FunctionDescriptor BIGDECIMAL_UNARY = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS
 	);
@@ -158,12 +158,12 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
 	);
 
-	/** {@code void int128_op(int128_t* out, int128_t* a, int128_t* b)} â€?add/sub/mul/div/mod */
+	/** {@code void int128_op(int128_t* out, int128_t* a, int128_t* b)} â€” add/sub/mul/div/mod */
 	static final FunctionDescriptor INT128_BINARY = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
 	);
 
-	/** {@code void int128_op(int128_t* out, int128_t* a)} â€?neg/abs */
+	/** {@code void int128_op(int128_t* out, int128_t* a)} â€” neg/abs */
 	static final FunctionDescriptor INT128_UNARY = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS
 	);
