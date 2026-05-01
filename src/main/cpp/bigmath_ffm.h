@@ -3,7 +3,7 @@
 
 #include "export.h"
 
-#if __has_include(<gmp.h>)
+#if __has_include(<gmp.h>) && __has_include(<mpfr.h>)
 #include <gmp.h>
 #include <mpfr.h>
 #elif !defined(BIGMATH_MPZ_STUB_DEFINED)
