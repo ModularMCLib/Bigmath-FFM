@@ -9,7 +9,9 @@ plugins {
 }
 
 group = maven_group
-version = mod_version
+boolean isSnapshot = System.getenv("SNAPSHOT")
+version = "${mod_version}" + (isSnapshot ? "-SNAPSHOT" : "")
+boolean isCI = System.getenv("CI") != null
 
 java {
     toolchain.languageVersion = JavaLanguageVersion.of(23)
