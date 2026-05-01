@@ -37,7 +37,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.label }}
-          path: native/${{ matrix.label }}/${{ matrix.lib }}
+          path: native/
           retention-days: 1
 
   native-macos:
@@ -67,7 +67,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.label }}
-          path: native/${{ matrix.label }}/${{ matrix.lib }}
+          path: native/
           retention-days: 1
 
   native-windows:
@@ -106,7 +106,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.label }}
-          path: native/${{ matrix.label }}/${{ matrix.lib }}
+          path: native/
           retention-days: 1
 
   native-android:
@@ -152,7 +152,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.label }}
-          path: native/${{ matrix.label }}/${{ matrix.lib }}
+          path: native/
           retention-days: 1
 
   package:
@@ -220,6 +220,3 @@ jobs:
           files: |
             build/libs/*.jar
             bigmath-ffm-kt/build/libs/*.jar
-            native/**/*.so
-            native/**/*.dylib
-            native/**/*.dll
