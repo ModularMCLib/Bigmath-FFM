@@ -60,3 +60,19 @@ cmake --build build/native --target install
 ## License
 
 GNU LGPL 3.0 — see [LICENSE](LICENSE).
+
+## Native Distribution Notes
+
+Published artifacts may include platform-native shared libraries under
+`native/<classifier>/`. Depending on platform, these can include GMP, MPFR, and
+selected toolchain runtime libraries needed to load `bigmath_ffm`.
+
+Users can replace compatible shared libraries by:
+
+- setting `-Dbigmath.native.path=/absolute/path/to/library`
+- replacing files in `native/<classifier>/`
+- using the normal platform library search path
+
+Third-party component notices and source pointers are documented in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and packaged into
+`META-INF/THIRD_PARTY_NOTICES.md` in built resources.
