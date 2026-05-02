@@ -30,7 +30,7 @@ jobs:
           mkdir -p build/native native/${{ matrix.label }}
           cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
           cmake --build build/native --target install -j$(nproc)
-          cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
+          cp build/native/lib/* native/${{ matrix.label }}/
           echo "=== built ==="
           ls -la native/${{ matrix.label }}/
           file native/${{ matrix.label }}/${{ matrix.lib }}
@@ -60,7 +60,7 @@ jobs:
           mkdir -p build/native native/${{ matrix.label }}
           cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
           cmake --build build/native --target install -j$(sysctl -n hw.ncpu)
-          cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
+          cp build/native/lib/* native/${{ matrix.label }}/
           echo "=== built ==="
           ls -la native/${{ matrix.label }}/
           file native/${{ matrix.label }}/${{ matrix.lib }}
@@ -78,7 +78,7 @@ jobs:
           - os: windows-latest
             label: windows-x86-64
             lib: bigmath_ffm.dll
-            vcpkg_triplet: x64-windows
+            vcpkg_triplet: x64-mingw-dynamic
           - os: windows-11-arm
             label: windows-aarch64
             lib: bigmath_ffm.dll
@@ -93,19 +93,42 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64_arm64
-      - uses: actions/cache@v4
+      - name: Configure MSVC compiler env
+        if: matrix.vcpkg_triplet == 'arm64-windows'
+        shell: pwsh
+        run: |
+          "CC=cl" >> $env:GITHUB_ENV
+          "CXX=cl" >> $env:GITHUB_ENV
+          "BIGMATH_WINDOWS_COMPILER=msvc" >> $env:GITHUB_ENV
+      - name: Configure MinGW for Windows x64
+        if: matrix.vcpkg_triplet == 'x64-mingw-dynamic'
+        shell: pwsh
+        run: |
+          $gcc = (Get-Command gcc -ErrorAction Stop).Source
+          $gxx = (Get-Command g++ -ErrorAction Stop).Source
+          "CC=$gcc" >> $env:GITHUB_ENV
+          "CXX=$gxx" >> $env:GITHUB_ENV
+          "BIGMATH_WINDOWS_COMPILER=mingw" >> $env:GITHUB_ENV
+      - id: vcpkg-cache-restore
+        uses: actions/cache/restore@v4
         with:
           path: .vcpkg-cache
-          key: vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}-
       - shell: pwsh
-        run: vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
+        run: |
+          vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
+          "BIGMATH_VCPKG_TRIPLET=${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
+      - name: Save vcpkg binary cache
+        if: !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-cache
+          key: ${{ steps.vcpkg-cache-restore.outputs.cache-primary-key }}
       - name: Build
         shell: pwsh
         run: |
-          if ('${{ matrix.vcpkg_triplet }}' -eq 'arm64-windows') {
-            $env:CC = 'cl'
-            $env:CXX = 'cl'
-          }
           New-Item -Force -ItemType Directory -Path build/native, "native/${{ matrix.label }}"
           cmake -S src/main/cpp -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/vcpkg_installed/${{ matrix.vcpkg_triplet }}"
           cmake --build build/native --target install
