@@ -66,6 +66,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Configure MSVC for Windows ARM64
+        if: matrix.vcpkg_triplet == 'arm64-windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_arm64
       - name: Restore vcpkg binary cache
         if: runner.os == 'Windows'
         uses: actions/cache@v4
@@ -107,6 +112,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          if ('${{ matrix.vcpkg_triplet }}' -eq 'arm64-windows') {
+            $env:CC = 'cl'
+            $env:CXX = 'cl'
+          }
           .\gradlew.bat --% build -x test -Dbigmath.native.classifier=${{ matrix.label }}
 
       - uses: actions/upload-artifact@v4
