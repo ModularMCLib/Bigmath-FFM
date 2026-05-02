@@ -69,12 +69,25 @@ PR 打标签 ci:native → 触发
 
 仅当 PR 需要验证全平台原生兼容性时使用。
 
+## 3.1 性能基准 (`performance-benchmarks.yml`)
+
+```
+PR 打标签 ci:perf → 触发
+└── benchmark (ubuntu-latest)
+    ├── 安装 GMP / MPFR / CMake
+    ├── ./gradlew jmh
+    └── 上传 build/reports/jmh/**
+```
+
+仅当 PR 需要查看 JMH 性能结果时使用，避免拖慢普通 PR 的默认检查。
+
 ## 4. 标签体系
 
 | 标签 | 颜色 | 触发 |
 |------|------|------|
 | `ci:native` | `#0E8A16` | 全平台原生构建 |
 | `ci:android` | `#3DDC84` | Android NDK 交叉编译 |
+| `ci:perf` | `#1D76DB` | Linux JMH 性能测试 |
 | `ci:skip` | `#CCCCCC` | 跳过 CI |
 
 | 标签 | 用途 |

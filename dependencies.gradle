@@ -2,6 +2,9 @@ dependencies {
 	compileOnly libs.lombok
 	annotationProcessor libs.lombok
 
+	jmhImplementation libs.jmh.core
+	jmhAnnotationProcessor libs.jmh.generator.annprocess
+
 	testImplementation platform(libs.junit.bom)
 	testImplementation libs.junit.jupiter
 	testRuntimeOnly libs.junit.platform.launcher

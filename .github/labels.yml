@@ -11,6 +11,10 @@
   color: "3DDC84"
   description: Run Android NDK cross-compile builds
 
+- name: ci:perf
+  color: "1D76DB"
+  description: Run JMH performance benchmarks on Linux
+
 # PR type labels
 - name: "type: feature"
   color: "A2EEEF"

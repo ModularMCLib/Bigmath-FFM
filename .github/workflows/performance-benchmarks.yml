@@ -1,0 +1,69 @@
+name: Performance Benchmarks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  workflow_dispatch:
+
+concurrency:
+  group: perf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check Trigger Conditions
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.decide.outputs.skip || 'false' }}
+      perf: ${{ steps.decide.outputs.perf || 'false' }}
+    steps:
+      - name: Decide What to Run
+        id: decide
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "perf=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LABELS='${{ toJson(github.event.pull_request.labels.*.name) }}'
+          SKIP=$(echo "$LABELS" | grep -q 'ci:skip' && echo true || echo false)
+          PERF=$(echo "$LABELS" | grep -q 'ci:perf' && echo true || echo false)
+
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+          echo "perf=$PERF" >> "$GITHUB_OUTPUT"
+
+          if [ "$SKIP" = "true" ]; then
+            echo "::notice::ci:skip detected — performance benchmarks skipped"
+          elif [ "$PERF" != "true" ]; then
+            echo "::notice::ci:perf label not present — performance benchmarks skipped"
+          fi
+
+  benchmark:
+    name: Run JMH Benchmarks
+    needs: check
+    if: needs.check.outputs.skip != 'true' && needs.check.outputs.perf == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgmp-dev libmpfr-dev cmake
+      - name: Setup Build
+        uses: ./.github/actions/build_setup
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      - name: Run JMH
+        run: |
+          mkdir -p build/reports/jmh
+          ./gradlew jmh "-PjmhArgs=-wi 2 -i 3 -r 1s -w 1s -foe true -rf csv -rff build/reports/jmh/jmh-result.csv"
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmh-results-${{ github.run_id }}
+          path: |
+            build/reports/jmh/**
+            build/reports/problems/problems-report.html
+          retention-days: 15
