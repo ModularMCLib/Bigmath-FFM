@@ -9,8 +9,6 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.math.BigInteger;
 
-import static com.modularmc.bigmath.BigmathFFM.invoke;
-
 /**
  * Arbitrary-precision integer backed by the native bigmath library (GMP).
  * <p>
@@ -183,7 +181,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
 		try (Arena tmp = Arena.ofConfined()) {
 			MemorySegment str = tmp.allocateFrom(value, java.nio.charset.StandardCharsets.UTF_8);
-			invoke(BIGINT_FROM_STRING_HANDLE, ptr, str, radix);
+			invokeOutAddressInt(BIGINT_FROM_STRING_HANDLE, ptr, str, radix);
 		}
 		return new BigInt(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
@@ -576,6 +574,16 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	private static void invokeOutWithLong(MethodHandle handle, MemorySegment out, long value) {
 		try {
 			handle.invokeExact(out, value);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	private static void invokeOutAddressInt(MethodHandle handle, MemorySegment out, MemorySegment value, int argument) {
+		try {
+			handle.invokeExact(out, value, argument);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {

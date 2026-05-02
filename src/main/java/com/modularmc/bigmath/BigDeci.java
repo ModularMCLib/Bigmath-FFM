@@ -8,8 +8,6 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 
-import static com.modularmc.bigmath.BigmathFFM.invoke;
-
 /**
  * Arbitrary-precision decimal floating-point backed by the native bigmath
  * library (MPFR).
@@ -159,7 +157,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
 		try (Arena tmp = Arena.ofConfined()) {
 			MemorySegment str = tmp.allocateFrom(value, java.nio.charset.StandardCharsets.UTF_8);
-			invoke(BIGDECIMAL_FROM_STRING_HANDLE, ptr, str, precision);
+			invokeOutAddressInt(BIGDECIMAL_FROM_STRING_HANDLE, ptr, str, precision);
 		}
 		return new BigDeci(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
@@ -522,6 +520,16 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	}
 
 	private static void invokeOutDoubleInt(MethodHandle handle, MemorySegment out, double value, int precision) {
+		try {
+			handle.invokeExact(out, value, precision);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	private static void invokeOutAddressInt(MethodHandle handle, MemorySegment out, MemorySegment value, int precision) {
 		try {
 			handle.invokeExact(out, value, precision);
 		} catch (RuntimeException | Error e) {
