@@ -85,7 +85,6 @@ jobs:
             vcpkg_triplet: arm64-windows
     runs-on: ${{ matrix.os }}
     env:
-      VCPKG_CACHE_KEY_PREFIX: vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite"
     steps:
       - uses: actions/checkout@v4
@@ -114,9 +113,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .vcpkg-cache
-          key: ${{ env.VCPKG_CACHE_KEY_PREFIX }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ${{ env.VCPKG_CACHE_KEY_PREFIX }}-
+            vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}-
       - shell: pwsh
         run: |
           vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
