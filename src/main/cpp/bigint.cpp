@@ -9,11 +9,11 @@ void bigint_from_long(mpz_ptr *out, int64_t val) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
-	if (val >= 0) {
-		mpz_set_ui(*out, static_cast<unsigned long>(val));
-	} else {
-		uint64_t magnitude = static_cast<uint64_t>(-(val + 1)) + 1;
-		mpz_set_ui(*out, static_cast<unsigned long>(magnitude));
+	uint64_t magnitude = val >= 0
+		? static_cast<uint64_t>(val)
+		: static_cast<uint64_t>(-(val + 1)) + 1;
+	mpz_import(*out, 1, -1, sizeof(magnitude), 0, 0, &magnitude);
+	if (val < 0) {
 		mpz_neg(*out, *out);
 	}
 }
@@ -96,14 +96,21 @@ int bigint_sign(mpz_ptr a) {
 }
 
 int64_t bigint_to_long(mpz_ptr a) {
-	if (mpz_sgn(a) >= 0) {
-		return static_cast<int64_t>(mpz_get_ui(a));
+	if (mpz_sgn(a) == 0) {
+		return 0;
 	}
 	mpz_t abs;
 	mpz_init(abs);
 	mpz_abs(abs, a);
-	uint64_t magnitude = mpz_get_ui(abs);
+	uint64_t magnitude = 0;
+	mpz_export(&magnitude, nullptr, -1, sizeof(magnitude), 0, 0, abs);
 	mpz_clear(abs);
+	if (mpz_sgn(a) > 0) {
+		return static_cast<int64_t>(magnitude);
+	}
+	if (magnitude == (uint64_t{1} << 63)) {
+		return INT64_MIN;
+	}
 	return -static_cast<int64_t>(magnitude);
 }
 
