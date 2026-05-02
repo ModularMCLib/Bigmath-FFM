@@ -135,7 +135,7 @@ jobs:
           vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
           "BIGMATH_VCPKG_TRIPLET=${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
       - name: Save vcpkg binary cache
-        if: !cancelled()
+        if: ${{ !cancelled() }}
         uses: actions/cache/save@v4
         with:
           path: .vcpkg-cache
