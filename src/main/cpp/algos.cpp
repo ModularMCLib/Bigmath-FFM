@@ -184,12 +184,12 @@ void binary_gcd(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 }
 
 // ---- Exponentiation by Squaring ----
-void fast_pow(mpz_ptr out, mpz_ptr base, unsigned long exp) {
+void fast_pow(mpz_ptr out, mpz_ptr base, uint64_t exp) {
 	mpz_set_ui(out, 1);
 	if (exp == 0) return;
 	mpz_t b;
 	mpz_init_set(b, base);
-	unsigned long e = exp;
+	uint64_t e = exp;
 	while (e > 0) {
 		if (e & 1) mpz_mul(out, out, b);
 		e >>= 1;
@@ -199,7 +199,7 @@ void fast_pow(mpz_ptr out, mpz_ptr base, unsigned long exp) {
 }
 
 // ---- Product Tree Factorial ----
-static void product_tree(mpz_ptr out, unsigned long a, unsigned long b) {
+static void product_tree(mpz_ptr out, uint64_t a, uint64_t b) {
 	if (a == b) {
 		mpz_set_ui(out, a);
 		return;
@@ -209,7 +209,7 @@ static void product_tree(mpz_ptr out, unsigned long a, unsigned long b) {
 		mpz_mul_ui(out, out, b);
 		return;
 	}
-	unsigned long mid = a + (b - a) / 2;
+	uint64_t mid = a + (b - a) / 2;
 	mpz_t left, right;
 	mpz_init(left);
 	mpz_init(right);
@@ -220,7 +220,7 @@ static void product_tree(mpz_ptr out, unsigned long a, unsigned long b) {
 	mpz_clear(right);
 }
 
-void product_tree_factorial(mpz_ptr out, unsigned long n) {
+void product_tree_factorial(mpz_ptr out, uint64_t n) {
 	if (n <= 1) { mpz_set_ui(out, 1); return; }
 	if (n < 128) {
 		mpz_fac_ui(out, n);
@@ -296,8 +296,8 @@ void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 #else
 // Stubs when GMP not available
 void binary_gcd(mpz_ptr, mpz_ptr, mpz_ptr) {}
-void fast_pow(mpz_ptr, mpz_ptr, unsigned long) {}
-void product_tree_factorial(mpz_ptr, unsigned long) {}
+void fast_pow(mpz_ptr, mpz_ptr, uint64_t) {}
+void product_tree_factorial(mpz_ptr, uint64_t) {}
 void fft_multiply(mpz_ptr, mpz_ptr, mpz_ptr) {}
 #endif // BIGMATH_NO_GMP
 

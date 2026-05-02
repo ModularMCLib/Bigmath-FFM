@@ -94,19 +94,25 @@ jobs:
           VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
         run: |
           vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
-          echo "CMAKE_PREFIX_PATH=$env:VCPKG_ROOT\installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=${{ github.workspace }}\vcpkg_installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
 
       - uses: gradle/actions/setup-gradle@v4
       - name: Build native
+        if: runner.os != 'Windows'
         run: |
           chmod +x gradlew 2>/dev/null || true
           ./gradlew build -x test -Dbigmath.native.classifier=${{ matrix.label }}
         shell: bash
+      - name: Build native
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./gradlew build -x test -Dbigmath.native.classifier=${{ matrix.label }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: native-libs-${{ matrix.label }}
-          path: build/native/resources/**
+          path: native/${{ matrix.label }}/**
           retention-days: 7
 
   android-build:

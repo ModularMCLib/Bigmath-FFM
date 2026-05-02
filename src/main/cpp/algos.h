@@ -27,9 +27,9 @@ void karatsuba_mul(limb_t *out, const limb_t *a, int alen, const limb_t *b, int 
 
 void binary_gcd(mpz_ptr out, mpz_ptr a, mpz_ptr b);
 
-void fast_pow(mpz_ptr out, mpz_ptr base, unsigned long exp);
+void fast_pow(mpz_ptr out, mpz_ptr base, uint64_t exp);
 
-void product_tree_factorial(mpz_ptr out, unsigned long n);
+void product_tree_factorial(mpz_ptr out, uint64_t n);
 
 void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b);
 
