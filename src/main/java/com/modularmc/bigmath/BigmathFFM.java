@@ -2,11 +2,16 @@ package com.modularmc.bigmath;
 
 import lombok.Getter;
 
+import java.io.IOException;
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 
 /**
  * Singleton bridge to the native {@code bigmath_ffm} shared library via Java FFM API.
@@ -95,6 +100,41 @@ public final class BigmathFFM {
 		};
 	}
 
+	private static void preloadWindowsDependencies(Path nativeDir, String libName) {
+		if (CURRENT_OS != Os.WINDOWS || nativeDir == null || !Files.isDirectory(nativeDir)) {
+			return;
+		}
+
+		try (Stream<Path> files = Files.list(nativeDir)) {
+			List<Path> dependencies = files
+				.filter(Files::isRegularFile)
+				.filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".dll"))
+				.filter(path -> !path.getFileName().toString().equalsIgnoreCase(libName))
+				.sorted(Comparator
+					.comparingInt(BigmathFFM::windowsDependencyPriority)
+					.thenComparing(path -> path.getFileName().toString().toLowerCase(Locale.ROOT)))
+				.toList();
+
+			for (Path dependency : dependencies) {
+				String absolutePath = dependency.toAbsolutePath().toString();
+				LOGGER.info(() -> "Preloading Windows dependency: " + absolutePath);
+				System.load(absolutePath);
+			}
+		} catch (IOException e) {
+			LOGGER.warning(() -> "Failed to enumerate Windows native dependencies in " + nativeDir + ": " + e.getMessage());
+		}
+	}
+
+	private static int windowsDependencyPriority(Path path) {
+		String fileName = path.getFileName().toString().toLowerCase(Locale.ROOT);
+		if (fileName.equals("libwinpthread-1.dll")) return 0;
+		if (fileName.startsWith("libgcc")) return 1;
+		if (fileName.startsWith("libstdc++")) return 2;
+		if (fileName.contains("gmp")) return 3;
+		if (fileName.contains("mpfr")) return 4;
+		return 10;
+	}
+
 	/**
 	 * Loads the platform-native shared library. Resolution order:
 	 * <ol>
@@ -119,16 +159,20 @@ public final class BigmathFFM {
 		String explicitPath = System.getProperty("bigmath.native.path");
 		if (explicitPath != null) {
 			LOGGER.info(() -> "Trying explicit path: " + explicitPath);
-			System.load(explicitPath);
+			Path explicitLibPath = Path.of(explicitPath).toAbsolutePath();
+			preloadWindowsDependencies(explicitLibPath.getParent(), explicitLibPath.getFileName().toString());
+			System.load(explicitLibPath.toString());
 			LOGGER.info(() -> "Loaded from explicit path: " + explicitPath);
 			return SymbolLookup.loaderLookup();
 		}
 
-		Path nativePath = Path.of("native", classifier, libName);
+		Path nativeDir = Path.of("native", classifier);
+		Path nativePath = nativeDir.resolve(libName);
 		Path absolutePath = nativePath.toAbsolutePath();
 
 		LOGGER.info(() -> "Checking: " + absolutePath + " (exists: " + Files.exists(nativePath) + ")");
 		if (Files.exists(nativePath)) {
+			preloadWindowsDependencies(nativeDir, libName);
 			System.load(absolutePath.toString());
 			LOGGER.info(() -> "Loaded from: " + absolutePath);
 			return SymbolLookup.loaderLookup();

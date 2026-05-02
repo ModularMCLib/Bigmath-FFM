@@ -21,6 +21,17 @@ sourceSets {
     main.resources {
         srcDir 'src/generated/resources'
     }
+    jmh {
+        java.srcDir 'src/jmh/java'
+        resources.srcDir 'src/jmh/resources'
+        compileClasspath += sourceSets.main.output + configurations.testRuntimeClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
+configurations {
+    jmhImplementation.extendsFrom implementation
+    jmhRuntimeOnly.extendsFrom runtimeOnly
 }
 
 apply from: "$rootDir/gradle/scripts/jars.gradle"
@@ -41,6 +52,27 @@ tasks.withType(Test).configureEach {
 	onlyIf { project.hasProperty('runTests') || nativeDir.exists() }
 	testLogging {
 		showStandardStreams = true
+	}
+}
+
+tasks.register('jmh', JavaExec) {
+	group = 'verification'
+	description = 'Run JMH benchmarks'
+	dependsOn tasks.named('classes')
+	dependsOn tasks.named('processResources')
+	dependsOn tasks.named('jmhClasses')
+	classpath = sourceSets.jmh.runtimeClasspath
+	mainClass = 'org.openjdk.jmh.Main'
+	jvmArgs += '--enable-native-access=ALL-UNNAMED'
+
+	def nativeDir = layout.projectDirectory.dir('native').asFile
+	onlyIf { nativeDir.exists() }
+
+	if (project.hasProperty('jmhIncludes')) {
+		args project.property('jmhIncludes').toString()
+	}
+	if (project.hasProperty('jmhArgs')) {
+		args project.property('jmhArgs').toString().split('\\s+').findAll { !it.isBlank() }
 	}
 }
 
