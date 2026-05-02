@@ -59,6 +59,24 @@ jobs:
         run: |
           mkdir -p build/reports/jmh
           ./gradlew jmh "-PjmhArgs=-wi 2 -i 3 -r 1s -w 1s -foe true -rf csv -rff build/reports/jmh/jmh-result.csv"
+      - name: Publish benchmark summary
+        shell: bash
+        run: |
+          {
+            echo "## JMH Results"
+            echo
+            echo '| Benchmark | Score | Error (99.9%) | Unit | digits | precision |'
+            echo '|---|---:|---:|---|---:|---:|'
+            tail -n +2 build/reports/jmh/jmh-result.csv | while IFS=, read -r benchmark mode threads samples score score_error unit digits precision; do
+              benchmark=${benchmark//\"/}
+              score=${score//\"/}
+              score_error=${score_error//\"/}
+              unit=${unit//\"/}
+              digits=${digits//\"/}
+              precision=${precision//\"/}
+              echo "| \`${benchmark}\` | ${score} | ${score_error} | ${unit} | ${digits:-} | ${precision:-} |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
         with:
