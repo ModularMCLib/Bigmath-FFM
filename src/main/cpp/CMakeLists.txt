@@ -99,6 +99,23 @@ target_include_directories(bigmath_ffm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 if(WIN32)
 	set_target_properties(bigmath_ffm PROPERTIES PREFIX "")
+
+	get_filename_component(BIGMATH_CXX_COMPILER_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+	find_file(MINGW_LIBSTDCPP_RUNTIME
+		NAMES libstdc++-6.dll
+		PATHS "${BIGMATH_CXX_COMPILER_DIR}"
+		NO_DEFAULT_PATH
+	)
+	find_file(MINGW_LIBGCC_RUNTIME
+		NAMES libgcc_s_seh-1.dll libgcc_s_sjlj-1.dll libgcc_s_dw2-1.dll
+		PATHS "${BIGMATH_CXX_COMPILER_DIR}"
+		NO_DEFAULT_PATH
+	)
+	find_file(MINGW_WINPTHREAD_RUNTIME
+		NAMES libwinpthread-1.dll
+		PATHS "${BIGMATH_CXX_COMPILER_DIR}"
+		NO_DEFAULT_PATH
+	)
 endif()
 
 if(GMP_FOUND AND MPFR_FOUND)
@@ -134,5 +151,12 @@ if(WIN32 AND GMP_FOUND AND MPFR_FOUND)
 	install(FILES
 		$<TARGET_RUNTIME_DLLS:bigmath_ffm>
 		DESTINATION lib
+	)
+	install(FILES
+		${MINGW_LIBSTDCPP_RUNTIME}
+		${MINGW_LIBGCC_RUNTIME}
+		${MINGW_WINPTHREAD_RUNTIME}
+		DESTINATION lib
+		OPTIONAL
 	)
 endif()
