@@ -93,6 +93,8 @@ jobs:
       - name: Run Tests
         id: test
         continue-on-error: true
+        env:
+          JAVA_TOOL_OPTIONS: -Dbigmath.native.path=${{ github.workspace }}/build/generated/local-native/linux-x86-64/libbigmath_ffm.so
         run: ./gradlew test -PrunTests
       - name: Upload coverage reports
         if: always()
