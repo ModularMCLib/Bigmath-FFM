@@ -58,6 +58,48 @@ if(USE_GMP)
 			endif()
 			set(MPFR_FOUND TRUE)
 		endif()
+	elseif(UNIX AND NOT APPLE AND NOT ANDROID)
+		find_path(GMP_INCLUDE_DIR
+			NAMES gmp.h
+			PATH_SUFFIXES include
+		)
+		find_library(GMP_LIBRARY
+			NAMES gmp libgmp
+			PATH_SUFFIXES lib lib64
+		)
+		find_file(GMP_RUNTIME
+			NAMES libgmp.so.10 libgmp.so
+			PATH_SUFFIXES lib lib64
+		)
+		if(GMP_INCLUDE_DIR AND GMP_LIBRARY AND GMP_RUNTIME)
+			add_library(GMP::GMP SHARED IMPORTED)
+			set_target_properties(GMP::GMP PROPERTIES
+				IMPORTED_LOCATION "${GMP_RUNTIME}"
+				INTERFACE_INCLUDE_DIRECTORIES "${GMP_INCLUDE_DIR}"
+			)
+			set(GMP_FOUND TRUE)
+		endif()
+
+		find_path(MPFR_INCLUDE_DIR
+			NAMES mpfr.h
+			PATH_SUFFIXES include
+		)
+		find_library(MPFR_LIBRARY
+			NAMES mpfr libmpfr
+			PATH_SUFFIXES lib lib64
+		)
+		find_file(MPFR_RUNTIME
+			NAMES libmpfr.so.6 libmpfr.so
+			PATH_SUFFIXES lib lib64
+		)
+		if(MPFR_INCLUDE_DIR AND MPFR_LIBRARY AND MPFR_RUNTIME)
+			add_library(MPFR::MPFR SHARED IMPORTED)
+			set_target_properties(MPFR::MPFR PROPERTIES
+				IMPORTED_LOCATION "${MPFR_RUNTIME}"
+				INTERFACE_INCLUDE_DIRECTORIES "${MPFR_INCLUDE_DIR}"
+			)
+			set(MPFR_FOUND TRUE)
+		endif()
 	endif()
 
 	if(NOT GMP_FOUND)
@@ -121,6 +163,9 @@ endif()
 if(GMP_FOUND AND MPFR_FOUND)
 	target_link_libraries(bigmath_ffm PRIVATE GMP::GMP MPFR::MPFR)
 	target_compile_definitions(bigmath_ffm PRIVATE BIGMATH_HAS_GMP)
+	if(UNIX AND NOT APPLE AND NOT ANDROID AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+		target_link_options(bigmath_ffm PRIVATE -static-libstdc++ -static-libgcc)
+	endif()
 	if(APPLE)
 		set_target_properties(bigmath_ffm PROPERTIES
 			INSTALL_RPATH "@loader_path"
@@ -156,6 +201,15 @@ if(WIN32 AND GMP_FOUND AND MPFR_FOUND)
 		${MINGW_LIBSTDCPP_RUNTIME}
 		${MINGW_LIBGCC_RUNTIME}
 		${MINGW_WINPTHREAD_RUNTIME}
+		DESTINATION lib
+		OPTIONAL
+	)
+endif()
+
+if(UNIX AND NOT APPLE AND NOT ANDROID AND GMP_FOUND AND MPFR_FOUND)
+	install(FILES
+		${GMP_RUNTIME}
+		${MPFR_RUNTIME}
 		DESTINATION lib
 		OPTIONAL
 	)

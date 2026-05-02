@@ -19,7 +19,7 @@ def nativePatterns = System.getProperty("os.name").toLowerCase().contains("win")
 		? ["*.dll"]
 		: System.getProperty("os.name").toLowerCase().contains("mac")
 				? ["*.dylib"]
-				: ["*.so"]
+				: ["*.so", "*.so.*"]
 
 def resolveCmakePrefixPath = {
 	def explicitPrefix = project.findProperty("cmakePrefixPath")?.toString()
@@ -116,7 +116,7 @@ tasks.named('processResources') {
 	from(layout.projectDirectory.dir('native')) {
 		into('native')
 		includeEmptyDirs = false
-		include '**/*.so', '**/*.dylib', '**/*.dll'
+		include '**/*.so', '**/*.so.*', '**/*.dylib', '**/*.dll'
 	}
 	from(rootProject.file('LICENSE')) {
 		into 'META-INF'
