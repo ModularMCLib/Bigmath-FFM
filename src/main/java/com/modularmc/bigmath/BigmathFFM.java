@@ -16,15 +16,29 @@ import java.util.logging.Logger;
 import java.util.stream.Stream;
 
 /**
- * Singleton bridge to the native {@code bigmath_ffm} shared library via Java FFM API.
+ * Singleton bridge between the Java API and the native {@code bigmath_ffm}
+ * shared library.
  * <p>
- * Auto-detects the host OS and CPU architecture to locate and load the correct
- * platform-native library from the bundled resources. Provides {@link #downcall}
- * for linking native symbols and {@link #invoke} for calling them safely.
+ * This type centralizes all Foreign Function and Memory API bootstrap work for
+ * the project:
+ * <ul>
+ *   <li>detecting the host operating system and CPU architecture</li>
+ *   <li>mapping that host into the library classifier used by packaged native resources</li>
+ *   <li>loading the correct shared library and any required platform-specific dependencies</li>
+ *   <li>resolving native symbols into cached downcall {@link MethodHandle method handles}</li>
+ * </ul>
  * <p>
- * The native library path can be overridden via system property
- * {@code bigmath.native.path} (absolute file path) or the platform classifier
- * via {@code bigmath.native.classifier} (e.g. {@code linux-x86-64}).
+ * The library resolution flow is intentionally predictable so that local
+ * development, CI, unpacked snapshot artifacts, and embedded runtime loading
+ * all follow the same contract. Callers normally access the singleton via
+ * {@link #getInstance()} and then obtain pre-linked native entry points through
+ * {@link #downcall(String, FunctionDescriptor)}.
+ * <p>
+ * Two system properties can be used to override the default lookup behavior:
+ * <ul>
+ *   <li>{@code bigmath.native.path}: absolute path to a specific native library file</li>
+ *   <li>{@code bigmath.native.classifier}: explicit classifier such as {@code linux-x86-64}</li>
+ * </ul>
  */
 @Getter
 public final class BigmathFFM {
@@ -72,8 +86,22 @@ public final class BigmathFFM {
 	}
 
 	/**
-	 * Returns the platform classifier string for the current host,
-	 * e.g. {@code windows-x86-64} or {@code android-arm64-v8a}.
+	 * Returns the packaged native classifier for the current runtime.
+	 * <p>
+	 * The classifier is the directory name used under {@code native/} inside the
+	 * published JAR and is also the default convention for local unpacked test
+	 * layouts. The value is derived from the detected operating system and
+	 * architecture pair and therefore stays aligned with native artifact
+	 * packaging.
+	 * <p>
+	 * Typical results include:
+	 * <ul>
+	 *   <li>{@code windows-x86-64}</li>
+	 *   <li>{@code linux-aarch64}</li>
+	 *   <li>{@code android-arm64-v8a}</li>
+	 * </ul>
+	 *
+	 * @return the native classifier for the current process
 	 */
 	public static String platformClassifier() {
 		StringBuilder sb = new StringBuilder();
@@ -203,7 +231,14 @@ public final class BigmathFFM {
 	}
 
 	/**
-	 * Returns the singleton instance (lazy-evaluated at class init time).
+	 * Returns the singleton native bridge instance.
+	 * <p>
+	 * The instance is created during class initialization so native loading and
+	 * symbol lookup infrastructure are established once and then reused across
+	 * all wrapper types such as {@link BigInt}, {@link BigDeci}, and
+	 * {@link Int128}.
+	 *
+	 * @return the shared {@code BigmathFFM} instance
 	 */
 	public static BigmathFFM getInstance() {
 		return INSTANCE;
@@ -217,13 +252,16 @@ public final class BigmathFFM {
 	}
 
 	/**
-	 * Looks up a native function by name and creates a downcall method handle
-	 * with the given function descriptor.
+	 * Resolves a native symbol and returns a cached downcall handle for it.
+	 * <p>
+	 * Repeated lookups of the same symbol and {@link FunctionDescriptor}
+	 * combination reuse the previously linked handle, which keeps higher-level
+	 * numeric wrappers from paying repeated linker setup costs on hot paths.
 	 *
-	 * @param name       the C symbol name
-	 * @param descriptor the FFM function descriptor
-	 * @return a {@link MethodHandle} bound to the native function
-	 * @throws UnsatisfiedLinkError if the symbol is not found
+	 * @param name the exported C symbol name
+	 * @param descriptor the exact FFM function descriptor expected by the symbol
+	 * @return a cached {@link MethodHandle} bound to the requested native symbol
+	 * @throws UnsatisfiedLinkError if the symbol cannot be resolved from the loaded library
 	 */
 	public MethodHandle downcall(String name, FunctionDescriptor descriptor) {
 		return downcallCache.computeIfAbsent(new DowncallKey(name, descriptor), key ->
@@ -234,12 +272,17 @@ public final class BigmathFFM {
 	}
 
 	/**
-	 * Invokes a method handle with the given arguments, wrapping checked
-	 * exceptions in {@link RuntimeException}.
+	 * Invokes a linked native method handle using varargs.
+	 * <p>
+	 * This helper keeps call sites concise in places where a strongly typed
+	 * {@code invokeExact} signature would add a large amount of local ceremony.
+	 * Runtime exceptions and errors are preserved as-is, while checked
+	 * throwables from the reflective invocation path are wrapped in a
+	 * {@link RuntimeException}.
 	 *
-	 * @param handle the method handle to invoke
-	 * @param args   the arguments to pass
-	 * @return the return value of the native call
+	 * @param handle the linked native method handle to invoke
+	 * @param args the arguments to forward to the native call
+	 * @return the value returned by the target method handle
 	 */
 	public static Object invoke(MethodHandle handle, Object... args) {
 		try {
