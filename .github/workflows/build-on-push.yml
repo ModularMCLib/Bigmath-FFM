@@ -94,6 +94,16 @@ jobs:
         id: test
         continue-on-error: true
         run: ./gradlew test -PrunTests
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-PR-${{ github.event.number }}
+          path: |
+            build/reports/jacoco/test/html/**
+            build/reports/jacoco/test/jacocoTestReport.xml
+            build/reports/tests/test/**
+          retention-days: 15
       - name: Update "Tests Passed" / "Tests Failed" labels
         if: always() && github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7

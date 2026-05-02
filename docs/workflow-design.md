@@ -19,7 +19,8 @@ pull_request
 └── test (needs: build, Linux x86_64)
     ├── download artifact: native-libs
     ├── 还原到 native/linux-x86-64/libbigmath_ffm.so
-    └── gradle test -PrunTests -x buildNative -x cmakeConfigure
+    ├── gradle test -PrunTests -x buildNative -x cmakeConfigure
+    └── upload coverage report: build/reports/jacoco/test/**
 ```
 
 **关键点：** artifact 上传时使用精准文件路径 `native/{classifier}/{libname}`，下载后直接放置到同名目录，与 `BigmathFFM.loadLibrary()` 的查找路径一致。
