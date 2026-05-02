@@ -57,7 +57,7 @@ jobs:
             label: macos-aarch64
           - os: windows-latest
             label: windows-x86-64
-            vcpkg_triplet: x64-windows
+            vcpkg_triplet: x64-mingw-dynamic
           - os: windows-11-arm
             label: windows-aarch64
             vcpkg_triplet: arm64-windows
@@ -71,6 +71,22 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64_arm64
+      - name: Configure MSVC compiler env
+        if: matrix.vcpkg_triplet == 'arm64-windows'
+        shell: pwsh
+        run: |
+          "CC=cl" >> $env:GITHUB_ENV
+          "CXX=cl" >> $env:GITHUB_ENV
+          "BIGMATH_WINDOWS_COMPILER=msvc" >> $env:GITHUB_ENV
+      - name: Configure MinGW for Windows x64
+        if: matrix.vcpkg_triplet == 'x64-mingw-dynamic'
+        shell: pwsh
+        run: |
+          $gcc = (Get-Command gcc -ErrorAction Stop).Source
+          $gxx = (Get-Command g++ -ErrorAction Stop).Source
+          "CC=$gcc" >> $env:GITHUB_ENV
+          "CXX=$gxx" >> $env:GITHUB_ENV
+          "BIGMATH_WINDOWS_COMPILER=mingw" >> $env:GITHUB_ENV
       - name: Restore vcpkg binary cache
         if: runner.os == 'Windows'
         uses: actions/cache@v4
@@ -100,6 +116,7 @@ jobs:
         run: |
           vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
           echo "CMAKE_PREFIX_PATH=${{ github.workspace }}\vcpkg_installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
+          echo "BIGMATH_VCPKG_TRIPLET=${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
 
       - uses: gradle/actions/setup-gradle@v4
       - name: Build native
@@ -111,12 +128,7 @@ jobs:
       - name: Build native
         if: runner.os == 'Windows'
         shell: pwsh
-        run: |
-          if ('${{ matrix.vcpkg_triplet }}' -eq 'arm64-windows') {
-            $env:CC = 'cl'
-            $env:CXX = 'cl'
-          }
-          .\gradlew.bat --% build -x test -Dbigmath.native.classifier=${{ matrix.label }}
+        run: .\gradlew.bat --% build -x test -Dbigmath.native.classifier=${{ matrix.label }}
 
       - uses: actions/upload-artifact@v4
         with:

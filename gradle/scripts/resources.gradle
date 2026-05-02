@@ -13,8 +13,9 @@ def nativeLibName = System.getProperty("os.name").toLowerCase().contains("win")
 				: "libbigmath_ffm.so"
 
 def cmakeBuildDir = layout.buildDirectory.dir("native").get().asFile
-def packagedNativeDir = layout.projectDirectory.dir("native/${nativeClassifier}").asFile
 def cmakeInstallLibDir = new File(cmakeBuildDir, "lib")
+def generatedNativeRootDir = layout.buildDirectory.dir("generated/local-native").get().asFile
+def generatedNativeDir = new File(generatedNativeRootDir, nativeClassifier)
 def nativePatterns = System.getProperty("os.name").toLowerCase().contains("win")
 		? ["*.dll"]
 		: System.getProperty("os.name").toLowerCase().contains("mac")
@@ -35,10 +36,31 @@ def resolveCmakePrefixPath = {
 			?: System.getenv("VCPKG_TARGET_TRIPLET"))?.toString()
 	def arch = System.getProperty("os.arch").toLowerCase()
 	def archPrefix = arch.contains("aarch64") || arch.contains("arm64") ? "arm64-" : "x64-"
+	def isWindows = System.getProperty("os.name").toLowerCase().contains("win")
 	def installedRoots = [
 			layout.projectDirectory.dir("vcpkg_installed").asFile,
 			System.getenv("VCPKG_ROOT") ? new File(System.getenv("VCPKG_ROOT"), "installed") : null
 	].findAll { it != null && it.exists() }
+
+	def windowsCompilerFamily = {
+		def explicitCompiler = (project.findProperty("windowsCompilerFamily")
+				?: System.getenv("BIGMATH_WINDOWS_COMPILER"))?.toString()?.toLowerCase()
+		if (explicitCompiler in ["mingw", "msvc"]) {
+			return explicitCompiler
+		}
+
+		def compilerHints = [System.getenv("CXX"), System.getenv("CC")]
+				.findAll { it != null && !it.isBlank() }
+				.collect { it.toLowerCase() }
+
+		if (compilerHints.any { it == "cl" || it.endsWith("\\cl.exe") || it.endsWith("/cl.exe") }) {
+			return "msvc"
+		}
+		if (compilerHints.any { it.contains("gcc") || it.contains("g++") || it.contains("mingw") }) {
+			return "mingw"
+		}
+		return null
+	}
 
 	def pickCandidate = { File installedRoot ->
 		def tripletDirs = installedRoot.listFiles()?.findAll { candidate ->
@@ -56,8 +78,48 @@ def resolveCmakePrefixPath = {
 			}
 		}
 		def sameArch = tripletDirs.findAll { it.name.startsWith(archPrefix) }
-		def preferred = sameArch.find { it.name.contains("mingw") || it.name.contains("dynamic") }
-		return preferred ?: (sameArch ? sameArch[0] : tripletDirs[0])
+		if (sameArch.isEmpty()) {
+			return tripletDirs[0]
+		}
+
+		if (isWindows) {
+			def mingwTriplets = sameArch.findAll { it.name.contains("mingw") }
+			def msvcTriplets = sameArch.findAll { !it.name.contains("mingw") }
+			def compilerFamily = windowsCompilerFamily()
+			if (compilerFamily == null && !mingwTriplets.isEmpty() && !msvcTriplets.isEmpty()) {
+				throw new GradleException(
+						"Ambiguous Windows vcpkg triplets for ${archPrefix}: found ${sameArch*.name}. " +
+						"Set -PvcpkgTriplet=..., BIGMATH_VCPKG_TRIPLET, or BIGMATH_WINDOWS_COMPILER=mingw|msvc."
+				)
+			}
+
+			def compatible = switch (compilerFamily) {
+				case "mingw" -> mingwTriplets
+				case "msvc" -> msvcTriplets
+				default -> sameArch
+			}
+			if (compatible.isEmpty()) {
+				throw new GradleException(
+						"No Windows vcpkg triplets compatible with compiler family '${compilerFamily}' " +
+						"for ${archPrefix}. Available: ${sameArch*.name}"
+				)
+			}
+
+			if (compilerFamily == "mingw") {
+				def preferred = compatible.find { it.name.endsWith("-mingw-dynamic") }
+				return preferred ?: compatible[0]
+			}
+
+			if (compilerFamily == "msvc") {
+				def preferred = compatible.find { it.name == "${archPrefix}windows" }
+				return preferred ?: compatible[0]
+			}
+
+			return compatible[0]
+		}
+
+		def preferred = sameArch.find { it.name.contains("dynamic") }
+		return preferred ?: sameArch[0]
 	}
 
 	def selected = installedRoots.collect { pickCandidate(it) }.find { it != null }
@@ -102,13 +164,13 @@ tasks.register('buildNative', Exec) {
 	commandLine 'cmake', '--build', '.', '--target', 'install'
 }
 
-tasks.register('copyNativeLib', Copy) {
-	description = 'Copy native library into native resources directory'
+tasks.register('copyNativeLib', Sync) {
+	description = 'Stage native library into the build directory for resource packaging'
 	dependsOn buildNative
 	from(cmakeInstallLibDir) {
 		include nativePatterns
 	}
-	into packagedNativeDir
+	into generatedNativeDir
 }
 
 tasks.named('processResources') {
@@ -117,6 +179,16 @@ tasks.named('processResources') {
 		into('native')
 		includeEmptyDirs = false
 		include '**/*.so', '**/*.so.*', '**/*.dylib', '**/*.dll'
+		exclude { details ->
+			details.relativePath.pathString.startsWith("${nativeClassifier}/") &&
+					generatedNativeDir.exists() &&
+					(generatedNativeDir.listFiles()?.length ?: 0) > 0
+		}
+	}
+	from(generatedNativeRootDir) {
+		into('native')
+		includeEmptyDirs = false
+		include "${nativeClassifier}/**"
 	}
 	from(rootProject.file('LICENSE')) {
 		into 'META-INF'
