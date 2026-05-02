@@ -43,6 +43,8 @@ jobs:
   native-full:
     needs: check
     if: needs.check.outputs.native == 'true'
+    env:
+      VCPKG_CACHE_KEY_PREFIX: vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}
     strategy:
       fail-fast: false
       matrix:
@@ -89,10 +91,13 @@ jobs:
           "BIGMATH_WINDOWS_COMPILER=mingw" >> $env:GITHUB_ENV
       - name: Restore vcpkg binary cache
         if: runner.os == 'Windows'
-        uses: actions/cache@v4
+        id: vcpkg-cache-restore
+        uses: actions/cache/restore@v4
         with:
           path: .vcpkg-cache
-          key: vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}
+          key: ${{ env.VCPKG_CACHE_KEY_PREFIX }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ${{ env.VCPKG_CACHE_KEY_PREFIX }}-
       - uses: actions/setup-java@v4
         with:
           java-version: '23'
@@ -130,10 +135,17 @@ jobs:
         shell: pwsh
         run: .\gradlew.bat --% build -x test -Dbigmath.native.classifier=${{ matrix.label }}
 
+      - name: Save vcpkg binary cache
+        if: runner.os == 'Windows' && !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-cache
+          key: ${{ steps.vcpkg-cache-restore.outputs.cache-primary-key }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: native-libs-${{ matrix.label }}
-          path: native/${{ matrix.label }}/**
+          path: build/generated/local-native/${{ matrix.label }}/**
           retention-days: 7
 
   android-build:

@@ -99,6 +99,7 @@ jobs:
             vcpkg_triplet: arm64-windows
     runs-on: ${{ matrix.os }}
     env:
+      VCPKG_CACHE_KEY_PREFIX: vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite"
     steps:
       - uses: actions/checkout@v4
@@ -123,14 +124,23 @@ jobs:
           "CC=$gcc" >> $env:GITHUB_ENV
           "CXX=$gxx" >> $env:GITHUB_ENV
           "BIGMATH_WINDOWS_COMPILER=mingw" >> $env:GITHUB_ENV
-      - uses: actions/cache@v4
+      - id: vcpkg-cache-restore
+        uses: actions/cache/restore@v4
         with:
           path: .vcpkg-cache
-          key: vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}
+          key: ${{ env.VCPKG_CACHE_KEY_PREFIX }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ${{ env.VCPKG_CACHE_KEY_PREFIX }}-
       - shell: pwsh
         run: |
           vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
           "BIGMATH_VCPKG_TRIPLET=${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
+      - name: Save vcpkg binary cache
+        if: !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-cache
+          key: ${{ steps.vcpkg-cache-restore.outputs.cache-primary-key }}
       - name: Build
         shell: pwsh
         run: |
