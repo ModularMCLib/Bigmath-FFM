@@ -12,12 +12,12 @@ Cross-platform high-performance big integer & decimal library for Java FFM (back
 
 ## Supported Platforms
 
-| OS | Architecture | GMP/MPFR | Int128 |
-|---|---|---|---|
-| Linux | x86-64, aarch64 | `apt install libgmp-dev libmpfr-dev` | built-in |
-| macOS | x86-64, aarch64 | `brew install gmp mpfr` | built-in |
-| Windows | x86-64, aarch64 | vcpkg / MSYS2 | built-in |
-| Android | aarch64, x86-64 | stubs only | built-in |
+| OS      | Architecture    | GMP/MPFR                             | Int128   |
+|---------|-----------------|--------------------------------------|----------|
+| Linux   | x86-64, aarch64 | `apt install libgmp-dev libmpfr-dev` | built-in |
+| macOS   | x86-64, aarch64 | `brew install gmp mpfr`              | built-in |
+| Windows | x86-64, aarch64 | vcpkg / MSYS2                        | built-in |
+| Android | aarch64, x86-64 | stubs only                           | built-in |
 
 ## Quick Start
 
