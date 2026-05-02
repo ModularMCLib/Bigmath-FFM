@@ -107,7 +107,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          ./gradlew build -x test -Dbigmath.native.classifier=${{ matrix.label }}
+          .\gradlew.bat --% build -x test -Dbigmath.native.classifier=${{ matrix.label }}
 
       - uses: actions/upload-artifact@v4
         with:
