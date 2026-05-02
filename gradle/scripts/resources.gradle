@@ -13,20 +13,84 @@ def nativeLibName = System.getProperty("os.name").toLowerCase().contains("win")
 				: "libbigmath_ffm.so"
 
 def cmakeBuildDir = layout.buildDirectory.dir("native").get().asFile
+def packagedNativeDir = layout.projectDirectory.dir("native/${nativeClassifier}").asFile
+def cmakeInstallLibDir = new File(cmakeBuildDir, "lib")
+def nativePatterns = System.getProperty("os.name").toLowerCase().contains("win")
+		? ["*.dll"]
+		: System.getProperty("os.name").toLowerCase().contains("mac")
+				? ["*.dylib"]
+				: ["*.so"]
+
+def resolveCmakePrefixPath = {
+	def explicitPrefix = project.findProperty("cmakePrefixPath")?.toString()
+	if (!explicitPrefix) {
+		explicitPrefix = System.getenv("BIGMATH_CMAKE_PREFIX_PATH") ?: System.getenv("CMAKE_PREFIX_PATH")
+	}
+	if (explicitPrefix) {
+		return explicitPrefix
+	}
+
+	def tripletHint = (project.findProperty("vcpkgTriplet")
+			?: System.getenv("BIGMATH_VCPKG_TRIPLET")
+			?: System.getenv("VCPKG_TARGET_TRIPLET"))?.toString()
+	def arch = System.getProperty("os.arch").toLowerCase()
+	def archPrefix = arch.contains("aarch64") || arch.contains("arm64") ? "arm64-" : "x64-"
+	def installedRoots = [
+			layout.projectDirectory.dir("vcpkg_installed").asFile,
+			System.getenv("VCPKG_ROOT") ? new File(System.getenv("VCPKG_ROOT"), "installed") : null
+	].findAll { it != null && it.exists() }
+
+	def pickCandidate = { File installedRoot ->
+		def tripletDirs = installedRoot.listFiles()?.findAll { candidate ->
+			candidate.isDirectory() &&
+					new File(candidate, "include/gmp.h").exists() &&
+					new File(candidate, "include/mpfr.h").exists()
+		} ?: []
+		if (tripletDirs.isEmpty()) {
+			return null
+		}
+		if (tripletHint) {
+			def hinted = tripletDirs.find { it.name == tripletHint }
+			if (hinted != null) {
+				return hinted
+			}
+		}
+		def sameArch = tripletDirs.findAll { it.name.startsWith(archPrefix) }
+		def preferred = sameArch.find { it.name.contains("mingw") || it.name.contains("dynamic") }
+		return preferred ?: (sameArch ? sameArch[0] : tripletDirs[0])
+	}
+
+	def selected = installedRoots.collect { pickCandidate(it) }.find { it != null }
+	return selected?.absolutePath?.replace('\\', '/')
+}
+
+def cmakePrefixPath = resolveCmakePrefixPath()
 
 def cmakeConfigure = tasks.register('cmakeConfigure', Exec) {
 	description = 'Configure CMake for native library'
 	workingDir = cmakeBuildDir
 	inputs.dir("src/main/cpp").withPathSensitivity(PathSensitivity.RELATIVE)
 	outputs.file("${cmakeBuildDir}/CMakeCache.txt")
-	onlyIf { !file("native/${nativeClassifier}/${nativeLibName}").exists() }
-	doFirst { cmakeBuildDir.mkdirs() }
-	commandLine 'cmake',
+	doFirst {
+		cmakeBuildDir.mkdirs()
+		if (cmakePrefixPath) {
+			logger.lifecycle("Using CMake prefix path: ${cmakePrefixPath}")
+		} else if (System.getProperty("os.name").toLowerCase().contains("win")) {
+			logger.lifecycle("No CMake prefix path detected on Windows; native build may fall back to stubs")
+		}
+	}
+	def command = [
+			'cmake',
 			'-S', file("src/main/cpp").absolutePath,
 			'-B', cmakeBuildDir.absolutePath,
 			'-G', 'Ninja',
 			"-DCMAKE_BUILD_TYPE=${project.findProperty('buildType') ?: 'Release'}",
 			"-DCMAKE_INSTALL_PREFIX=${cmakeBuildDir}"
+	]
+	if (cmakePrefixPath) {
+		command << "-DCMAKE_PREFIX_PATH=${cmakePrefixPath}"
+	}
+	commandLine command
 }
 
 tasks.register('buildNative', Exec) {
@@ -35,18 +99,16 @@ tasks.register('buildNative', Exec) {
 	workingDir = cmakeBuildDir
 	inputs.file("${cmakeBuildDir}/CMakeCache.txt")
 	outputs.file("${cmakeBuildDir}/lib/${nativeLibName}")
-	onlyIf { !file("native/${nativeClassifier}/${nativeLibName}").exists() }
 	commandLine 'cmake', '--build', '.', '--target', 'install'
 }
 
 tasks.register('copyNativeLib', Copy) {
 	description = 'Copy native library into native resources directory'
 	dependsOn buildNative
-	onlyIf { !file("native/${nativeClassifier}/${nativeLibName}").exists() }
-	from("${cmakeBuildDir}/lib") {
-		include nativeLibName
+	from(cmakeInstallLibDir) {
+		include nativePatterns
 	}
-	into layout.projectDirectory.dir("native/${nativeClassifier}").asFile
+	into packagedNativeDir
 }
 
 tasks.named('processResources') {

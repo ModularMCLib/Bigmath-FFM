@@ -1,5 +1,5 @@
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-	cmake_minimum_required(VERSION 3.20)
+	cmake_minimum_required(VERSION 3.21)
 	project(bigmath-ffm-native VERSION 0.1.0 LANGUAGES CXX)
 endif()
 
@@ -10,8 +10,62 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if(USE_GMP)
-	find_package(GMP QUIET)
-	find_package(MPFR QUIET)
+	if(WIN32)
+		find_path(GMP_INCLUDE_DIR
+			NAMES gmp.h
+			PATH_SUFFIXES include
+		)
+		find_library(GMP_LIBRARY
+			NAMES gmp libgmp gmp-10 libgmp-10
+			PATH_SUFFIXES lib
+		)
+		find_file(GMP_RUNTIME
+			NAMES gmp-10.dll libgmp-10.dll gmp.dll libgmp.dll
+			PATH_SUFFIXES bin lib
+		)
+		if(GMP_INCLUDE_DIR AND GMP_LIBRARY)
+			add_library(GMP::GMP SHARED IMPORTED)
+			set_target_properties(GMP::GMP PROPERTIES
+				IMPORTED_IMPLIB "${GMP_LIBRARY}"
+				INTERFACE_INCLUDE_DIRECTORIES "${GMP_INCLUDE_DIR}"
+			)
+			if(GMP_RUNTIME)
+				set_target_properties(GMP::GMP PROPERTIES IMPORTED_LOCATION "${GMP_RUNTIME}")
+			endif()
+			set(GMP_FOUND TRUE)
+		endif()
+
+		find_path(MPFR_INCLUDE_DIR
+			NAMES mpfr.h
+			PATH_SUFFIXES include
+		)
+		find_library(MPFR_LIBRARY
+			NAMES mpfr libmpfr mpfr-6 libmpfr-6
+			PATH_SUFFIXES lib
+		)
+		find_file(MPFR_RUNTIME
+			NAMES mpfr-6.dll libmpfr-6.dll mpfr.dll libmpfr.dll
+			PATH_SUFFIXES bin lib
+		)
+		if(MPFR_INCLUDE_DIR AND MPFR_LIBRARY)
+			add_library(MPFR::MPFR SHARED IMPORTED)
+			set_target_properties(MPFR::MPFR PROPERTIES
+				IMPORTED_IMPLIB "${MPFR_LIBRARY}"
+				INTERFACE_INCLUDE_DIRECTORIES "${MPFR_INCLUDE_DIR}"
+			)
+			if(MPFR_RUNTIME)
+				set_target_properties(MPFR::MPFR PROPERTIES IMPORTED_LOCATION "${MPFR_RUNTIME}")
+			endif()
+			set(MPFR_FOUND TRUE)
+		endif()
+	endif()
+
+	if(NOT GMP_FOUND)
+		find_package(GMP QUIET)
+	endif()
+	if(NOT MPFR_FOUND)
+		find_package(MPFR QUIET)
+	endif()
 
 	if(NOT GMP_FOUND OR NOT MPFR_FOUND)
 		find_package(PkgConfig QUIET)
@@ -75,3 +129,10 @@ install(TARGETS bigmath_ffm
 	LIBRARY DESTINATION lib
 	RUNTIME DESTINATION lib
 )
+
+if(WIN32 AND GMP_FOUND AND MPFR_FOUND)
+	install(FILES
+		$<TARGET_RUNTIME_DLLS:bigmath_ffm>
+		DESTINATION lib
+	)
+endif()

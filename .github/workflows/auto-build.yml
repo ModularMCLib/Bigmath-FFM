@@ -88,6 +88,11 @@ jobs:
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite"
     steps:
       - uses: actions/checkout@v4
+      - name: Configure MSVC for Windows ARM64
+        if: matrix.vcpkg_triplet == 'arm64-windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_arm64
       - uses: actions/cache@v4
         with:
           path: .vcpkg-cache
@@ -97,12 +102,16 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
+          if ('${{ matrix.vcpkg_triplet }}' -eq 'arm64-windows') {
+            $env:CC = 'cl'
+            $env:CXX = 'cl'
+          }
           New-Item -Force -ItemType Directory -Path build/native, "native/${{ matrix.label }}"
-          cmake -S src/main/cpp -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native "-DCMAKE_PREFIX_PATH=$env:VCPKG_ROOT/installed/${{ matrix.vcpkg_triplet }}"
+          cmake -S src/main/cpp -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/vcpkg_installed/${{ matrix.vcpkg_triplet }}"
           cmake --build build/native --target install
-          cp build/native/lib/${{ matrix.lib }} native/${{ matrix.label }}/
+          Copy-Item build/native/lib/* "native/${{ matrix.label }}/" -Force
           echo "=== built ==="
-          cmd /c "dir native\${{ matrix.label }} & file native\${{ matrix.label }}\${{ matrix.lib }}"
+          cmd /c "dir native\${{ matrix.label }}"
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.label }}

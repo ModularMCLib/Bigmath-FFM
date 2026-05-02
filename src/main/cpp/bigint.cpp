@@ -5,11 +5,17 @@
 
 #ifndef BIGMATH_NO_GMP
 
-void bigint_from_long(mpz_ptr *out, long val) {
+void bigint_from_long(mpz_ptr *out, int64_t val) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
-	mpz_set_si(*out, val);
+	if (val >= 0) {
+		mpz_set_ui(*out, static_cast<unsigned long>(val));
+	} else {
+		uint64_t magnitude = static_cast<uint64_t>(-(val + 1)) + 1;
+		mpz_set_ui(*out, static_cast<unsigned long>(magnitude));
+		mpz_neg(*out, *out);
+	}
 }
 
 void bigint_from_string(mpz_ptr *out, const char *str, int radix) {
@@ -60,7 +66,7 @@ void bigint_mod(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	mpz_tdiv_r(*out, a, b);
 }
 
-void bigint_pow(mpz_ptr *out, mpz_ptr a, unsigned long exp) {
+void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
@@ -89,8 +95,16 @@ int bigint_sign(mpz_ptr a) {
 	return mpz_sgn(a);
 }
 
-long bigint_to_long(mpz_ptr a) {
-	return mpz_get_si(a);
+int64_t bigint_to_long(mpz_ptr a) {
+	if (mpz_sgn(a) >= 0) {
+		return static_cast<int64_t>(mpz_get_ui(a));
+	}
+	mpz_t abs;
+	mpz_init(abs);
+	mpz_abs(abs, a);
+	uint64_t magnitude = mpz_get_ui(abs);
+	mpz_clear(abs);
+	return -static_cast<int64_t>(magnitude);
 }
 
 double bigint_to_double(mpz_ptr a) {
@@ -190,25 +204,25 @@ void bigint_xor(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	mpz_xor(*out, a, b);
 }
 
-void bigint_shl(mpz_ptr *out, mpz_ptr a, unsigned long bits) {
+void bigint_shl(mpz_ptr *out, mpz_ptr a, uint64_t bits) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
-	mpz_mul_2exp(*out, a, bits);
+	mpz_mul_2exp(*out, a, static_cast<mp_bitcnt_t>(bits));
 }
 
-void bigint_shr(mpz_ptr *out, mpz_ptr a, unsigned long bits) {
+void bigint_shr(mpz_ptr *out, mpz_ptr a, uint64_t bits) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
-	mpz_tdiv_q_2exp(*out, a, bits);
+	mpz_tdiv_q_2exp(*out, a, static_cast<mp_bitcnt_t>(bits));
 }
 
 int bigint_is_probably_prime(mpz_ptr a, int reps) {
 	return mpz_probab_prime_p(a, reps);
 }
 
-void bigint_factorial(mpz_ptr *out, unsigned long n) {
+void bigint_factorial(mpz_ptr *out, uint64_t n) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
@@ -224,19 +238,19 @@ void bigint_next_prime(mpz_ptr *out, mpz_ptr a) {
 
 #else
 
-void bigint_from_long(mpz_ptr *out, long) { *out = nullptr; }
+void bigint_from_long(mpz_ptr *out, int64_t) { *out = nullptr; }
 void bigint_from_string(mpz_ptr *out, const char *, int) { *out = nullptr; }
 void bigint_add(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_sub(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_mul(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_div(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_mod(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_pow(mpz_ptr *out, mpz_ptr, unsigned long) { *out = nullptr; }
+void bigint_pow(mpz_ptr *out, mpz_ptr, uint64_t) { *out = nullptr; }
 void bigint_neg(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
 void bigint_abs(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
 int  bigint_cmp(mpz_ptr, mpz_ptr) { return 0; }
 int  bigint_sign(mpz_ptr) { return 0; }
-long bigint_to_long(mpz_ptr) { return 0; }
+int64_t bigint_to_long(mpz_ptr) { return 0; }
 double bigint_to_double(mpz_ptr) { return 0.0; }
 
 void bigint_free_string(char *) { }
@@ -247,10 +261,10 @@ void bigint_sqrt(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
 void bigint_and(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_or(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_xor(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_shl(mpz_ptr *out, mpz_ptr, unsigned long) { *out = nullptr; }
-void bigint_shr(mpz_ptr *out, mpz_ptr, unsigned long) { *out = nullptr; }
+void bigint_shl(mpz_ptr *out, mpz_ptr, uint64_t) { *out = nullptr; }
+void bigint_shr(mpz_ptr *out, mpz_ptr, uint64_t) { *out = nullptr; }
 int  bigint_is_probably_prime(mpz_ptr, int) { return 0; }
-void bigint_factorial(mpz_ptr *out, unsigned long) { *out = nullptr; }
+void bigint_factorial(mpz_ptr *out, uint64_t) { *out = nullptr; }
 void bigint_next_prime(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
 
 #endif /* BIGMATH_NO_GMP */

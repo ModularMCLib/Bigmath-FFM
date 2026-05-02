@@ -2,6 +2,7 @@
 #define BIGMATH_FFM_H
 
 #include "export.h"
+#include <cstdint>
 
 #if __has_include(<gmp.h>) && __has_include(<mpfr.h>)
 #include <gmp.h>
@@ -20,14 +21,14 @@ typedef struct __bigmath_mpfr *mpfr_ptr;
 extern "C" {
 
 /* BigInt */
-BIGMATH_EXPORT void  bigint_from_long(mpz_ptr *out, long val);
+BIGMATH_EXPORT void  bigint_from_long(mpz_ptr *out, int64_t val);
 BIGMATH_EXPORT void  bigint_from_string(mpz_ptr *out, const char *str, int radix);
 BIGMATH_EXPORT void  bigint_add(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_sub(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_div(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_mod(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
-BIGMATH_EXPORT void  bigint_pow(mpz_ptr *out, mpz_ptr a, unsigned long exp);
+BIGMATH_EXPORT void  bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp);
 BIGMATH_EXPORT void  bigint_neg(mpz_ptr *out, mpz_ptr a);
 BIGMATH_EXPORT void  bigint_abs(mpz_ptr *out, mpz_ptr a);
 BIGMATH_EXPORT int   bigint_cmp(mpz_ptr a, mpz_ptr b);
@@ -42,13 +43,13 @@ BIGMATH_EXPORT void  bigint_sqrt(mpz_ptr *out, mpz_ptr a);
 BIGMATH_EXPORT void  bigint_and(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_or(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_xor(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
-BIGMATH_EXPORT void  bigint_shl(mpz_ptr *out, mpz_ptr a, unsigned long bits);
-BIGMATH_EXPORT void  bigint_shr(mpz_ptr *out, mpz_ptr a, unsigned long bits);
+BIGMATH_EXPORT void  bigint_shl(mpz_ptr *out, mpz_ptr a, uint64_t bits);
+BIGMATH_EXPORT void  bigint_shr(mpz_ptr *out, mpz_ptr a, uint64_t bits);
 BIGMATH_EXPORT int   bigint_is_probably_prime(mpz_ptr a, int reps);
-BIGMATH_EXPORT void  bigint_factorial(mpz_ptr *out, unsigned long n);
+BIGMATH_EXPORT void  bigint_factorial(mpz_ptr *out, uint64_t n);
 BIGMATH_EXPORT void  bigint_next_prime(mpz_ptr *out, mpz_ptr a);
 BIGMATH_EXPORT int   bigint_sign(mpz_ptr a);
-BIGMATH_EXPORT long  bigint_to_long(mpz_ptr a);
+BIGMATH_EXPORT int64_t bigint_to_long(mpz_ptr a);
 BIGMATH_EXPORT double bigint_to_double(mpz_ptr a);
 
 /* BigDecimal */
