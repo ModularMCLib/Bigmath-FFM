@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
 
@@ -34,11 +36,15 @@ public final class BigmathFFM {
 	private static final BigmathFFM INSTANCE = new BigmathFFM();
 
 	private final Arena arena = Arena.ofAuto();
+	private final Linker linker = Linker.nativeLinker();
 	private final SymbolLookup lookup;
+	private final Map<DowncallKey, MethodHandle> downcallCache = new ConcurrentHashMap<>();
 
 	private BigmathFFM() {
 		this.lookup = loadLibrary();
 	}
+
+	private record DowncallKey(String name, FunctionDescriptor descriptor) {}
 
 	private enum Os {
 		LINUX, MACOS, WINDOWS, ANDROID
@@ -207,7 +213,7 @@ public final class BigmathFFM {
 	 * Returns the native linker for the current platform.
 	 */
 	public Linker linker() {
-		return Linker.nativeLinker();
+		return linker;
 	}
 
 	/**
@@ -220,12 +226,11 @@ public final class BigmathFFM {
 	 * @throws UnsatisfiedLinkError if the symbol is not found
 	 */
 	public MethodHandle downcall(String name, FunctionDescriptor descriptor) {
-		return lookup.find(name)
-				.map(addr -> {
-					MethodHandle mh = linker().downcallHandle(addr, descriptor);
-					return mh;
-				})
-				.orElseThrow(() -> new UnsatisfiedLinkError("Symbol not found: " + name));
+		return downcallCache.computeIfAbsent(new DowncallKey(name, descriptor), key ->
+			lookup.find(key.name())
+				.map(addr -> linker.downcallHandle(addr, key.descriptor()))
+				.orElseThrow(() -> new UnsatisfiedLinkError("Symbol not found: " + key.name()))
+		);
 	}
 
 	/**

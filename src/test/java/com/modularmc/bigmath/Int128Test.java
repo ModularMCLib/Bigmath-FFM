@@ -123,6 +123,20 @@ class Int128Test {
 	}
 
 	@Test
+	void uppercaseHexString() {
+		try (Int128 i = Int128.fromString("FF", 16)) {
+			assertEquals("255", i.toString());
+		}
+	}
+
+	@Test
+	void radix62RoundTrip() {
+		try (Int128 i = Int128.fromString("Zz", 62)) {
+			assertEquals("Zz", i.toString(62));
+		}
+	}
+
+	@Test
 	void largeMultiplication() {
 		try (Int128 a = Int128.fromLong(1000000); Int128 b = Int128.fromLong(1000000)) {
 			try (Int128 c = a.multiply(b)) {

@@ -1,14 +1,51 @@
 #include "int128.h"
 
+static constexpr char INT128_DIGITS[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+static int digit_value(const char c, const int radix) {
+	if (c >= '0' && c <= '9') {
+		return c - '0';
+	}
+	if (c >= 'a' && c <= 'z') {
+		return c - 'a' + 10;
+	}
+	if (c >= 'A' && c <= 'Z') {
+		if (radix <= 36) {
+			return c - 'A' + 10;
+		}
+		return c - 'A' + 36;
+	}
+	return -1;
+}
+
+static char digit_char(const unsigned digit) {
+	return INT128_DIGITS[digit];
+}
+
 #ifdef HAVE_INT128
 
 static __int128 to_i128(const int128_box *a) {
 	return static_cast<__int128>(a->hi) << 64 | static_cast<uint64_t>(a->lo);
 }
 
+static unsigned __int128 to_u128(const int128_box *a) {
+	return (static_cast<unsigned __int128>(static_cast<uint64_t>(a->hi)) << 64)
+		| static_cast<uint64_t>(a->lo);
+}
+
 static void from_i128(int128_box *out, __int128 v) {
 	out->lo = static_cast<int64_t>(v);
 	out->hi = static_cast<int64_t>(v >> 64);
+}
+
+static void from_u128(int128_box *out, unsigned __int128 v) {
+	out->lo = static_cast<int64_t>(static_cast<uint64_t>(v));
+	out->hi = static_cast<int64_t>(static_cast<uint64_t>(v >> 64));
+}
+
+static unsigned __int128 abs_u128(const int128_box *a) {
+	unsigned __int128 bits = to_u128(a);
+	return a->hi < 0 ? (~bits + 1) : bits;
 }
 
 void int128_from_i64(int128_box *out, int64_t val) {
@@ -22,20 +59,24 @@ void int128_from_u64(int128_box *out, uint64_t val) {
 }
 
 void int128_from_string(int128_box *out, const char *str, int radix) {
-	__int128 v = 0;
+	if (radix < 2 || radix > 62) {
+		int128_from_i64(out, 0);
+		return;
+	}
+	unsigned __int128 v = 0;
 	bool neg = false;
 	const char *p = str;
 	if (*p == '-') { neg = true; p++; }
 	while (*p) {
 		const char c = *p++;
-		const int d = (c >= '0' && c <= '9') ? c - '0'
-			: (c >= 'a' && c <= 'f') ? c - 'a' + 10
-			: (c >= 'A' && c <= 'F') ? c - 'A' + 10
-			: -1;
-		if (d < 0) break;
+		const int d = digit_value(c, radix);
+		if (d < 0 || d >= radix) break;
 		v = v * radix + d;
 	}
-	from_i128(out, neg ? -v : v);
+	if (neg) {
+		v = ~v + 1;
+	}
+	from_u128(out, v);
 }
 
 void int128_add(int128_box *out, const int128_box *a, const int128_box *b) {
@@ -79,7 +120,9 @@ int int128_sign(const int128_box *a) {
 }
 
 char *int128_to_string(const int128_box *a, int radix) {
-	static constexpr char digits[] = "0123456789abcdef";
+	if (radix < 2 || radix > 62) {
+		return nullptr;
+	}
 	__int128 v = to_i128(a);
 	if (v == 0) {
 		const auto s = static_cast<char *>(malloc(2));
@@ -87,13 +130,14 @@ char *int128_to_string(const int128_box *a, int radix) {
 		return s;
 	}
 	const bool neg = (v < 0);
-	if (neg) v = -v;
+	unsigned __int128 magnitude = abs_u128(a);
 	char buf[256];
 	int pos = 255;
 	buf[pos] = '\0';
-	while (v > 0) {
-		buf[--pos] = digits[static_cast<int>(v % radix)];
-		v /= radix;
+	while (magnitude > 0) {
+		const auto digit = static_cast<unsigned>(magnitude % static_cast<unsigned>(radix));
+		buf[--pos] = digit_char(digit);
+		magnitude /= static_cast<unsigned>(radix);
 	}
 	if (neg) buf[--pos] = '-';
 	auto s = static_cast<char *>(malloc(255 - pos + 1));
@@ -142,39 +186,24 @@ void int128_from_u64(int128_box *out, uint64_t val) {
 }
 
 void int128_from_string(int128_box *out, const char *str, int radix) {
+	if (radix < 2 || radix > 62) {
+		out->lo = 0;
+		out->hi = 0;
+		return;
+	}
 	out->lo = 0;
 	out->hi = 0;
 	bool neg = false;
 	const char *p = str;
 	if (*p == '-') { neg = true; p++; }
-	uint64_t r = (uint64_t)radix;
+	const int128_box radix_box = {(int64_t)radix, 0};
 	while (*p) {
-		char c = *p++;
-		int d = (c >= '0' && c <= '9') ? c - '0'
-			: (c >= 'a' && c <= 'f') ? c - 'a' + 10
-			: (c >= 'A' && c <= 'F') ? c - 'A' + 10
-			: -1;
-		if (d < 0) break;
-		// out = out * radix + d
-		uint64_t old_lo = (uint64_t)out->lo;
-		uint64_t old_hi = (uint64_t)out->hi;
-		uint64_t lo0 = old_lo * r;
-		uint64_t hi0 = old_hi * r;
-		// add cross-product (old_lo * r) >> 64 to hi
-		// decompose: old_lo = (a_hi32 << 32) + a_lo32
-		//            r      = (b_hi32 << 32) + b_lo32
-		uint32_t a_lo32 = (uint32_t)old_lo;
-		uint32_t a_hi32 = (uint32_t)(old_lo >> 32);
-		uint32_t b_lo32 = (uint32_t)r;
-		uint32_t b_hi32 = (uint32_t)(r >> 32);
-		uint64_t cross = (uint64_t)a_lo32 * b_hi32 + (uint64_t)a_hi32 * b_lo32
-			+ ((uint64_t)a_lo32 * b_lo32 >> 32);
-		hi0 += (cross >> 32) + ((uint64_t)a_hi32 * b_hi32);
-		// add d
-		uint64_t lo1 = lo0 + (uint64_t)d;
-		uint64_t hi1 = hi0 + (lo1 < lo0 ? 1ULL : 0ULL);
-		out->lo = (int64_t)lo1;
-		out->hi = (int64_t)hi1;
+		const int d = digit_value(*p++, radix);
+		if (d < 0 || d >= radix) break;
+		int128_box product;
+		int128_mul(&product, out, &radix_box);
+		const int128_box digit_box = {(int64_t)d, 0};
+		int128_add(out, &product, &digit_box);
 	}
 	if (neg) {
 		neg_abs(out, out);
@@ -324,7 +353,9 @@ int int128_sign(const int128_box *a) {
 }
 
 char *int128_to_string(const int128_box *a, int radix) {
-	static const char digits[] = "0123456789abcdef";
+	if (radix < 2 || radix > 62) {
+		return nullptr;
+	}
 	if (is_zero(a)) {
 		char *s = (char *)malloc(2);
 		s[0] = '0'; s[1] = '\0';
@@ -336,53 +367,14 @@ char *int128_to_string(const int128_box *a, int radix) {
 	char buf[256];
 	int pos = 255;
 	buf[pos] = '\0';
-	uint64_t radix_u64 = (uint64_t)radix;
+	const int128_box radix_box = {(int64_t)radix, 0};
 	while (!is_zero(&val)) {
-		// val % radix and val /= radix using the same umul64 helper
-		// Use subtraction-based remainder
-		uint64_t r_lo = (uint64_t)val.lo;
-		uint64_t r_hi = (uint64_t)val.hi;
-		// simple sequential subtraction (radix is small, < 2^64)
-		int digit = 0;
-		while (r_hi > 0 || r_lo >= radix_u64) {
-			uint64_t sub_lo = radix_u64;
-			uint64_t sub_hi = 0;
-			uint64_t new_lo = r_lo - sub_lo;
-			uint64_t new_hi = r_hi - sub_hi - (new_lo > r_lo ? 1ULL : 0ULL);
-			r_lo = new_lo;
-			r_hi = new_hi;
-			digit++;
-		}
-		buf[--pos] = digits[digit];
-		val.lo = (int64_t)r_lo;
-		val.hi = (int64_t)r_hi;
-		// divide val by radix using multiplication by reciprocal
-		// Actually we already have remainder, but we need quotient
-		// Re-read from original value and divide
-		uint64_t q_lo, q_hi;
-		// val = val / radix using division algorithm
-		// Since radix is small, we can use standard 128/64 division
-		q_hi = r_hi / radix_u64;
-		uint64_t rem = r_hi % radix_u64;
-		// combine rem << 64 | r_lo
-		uint64_t combined_hi = rem;
-		uint64_t combined_lo = r_lo;
-		// combined / radix_u64
-		// This is a 128/64 division. For radix < 2^32, we can split.
-		// Simple approach: use double-word division
-		uint64_t q_lo_part;
-		if (combined_hi == 0) {
-			q_lo_part = combined_lo / radix_u64;
-		} else {
-			// combined_hi < radix_u64 (since it's a remainder)
-			uint64_t tmp = (combined_hi << 32) | (combined_lo >> 32);
-			uint64_t q_tmp = tmp / radix_u64;
-			uint64_t r_tmp = tmp % radix_u64;
-			uint64_t tmp2 = (r_tmp << 32) | (combined_lo & 0xFFFFFFFFULL);
-			q_lo_part = (q_tmp << 32) | (tmp2 / radix_u64);
-		}
-		val.lo = (int64_t)q_lo_part;
-		val.hi = (int64_t)q_hi;
+		int128_box remainder;
+		int128_mod(&remainder, &val, &radix_box);
+		buf[--pos] = digit_char((unsigned)(uint64_t)remainder.lo);
+		int128_box quotient;
+		int128_div(&quotient, &val, &radix_box);
+		val = quotient;
 	}
 	if (neg) buf[--pos] = '-';
 	char *s = (char *)malloc(255 - pos + 1);
