@@ -178,11 +178,11 @@ tasks.named('processResources') {
 	from(layout.projectDirectory.dir('native')) {
 		into('native')
 		includeEmptyDirs = false
-		include '**/*.so', '**/*.so.*', '**/*.dylib', '**/*.dll'
+		include '**/*'
 		exclude { details ->
-			details.relativePath.pathString.startsWith("${nativeClassifier}/") &&
-					generatedNativeDir.exists() &&
-					(generatedNativeDir.listFiles()?.length ?: 0) > 0
+			details.relativePath.segments.length == 2 &&
+					details.relativePath.segments[0] == nativeClassifier &&
+					new File(generatedNativeDir, details.relativePath.segments[1]).exists()
 		}
 	}
 	from(generatedNativeRootDir) {
