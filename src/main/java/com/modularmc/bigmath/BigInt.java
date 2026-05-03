@@ -17,6 +17,12 @@ import java.math.BigInteger;
  * {@link #close()} to free the underlying resource, or use
  * try-with-resources.
  * <p>
+ * Instances are immutable from the Java caller's perspective: every arithmetic
+ * method allocates and returns a new native-backed value, leaving the original
+ * operand unchanged. This mirrors the public API contract of
+ * {@link java.math.BigInteger}, while delegating the underlying heavy-lifting
+ * to GMP through the FFM bridge.
+ * <p>
  * Constants {@link #ZERO}, {@link #ONE}, {@link #TWO}, {@link #TEN}, and
  * {@link #NEGATIVE_ONE} use a global arena and should not be closed.
  */
