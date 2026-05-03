@@ -66,6 +66,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Make native staging script executable
+        if: runner.os != 'Windows'
+        run: chmod +x .github/scripts/stage-native-runtime-unix.sh
       - name: Configure MSVC for Windows ARM64
         if: matrix.vcpkg_triplet == 'arm64-windows'
         uses: ilammy/msvc-dev-cmd@v1
@@ -127,11 +130,18 @@ jobs:
         run: |
           chmod +x gradlew 2>/dev/null || true
           ./gradlew build -x test -Dbigmath.native.classifier=${{ matrix.label }}
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            .github/scripts/stage-native-runtime-unix.sh linux ${{ matrix.label }} libbigmath_ffm.so
+          else
+            .github/scripts/stage-native-runtime-unix.sh macos ${{ matrix.label }} libbigmath_ffm.dylib
+          fi
         shell: bash
       - name: Build native
         if: runner.os == 'Windows'
         shell: pwsh
-        run: .\gradlew.bat --% build -x test -Dbigmath.native.classifier=${{ matrix.label }}
+        run: |
+          .\gradlew.bat --% build -x test -Dbigmath.native.classifier=${{ matrix.label }}
+          .github/scripts/stage-native-runtime-windows.ps1 -Label '${{ matrix.label }}' -Triplet '${{ matrix.vcpkg_triplet }}'
 
       - name: Save vcpkg binary cache
         if: runner.os == 'Windows' && !cancelled()
@@ -143,7 +153,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: native-libs-${{ matrix.label }}
-          path: build/generated/local-native/${{ matrix.label }}/**
+          path: native/${{ matrix.label }}/**
           retention-days: 7
 
   android-build:

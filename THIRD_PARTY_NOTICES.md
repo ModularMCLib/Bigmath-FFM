@@ -30,6 +30,7 @@ Relevant loading logic lives in:
 | GNU libstdc++ runtime | `libstdc++-6.dll`                               | GPL-3.0-or-later with GCC Runtime Library Exception 3.1                                                                                              | https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html |
 | GNU libgcc runtime    | `libgcc_s_*.dll`                                | GPL-3.0-or-later with GCC Runtime Library Exception 3.1                                                                                              | https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html |
 | MinGW-w64 winpthreads | `libwinpthread-1.dll`                           | Upstream `COPYING.winpthreads` notice as shipped by MinGW-w64                                                                                        | https://www.mingw-w64.org/                                   |
+| Microsoft VC++ runtime | `msvcp140.dll`, `vcruntime140*.dll`, `concrt140.dll` | Redistributable in unmodified form by licensed Visual Studio users under the Visual Studio 2022 distributable code terms                            | https://learn.microsoft.com/en-gb/visualstudio/releases/2022/redistribution |
 
 ### License Texts
 
@@ -47,6 +48,9 @@ Relevant loading logic lives in:
 - If you redistribute Windows runtime DLLs built from a MinGW-w64 toolchain,
   ship the originating toolchain's `COPYING.RUNTIME` and
   `COPYING.winpthreads` files alongside your binary artifact.
+- When native artifacts bundle third-party runtime libraries, Bigmath-FFM also
+  stages a per-classifier `licenses/` directory next to those binaries so the
+  unpacked package carries the corresponding notices with it.
 
 ### Corresponding Source
 

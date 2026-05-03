@@ -25,12 +25,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y libgmp-dev libmpfr-dev cmake
+      - run: chmod +x .github/scripts/stage-native-runtime-unix.sh
       - name: Build
         run: |
           mkdir -p build/native native/${{ matrix.label }}
           cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
           cmake --build build/native --target install -j$(nproc)
-          cp build/native/lib/* native/${{ matrix.label }}/
+          .github/scripts/stage-native-runtime-unix.sh linux ${{ matrix.label }} ${{ matrix.lib }}
           echo "=== built ==="
           ls -la native/${{ matrix.label }}/
           file native/${{ matrix.label }}/${{ matrix.lib }}
@@ -55,12 +56,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: brew install gmp mpfr cmake
+      - run: chmod +x .github/scripts/stage-native-runtime-unix.sh
       - name: Build
         run: |
           mkdir -p build/native native/${{ matrix.label }}
           cmake -S src/main/cpp -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native
           cmake --build build/native --target install -j$(sysctl -n hw.ncpu)
-          cp build/native/lib/* native/${{ matrix.label }}/
+          .github/scripts/stage-native-runtime-unix.sh macos ${{ matrix.label }} ${{ matrix.lib }}
           echo "=== built ==="
           ls -la native/${{ matrix.label }}/
           file native/${{ matrix.label }}/${{ matrix.lib }}
@@ -132,7 +134,7 @@ jobs:
           New-Item -Force -ItemType Directory -Path build/native, "native/${{ matrix.label }}"
           cmake -S src/main/cpp -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build/native "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/vcpkg_installed/${{ matrix.vcpkg_triplet }}"
           cmake --build build/native --target install
-          Copy-Item build/native/lib/* "native/${{ matrix.label }}/" -Force
+          .github/scripts/stage-native-runtime-windows.ps1 -Label '${{ matrix.label }}' -Triplet '${{ matrix.vcpkg_triplet }}'
           echo "=== built ==="
           cmd /c "dir native\${{ matrix.label }}"
       - uses: actions/upload-artifact@v4
