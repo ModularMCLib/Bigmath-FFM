@@ -61,7 +61,7 @@ tasks.withType(Test).configureEach {
 		}
 	}
 	def nativeDir = layout.projectDirectory.dir('native').asFile
-	onlyIf { project.hasProperty('runTests') || nativeDir.exists() }
+	onlyIf { project.hasProperty('runTests') || nativeDir.exists() || bigmathBuiltNativePath.get().asFile.exists() }
 	testLogging {
 		showStandardStreams = true
 	}
@@ -94,10 +94,11 @@ tasks.register('jmh', JavaExec) {
 		if (builtNative.exists()) {
 			systemProperty 'bigmath.native.path', builtNative.absolutePath
 		}
+		layout.buildDirectory.dir('reports/jmh').get().asFile.mkdirs()
 	}
 
 	def nativeDir = layout.projectDirectory.dir('native').asFile
-	onlyIf { nativeDir.exists() }
+	onlyIf { nativeDir.exists() || bigmathBuiltNativePath.get().asFile.exists() }
 
 	if (project.hasProperty('jmhIncludes')) {
 		args project.property('jmhIncludes').toString()
