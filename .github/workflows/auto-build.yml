@@ -80,7 +80,7 @@ jobs:
           - os: windows-latest
             label: windows-x86-64
             lib: bigmath_ffm.dll
-            vcpkg_triplet: x64-mingw-dynamic
+            vcpkg_triplet: x64-mingw-static-release
           - os: windows-11-arm
             label: windows-aarch64
             lib: bigmath_ffm.dll
@@ -103,7 +103,7 @@ jobs:
           "CXX=cl" >> $env:GITHUB_ENV
           "BIGMATH_WINDOWS_COMPILER=msvc" >> $env:GITHUB_ENV
       - name: Configure MinGW for Windows x64
-        if: matrix.vcpkg_triplet == 'x64-mingw-dynamic'
+        if: matrix.vcpkg_triplet == 'x64-mingw-static-release'
         shell: pwsh
         run: |
           $gcc = (Get-Command gcc -ErrorAction Stop).Source
