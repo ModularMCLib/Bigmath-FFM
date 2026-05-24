@@ -30,6 +30,18 @@ class BigDeciTest {
 	}
 
 	@Test
+	void addIntoReusesTarget() {
+		try (BigDeci a = BigDeci.fromDouble(1.5, 64);
+			BigDeci b = BigDeci.fromDouble(2.5, 64);
+			BigDeci result = BigDeci.fromDouble(0.0, 64)) {
+			assertSame(result, result.addInto(a, b));
+			assertEquals(4.0, result.toDouble(), 1e-10);
+			result.addInto(result, b);
+			assertEquals(6.5, result.toDouble(), 1e-10);
+		}
+	}
+
+	@Test
 	void subtract() {
 		try (BigDeci a = BigDeci.fromDouble(5.0, 64);
 			BigDeci b = BigDeci.fromDouble(3.5, 64)) {
@@ -46,6 +58,35 @@ class BigDeciTest {
 			try (BigDeci c = a.multiply(b)) {
 				assertEquals(4.5, c.toDouble(), 1e-10);
 			}
+		}
+	}
+
+	@Test
+	void multiplyDivideAndSqrtIntoReuseTarget() {
+		try (BigDeci a = BigDeci.fromDouble(3.0, 64);
+			BigDeci b = BigDeci.fromDouble(1.5, 64);
+			BigDeci divisor = BigDeci.fromDouble(2.0, 64);
+			BigDeci result = BigDeci.fromDouble(0.0, 64)) {
+			result.multiplyInto(a, b);
+			assertEquals(4.5, result.toDouble(), 1e-10);
+			result.divideInto(result, divisor);
+			assertEquals(2.25, result.toDouble(), 1e-10);
+			result.set(100.0);
+			result.sqrtInto(result);
+			assertEquals(10.0, result.toDouble(), 1e-10);
+		}
+	}
+
+	@Test
+	void setReusesTarget() {
+		try (BigDeci source = BigDeci.fromString("2.5", 64);
+			BigDeci result = BigDeci.fromDouble(0.0, 64)) {
+			assertSame(result, result.set(1.25));
+			assertEquals(1.25, result.toDouble(), 1e-10);
+			result.set("3.5", 64);
+			assertEquals(3.5, result.toDouble(), 1e-10);
+			result.set(source);
+			assertEquals(2.5, result.toDouble(), 1e-10);
 		}
 	}
 

@@ -60,6 +60,15 @@ class Int128Test {
 	}
 
 	@Test
+	void divideLongMinByNegativeOneUsesWideResult() {
+		try (Int128 a = Int128.fromLong(Long.MIN_VALUE); Int128 b = Int128.fromLong(-1)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("9223372036854775808", c.toString());
+			}
+		}
+	}
+
+	@Test
 	void mod() {
 		try (Int128 a = Int128.fromLong(100); Int128 b = Int128.fromLong(30)) {
 			try (Int128 c = a.mod(b)) {

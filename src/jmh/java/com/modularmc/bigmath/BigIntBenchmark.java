@@ -28,17 +28,20 @@ public class BigIntBenchmark {
 	public static class SmallState {
 		BigInt left;
 		BigInt right;
+		BigInt result;
 
 		@Setup(Level.Trial)
 		public void setup() {
 			left = BigInt.fromLong(123456789L);
 			right = BigInt.fromLong(987654321L);
+			result = BigInt.fromLong(0);
 		}
 
 		@TearDown(Level.Trial)
 		public void tearDown() {
 			left.close();
 			right.close();
+			result.close();
 		}
 	}
 
@@ -49,17 +52,20 @@ public class BigIntBenchmark {
 
 		BigInt left;
 		BigInt right;
+		BigInt result;
 
 		@Setup(Level.Trial)
 		public void setup() {
 			left = BigInt.fromString(repeatDigits("1234567890", digits), 10);
 			right = BigInt.fromString(repeatDigits("9876543210", digits), 10);
+			result = BigInt.fromLong(0);
 		}
 
 		@TearDown(Level.Trial)
 		public void tearDown() {
 			left.close();
 			right.close();
+			result.close();
 		}
 	}
 
@@ -71,10 +77,20 @@ public class BigIntBenchmark {
 	}
 
 	@Benchmark
+	public void addSmallInto(SmallState state, Blackhole blackhole) {
+		blackhole.consume(state.result.addInto(state.left, state.right));
+	}
+
+	@Benchmark
 	public void multiplyLarge(LargeState state, Blackhole blackhole) {
 		try (BigInt result = state.left.multiply(state.right)) {
 			blackhole.consume(result);
 		}
+	}
+
+	@Benchmark
+	public void multiplyLargeInto(LargeState state, Blackhole blackhole) {
+		blackhole.consume(state.result.multiplyInto(state.left, state.right));
 	}
 
 	@Benchmark

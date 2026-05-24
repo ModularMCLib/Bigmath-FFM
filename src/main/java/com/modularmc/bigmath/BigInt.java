@@ -17,11 +17,10 @@ import java.math.BigInteger;
  * {@link #close()} to free the underlying resource, or use
  * try-with-resources.
  * <p>
- * Instances are immutable from the Java caller's perspective: every arithmetic
- * method allocates and returns a new native-backed value, leaving the original
- * operand unchanged. This mirrors the public API contract of
- * {@link java.math.BigInteger}, while delegating the underlying heavy-lifting
- * to GMP through the FFM bridge.
+ * The ordinary arithmetic methods allocate and return a new native-backed
+ * value, leaving the original operands unchanged. For hot loops, {@code set}
+ * and {@code *Into} methods mutate the current native value so callers can
+ * reuse an existing result object and avoid repeated native allocations.
  * <p>
  * Constants {@link #ZERO}, {@link #ONE}, {@link #TWO}, {@link #TEN}, and
  * {@link #NEGATIVE_ONE} use a global arena and should not be closed.
@@ -117,6 +116,34 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 			"bigint_from_string",
 			FunctionDescriptors.BIGINT_FROM_STRING
 	);
+	private static final MethodHandle BIGINT_SET_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigint_set",
+			FunctionDescriptors.BIGINT_SET
+	);
+	private static final MethodHandle BIGINT_SET_LONG_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigint_set_long",
+			FunctionDescriptors.BIGINT_SET_LONG
+	);
+	private static final MethodHandle BIGINT_SET_STRING_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigint_set_string",
+			FunctionDescriptors.BIGINT_SET_STRING
+	);
+	private static final MethodHandle BIGINT_ADD_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigint_add_into",
+			FunctionDescriptors.BIGINT_BINARY_INTO
+	);
+	private static final MethodHandle BIGINT_MUL_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigint_mul_into",
+			FunctionDescriptors.BIGINT_BINARY_INTO
+	);
+	private static final MethodHandle BIGINT_DIV_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigint_div_into",
+			FunctionDescriptors.BIGINT_BINARY_INTO
+	);
+	private static final MethodHandle BIGINT_SQRT_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigint_sqrt_into",
+			FunctionDescriptors.BIGINT_UNARY_INTO
+	);
 	private static final MethodHandle BIGINT_SIGN_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_sign",
 			FunctionDescriptors.BIGINT_SIGN
@@ -157,6 +184,19 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	private final MemorySegment nativePtr;
 	private final Arena arena;
 
+	MemorySegment nativePtr() {
+		return nativePtr;
+	}
+
+	static BigInt copyOf(MemorySegment value) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		invokeUnaryOut(BIGINT_ABS_HANDLE, result, ZERO.nativePtr);
+		MemorySegment ptr = result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null);
+		invokeSet(ptr, value);
+		return new BigInt(ptr, arena);
+	}
+
 	/**
 	 * Creates a {@code BigInt} from a primitive {@code long}.
 	 *
@@ -187,7 +227,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
 		try (Arena tmp = Arena.ofConfined()) {
 			MemorySegment str = tmp.allocateFrom(value, java.nio.charset.StandardCharsets.UTF_8);
-			invokeOutAddressInt(BIGINT_FROM_STRING_HANDLE, ptr, str, radix);
+			invokeOutAddressInt(ptr, str, radix);
 		}
 		return new BigInt(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
@@ -200,6 +240,92 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	 */
 	public static BigInt fromBigInteger(BigInteger val) {
 		return fromString(val.toString(), 10);
+	}
+
+	/**
+	 * Replaces this value with {@code value}.
+	 *
+	 * @param value the source value
+	 * @return this instance
+	 */
+	public BigInt set(long value) {
+		ensureMutable();
+		invokeSetLong(nativePtr, value);
+		return this;
+	}
+
+	/**
+	 * Parses {@code value} and replaces this instance's native value.
+	 *
+	 * @param value the string to parse
+	 * @param radix the base, between 2 and 62 inclusive
+	 * @return this instance
+	 */
+	public BigInt set(String value, int radix) {
+		ensureMutable();
+		try (Arena tmp = Arena.ofConfined()) {
+			MemorySegment str = tmp.allocateFrom(value, java.nio.charset.StandardCharsets.UTF_8);
+			invokeSetString(nativePtr, str, radix);
+		}
+		return this;
+	}
+
+	/**
+	 * Copies {@code value} into this instance.
+	 *
+	 * @param value the source value
+	 * @return this instance
+	 */
+	public BigInt set(BigInt value) {
+		ensureMutable();
+		if (this != value) {
+			invokeSet(nativePtr, value.nativePtr);
+		}
+		return this;
+	}
+
+	/**
+	 * Replaces this value with {@code left + right}.
+	 *
+	 * @return this instance
+	 */
+	public BigInt addInto(BigInt left, BigInt right) {
+		ensureMutable();
+		invokeBinaryOut(BIGINT_ADD_INTO_HANDLE, nativePtr, left.nativePtr, right.nativePtr);
+		return this;
+	}
+
+	/**
+	 * Replaces this value with {@code left * right}.
+	 *
+	 * @return this instance
+	 */
+	public BigInt multiplyInto(BigInt left, BigInt right) {
+		ensureMutable();
+		invokeBinaryOut(BIGINT_MUL_INTO_HANDLE, nativePtr, left.nativePtr, right.nativePtr);
+		return this;
+	}
+
+	/**
+	 * Replaces this value with {@code left / right}.
+	 *
+	 * @return this instance
+	 */
+	public BigInt divideInto(BigInt left, BigInt right) {
+		ensureMutable();
+		invokeBinaryOut(BIGINT_DIV_INTO_HANDLE, nativePtr, left.nativePtr, right.nativePtr);
+		return this;
+	}
+
+	/**
+	 * Replaces this value with {@code floor(sqrt(value))}.
+	 *
+	 * @return this instance
+	 */
+	public BigInt sqrtInto(BigInt value) {
+		ensureMutable();
+		invokeUnaryOut(BIGINT_SQRT_INTO_HANDLE, nativePtr, value.nativePtr);
+		return this;
 	}
 
 	/**
@@ -429,7 +555,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	 */
 	@Override
 	public int compareTo(BigInt other) {
-		return invokeIntBinary(BIGINT_CMP_HANDLE, nativePtr, other.nativePtr);
+		return invokeIntBinary(nativePtr, other.nativePtr);
 	}
 
 	/**
@@ -437,7 +563,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	 * {@code 1} (positive).
 	 */
 	public int signum() {
-		return invokeIntUnary(BIGINT_SIGN_HANDLE, nativePtr);
+		return invokeIntUnary(nativePtr);
 	}
 
 	/**
@@ -447,7 +573,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	 * @return {@code true} if probably prime
 	 */
 	public boolean isProbablyPrime(int certainty) {
-		return invokeIntAddressInt(BIGINT_IS_PROBABLY_PRIME_HANDLE, nativePtr, certainty) != 0;
+		return invokeIntAddressInt(nativePtr, certainty) != 0;
 	}
 
 	/**
@@ -456,7 +582,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	 * @param radix base, between 2 and 62 inclusive
 	 */
 	public String toString(int radix) {
-		MemorySegment result = invokeStringWithRadix(BIGINT_TO_STRING_HANDLE, nativePtr, radix);
+		MemorySegment result = invokeStringWithRadix(nativePtr, radix);
 		try {
 			return result.reinterpret(Long.MAX_VALUE).getString(0);
 		} finally {
@@ -476,7 +602,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	 * comma separator).
 	 */
 	public String toFormattedString() {
-		MemorySegment result = invokeFormat(BIGINT_FORMAT_HANDLE, nativePtr, 3, BIGINT_COMMA_SEPARATOR);
+		MemorySegment result = invokeFormat(nativePtr, 3, BIGINT_COMMA_SEPARATOR);
 		try {
 			return result.reinterpret(Long.MAX_VALUE).getString(0);
 		} finally {
@@ -492,7 +618,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	 */
 	public String toFormattedString(int groupSize, String groupSep) {
 		if (",".equals(groupSep)) {
-			MemorySegment result = invokeFormat(BIGINT_FORMAT_HANDLE, nativePtr, groupSize, BIGINT_COMMA_SEPARATOR);
+			MemorySegment result = invokeFormat(nativePtr, groupSize, BIGINT_COMMA_SEPARATOR);
 			try {
 				return result.reinterpret(Long.MAX_VALUE).getString(0);
 			} finally {
@@ -501,7 +627,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 		try (Arena tmp = Arena.ofConfined()) {
 			MemorySegment separator = tmp.allocateFrom(groupSep, java.nio.charset.StandardCharsets.UTF_8);
-			MemorySegment result = invokeFormat(BIGINT_FORMAT_HANDLE, nativePtr, groupSize, separator);
+			MemorySegment result = invokeFormat(nativePtr, groupSize, separator);
 			try {
 				return result.reinterpret(Long.MAX_VALUE).getString(0);
 			} finally {
@@ -528,7 +654,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 
 	@Override
 	public long longValue() {
-		return invokeLongUnary(BIGINT_TO_LONG_HANDLE, nativePtr);
+		return invokeLongUnary(nativePtr);
 	}
 
 	@Override
@@ -538,7 +664,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 
 	@Override
 	public double doubleValue() {
-		return invokeDoubleUnary(BIGINT_TO_DOUBLE_HANDLE, nativePtr);
+		return invokeDoubleUnary(nativePtr);
 	}
 
 	@Override
@@ -567,6 +693,36 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
+	private static void invokeSet(MemorySegment out, MemorySegment value) {
+		try {
+			BIGINT_SET_HANDLE.invokeExact(out, value);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	private static void invokeSetLong(MemorySegment out, long value) {
+		try {
+			BIGINT_SET_LONG_HANDLE.invokeExact(out, value);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	private static void invokeSetString(MemorySegment out, MemorySegment value, int radix) {
+		try {
+			BIGINT_SET_STRING_HANDLE.invokeExact(out, value, radix);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
 	private static void invokeOutAddressLong(MethodHandle handle, MemorySegment out, MemorySegment value, long argument) {
 		try {
 			handle.invokeExact(out, value, argument);
@@ -587,9 +743,9 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static void invokeOutAddressInt(MethodHandle handle, MemorySegment out, MemorySegment value, int argument) {
+	private static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int argument) {
 		try {
-			handle.invokeExact(out, value, argument);
+			BIGINT_FROM_STRING_HANDLE.invokeExact(out, value, argument);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -597,9 +753,9 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static MemorySegment invokeStringWithRadix(MethodHandle handle, MemorySegment value, int radix) {
+	private static MemorySegment invokeStringWithRadix(MemorySegment value, int radix) {
 		try {
-			return (MemorySegment) handle.invokeExact(value, radix);
+			return (MemorySegment) BIGINT_TO_STRING_HANDLE.invokeExact(value, radix);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -607,9 +763,9 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static MemorySegment invokeFormat(MethodHandle handle, MemorySegment value, int groupSize, MemorySegment separator) {
+	private static MemorySegment invokeFormat(MemorySegment value, int groupSize, MemorySegment separator) {
 		try {
-			return (MemorySegment) handle.invokeExact(value, groupSize, separator);
+			return (MemorySegment) BIGINT_FORMAT_HANDLE.invokeExact(value, groupSize, separator);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -617,9 +773,9 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static int invokeIntBinary(MethodHandle handle, MemorySegment left, MemorySegment right) {
+	private static int invokeIntBinary(MemorySegment left, MemorySegment right) {
 		try {
-			return (int) handle.invokeExact(left, right);
+			return (int) BIGINT_CMP_HANDLE.invokeExact(left, right);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -627,9 +783,9 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static int invokeIntUnary(MethodHandle handle, MemorySegment value) {
+	private static int invokeIntUnary(MemorySegment value) {
 		try {
-			return (int) handle.invokeExact(value);
+			return (int) BIGINT_SIGN_HANDLE.invokeExact(value);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -637,9 +793,9 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static int invokeIntAddressInt(MethodHandle handle, MemorySegment value, int argument) {
+	private static int invokeIntAddressInt(MemorySegment value, int argument) {
 		try {
-			return (int) handle.invokeExact(value, argument);
+			return (int) BIGINT_IS_PROBABLY_PRIME_HANDLE.invokeExact(value, argument);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -647,9 +803,9 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static long invokeLongUnary(MethodHandle handle, MemorySegment value) {
+	private static long invokeLongUnary(MemorySegment value) {
 		try {
-			return (long) handle.invokeExact(value);
+			return (long) BIGINT_TO_LONG_HANDLE.invokeExact(value);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -657,9 +813,9 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static double invokeDoubleUnary(MethodHandle handle, MemorySegment value) {
+	private static double invokeDoubleUnary(MemorySegment value) {
 		try {
-			return (double) handle.invokeExact(value);
+			return (double) BIGINT_TO_DOUBLE_HANDLE.invokeExact(value);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -693,5 +849,11 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 				.reinterpret(arena, null)
 				.reinterpret(Long.MAX_VALUE);
 		return new BigInt(nativePtr, arena);
+	}
+
+	private void ensureMutable() {
+		if (this == ZERO || this == ONE || this == TWO || this == TEN || this == NEGATIVE_ONE) {
+			throw new UnsupportedOperationException("BigInt constants are shared and cannot be mutated");
+		}
 	}
 }

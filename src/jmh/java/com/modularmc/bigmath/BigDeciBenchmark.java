@@ -31,17 +31,20 @@ public class BigDeciBenchmark {
 
 		BigDeci left;
 		BigDeci right;
+		BigDeci result;
 
 		@Setup(Level.Trial)
 		public void setup() {
 			left = BigDeci.fromString("1234567890.12345678901234567890", precision);
 			right = BigDeci.fromString("9876543210.98765432109876543210", precision);
+			result = BigDeci.fromDouble(0.0, precision);
 		}
 
 		@TearDown(Level.Trial)
 		public void tearDown() {
 			left.close();
 			right.close();
+			result.close();
 		}
 	}
 
@@ -53,6 +56,11 @@ public class BigDeciBenchmark {
 	}
 
 	@Benchmark
+	public void addInto(PrecisionState state, Blackhole blackhole) {
+		blackhole.consume(state.result.addInto(state.left, state.right));
+	}
+
+	@Benchmark
 	public void divide(PrecisionState state, Blackhole blackhole) {
 		try (BigDeci result = state.left.divide(state.right)) {
 			blackhole.consume(result);
@@ -60,10 +68,20 @@ public class BigDeciBenchmark {
 	}
 
 	@Benchmark
+	public void divideInto(PrecisionState state, Blackhole blackhole) {
+		blackhole.consume(state.result.divideInto(state.left, state.right));
+	}
+
+	@Benchmark
 	public void sqrt(PrecisionState state, Blackhole blackhole) {
 		try (BigDeci result = state.left.sqrt()) {
 			blackhole.consume(result);
 		}
+	}
+
+	@Benchmark
+	public void sqrtInto(PrecisionState state, Blackhole blackhole) {
+		blackhole.consume(state.result.sqrtInto(state.left));
 	}
 
 	@Benchmark
