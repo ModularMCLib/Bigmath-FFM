@@ -35,53 +35,232 @@ jobs:
           echo "perf=$PERF" >> "$GITHUB_OUTPUT"
 
           if [ "$SKIP" = "true" ]; then
-            echo "::notice::ci:skip detected — performance benchmarks skipped"
+            echo "::notice::ci:skip detected - performance benchmarks skipped"
           elif [ "$PERF" != "true" ]; then
-            echo "::notice::ci:perf label not present — performance benchmarks skipped"
+            echo "::notice::ci:perf label not present - performance benchmarks skipped"
           fi
 
   benchmark:
-    name: Run JMH Benchmarks
+    name: JMH (${{ matrix.label }})
     needs: check
     if: needs.check.outputs.skip != 'true' && needs.check.outputs.perf == 'true'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x86-64
+          - os: ubuntu-24.04-arm
+            label: linux-aarch64
+          - os: macos-14
+            label: macos-x86-64
+          - os: macos-latest
+            label: macos-aarch64
+          - os: windows-latest
+            label: windows-x86-64
+            vcpkg_triplet: x64-mingw-static-release
+          - os: windows-11-arm
+            label: windows-aarch64
+            vcpkg_triplet: arm64-windows
+    runs-on: ${{ matrix.os }}
+    env:
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
     steps:
       - uses: actions/checkout@v4
-      - name: Install native dependencies
+      - name: Configure MSVC for Windows ARM64
+        if: matrix.vcpkg_triplet == 'arm64-windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_arm64
+      - name: Configure MSVC compiler env
+        if: matrix.vcpkg_triplet == 'arm64-windows'
+        shell: pwsh
+        run: |
+          "CC=cl" >> $env:GITHUB_ENV
+          "CXX=cl" >> $env:GITHUB_ENV
+          "BIGMATH_WINDOWS_COMPILER=msvc" >> $env:GITHUB_ENV
+      - name: Configure MinGW for Windows x64
+        if: matrix.vcpkg_triplet == 'x64-mingw-static-release'
+        shell: pwsh
+        run: |
+          $gcc = (Get-Command gcc -ErrorAction Stop).Source
+          $gxx = (Get-Command g++ -ErrorAction Stop).Source
+          "CC=$gcc" >> $env:GITHUB_ENV
+          "CXX=$gxx" >> $env:GITHUB_ENV
+          "BIGMATH_WINDOWS_COMPILER=mingw" >> $env:GITHUB_ENV
+      - name: Setup Build
+        uses: ./.github/actions/build_setup
+      - name: Restore vcpkg binary cache
+        if: runner.os == 'Windows'
+        id: vcpkg-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: .vcpkg-cache
+          key: perf-vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            perf-vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}-
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgmp-dev libmpfr-dev cmake
-      - name: Setup Build
-        uses: ./.github/actions/build_setup
+      - name: Install macOS deps
+        if: runner.os == 'macOS'
+        run: brew install gmp mpfr cmake
+      - name: Install Windows deps
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
+          "CMAKE_PREFIX_PATH=${{ github.workspace }}\vcpkg_installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
+          "BIGMATH_VCPKG_TRIPLET=${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
+      - name: Save vcpkg binary cache
+        if: runner.os == 'Windows' && !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-cache
+          key: ${{ steps.vcpkg-cache-restore.outputs.cache-primary-key }}
       - name: Grant execute permission for gradlew
+        if: runner.os != 'Windows'
         run: chmod +x gradlew
       - name: Run JMH
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           mkdir -p build/reports/jmh
-          ./gradlew jmh "-PjmhArgs=-wi 2 -i 3 -r 1s -w 1s -foe true -rf csv -rff build/reports/jmh/jmh-result.csv"
+          ./gradlew jmh "-PjmhArgs=-wi 2 -i 3 -r 1s -w 1s -foe true -rf csv -rff build/reports/jmh/jmh-result-${{ matrix.label }}.csv"
+      - name: Run JMH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -Force -ItemType Directory -Path build/reports/jmh | Out-Null
+          .\gradlew.bat jmh "-PjmhArgs=-wi 2 -i 3 -r 1s -w 1s -foe true -rf csv -rff build/reports/jmh/jmh-result-${{ matrix.label }}.csv"
       - name: Publish benchmark summary
         shell: bash
         run: |
+          result="build/reports/jmh/jmh-result-${{ matrix.label }}.csv"
           {
-            echo "## JMH Results"
+            echo "## JMH Results - ${{ matrix.label }}"
             echo
-            echo '| Benchmark | Score | Error (99.9%) | Unit | digits | precision |'
-            echo '|---|---:|---:|---|---:|---:|'
-            tail -n +2 build/reports/jmh/jmh-result.csv | while IFS=, read -r benchmark mode threads samples score score_error unit digits precision; do
+            echo '| Benchmark | Score | Error (99.9%) | Unit | Params |'
+            echo '|---|---:|---:|---|---|'
+            tail -n +2 "$result" | while IFS=, read -r benchmark mode threads samples score score_error unit params; do
               benchmark=${benchmark//\"/}
               score=${score//\"/}
               score_error=${score_error//\"/}
               unit=${unit//\"/}
-              digits=${digits//\"/}
-              precision=${precision//\"/}
-              echo "| \`${benchmark}\` | ${score} | ${score_error} | ${unit} | ${digits:-} | ${precision:-} |"
+              params=${params//\"/}
+              echo "| \`${benchmark}\` | ${score} | ${score_error} | ${unit} | ${params:-} |"
             done
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: jmh-results-${{ github.run_id }}
+          name: jmh-results-${{ matrix.label }}-${{ github.run_id }}
           path: |
             build/reports/jmh/**
+            build/reports/problems/problems-report.html
+          retention-days: 15
+
+  usage-test:
+    name: Usage Tests (${{ matrix.label }})
+    needs: check
+    if: needs.check.outputs.skip != 'true' && needs.check.outputs.perf == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x86-64
+          - os: ubuntu-24.04-arm
+            label: linux-aarch64
+          - os: macos-14
+            label: macos-x86-64
+          - os: macos-latest
+            label: macos-aarch64
+          - os: windows-latest
+            label: windows-x86-64
+            vcpkg_triplet: x64-mingw-static-release
+          - os: windows-11-arm
+            label: windows-aarch64
+            vcpkg_triplet: arm64-windows
+    runs-on: ${{ matrix.os }}
+    env:
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure MSVC for Windows ARM64
+        if: matrix.vcpkg_triplet == 'arm64-windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_arm64
+      - name: Configure MSVC compiler env
+        if: matrix.vcpkg_triplet == 'arm64-windows'
+        shell: pwsh
+        run: |
+          "CC=cl" >> $env:GITHUB_ENV
+          "CXX=cl" >> $env:GITHUB_ENV
+          "BIGMATH_WINDOWS_COMPILER=msvc" >> $env:GITHUB_ENV
+      - name: Configure MinGW for Windows x64
+        if: matrix.vcpkg_triplet == 'x64-mingw-static-release'
+        shell: pwsh
+        run: |
+          $gcc = (Get-Command gcc -ErrorAction Stop).Source
+          $gxx = (Get-Command g++ -ErrorAction Stop).Source
+          "CC=$gcc" >> $env:GITHUB_ENV
+          "CXX=$gxx" >> $env:GITHUB_ENV
+          "BIGMATH_WINDOWS_COMPILER=mingw" >> $env:GITHUB_ENV
+      - name: Setup Build
+        uses: ./.github/actions/build_setup
+      - name: Restore vcpkg binary cache
+        if: runner.os == 'Windows'
+        id: vcpkg-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: .vcpkg-cache
+          key: usage-vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            perf-vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-binary-${{ matrix.label }}-${{ hashFiles('vcpkg.json') }}-
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgmp-dev libmpfr-dev cmake
+      - name: Install macOS deps
+        if: runner.os == 'macOS'
+        run: brew install gmp mpfr cmake
+      - name: Install Windows deps
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
+          "CMAKE_PREFIX_PATH=${{ github.workspace }}\vcpkg_installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
+          "BIGMATH_VCPKG_TRIPLET=${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
+      - name: Save vcpkg binary cache
+        if: runner.os == 'Windows' && !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-cache
+          key: ${{ steps.vcpkg-cache-restore.outputs.cache-primary-key }}
+      - name: Grant execute permission for gradlew
+        if: runner.os != 'Windows'
+        run: chmod +x gradlew
+      - name: Run usage tests
+        if: runner.os != 'Windows'
+        run: ./gradlew test -PrunTests
+      - name: Run usage tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\gradlew.bat test -PrunTests
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: usage-test-report-${{ matrix.label }}-${{ github.run_id }}
+          path: |
+            build/reports/tests/test/**
+            build/reports/jacoco/test/**
             build/reports/problems/problems-report.html
           retention-days: 15
