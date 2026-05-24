@@ -12,6 +12,12 @@ group = maven_group
 boolean isSnapshot = System.getenv("SNAPSHOT")
 version = "${mod_version}" + (isSnapshot ? "-SNAPSHOT" : "")
 boolean isCI = System.getenv("CI") != null
+def bigmathNativeLibName = System.getProperty("os.name").toLowerCase().contains("win")
+		? "bigmath_ffm.dll"
+		: System.getProperty("os.name").toLowerCase().contains("mac")
+				? "libbigmath_ffm.dylib"
+				: "libbigmath_ffm.so"
+def bigmathBuiltNativePath = layout.buildDirectory.file("native/lib/${bigmathNativeLibName}")
 
 java {
     toolchain.languageVersion = JavaLanguageVersion.of(23)
@@ -48,6 +54,12 @@ tasks.withType(JavaCompile).configureEach {
 tasks.withType(Test).configureEach {
 	useJUnitPlatform()
 	jvmArgs += '--enable-native-access=ALL-UNNAMED'
+	doFirst {
+		def builtNative = bigmathBuiltNativePath.get().asFile
+		if (builtNative.exists()) {
+			systemProperty 'bigmath.native.path', builtNative.absolutePath
+		}
+	}
 	def nativeDir = layout.projectDirectory.dir('native').asFile
 	onlyIf { project.hasProperty('runTests') || nativeDir.exists() }
 	testLogging {
@@ -77,6 +89,12 @@ tasks.register('jmh', JavaExec) {
 	classpath = sourceSets.jmh.runtimeClasspath
 	mainClass = 'org.openjdk.jmh.Main'
 	jvmArgs += '--enable-native-access=ALL-UNNAMED'
+	doFirst {
+		def builtNative = bigmathBuiltNativePath.get().asFile
+		if (builtNative.exists()) {
+			systemProperty 'bigmath.native.path', builtNative.absolutePath
+		}
+	}
 
 	def nativeDir = layout.projectDirectory.dir('native').asFile
 	onlyIf { nativeDir.exists() }

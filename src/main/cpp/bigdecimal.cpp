@@ -18,6 +18,30 @@ void bigdecimal_from_string(mpfr_ptr *out, const char *str, int precision) {
 	mpfr_set_str(*out, str, 10, MPFR_RNDN);
 }
 
+void bigdecimal_init(mpfr_ptr *out, int precision) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
+	mpfr_init2(*out, precision);
+}
+
+void bigdecimal_clear(mpfr_ptr a) {
+	bigdecimal_free(a);
+}
+
+void bigdecimal_set(mpfr_ptr out, mpfr_ptr a) {
+	mpfr_set_prec(out, mpfr_get_prec(a));
+	mpfr_set(out, a, MPFR_RNDN);
+}
+
+void bigdecimal_set_double(mpfr_ptr out, double val) {
+	mpfr_set_d(out, val, MPFR_RNDN);
+}
+
+void bigdecimal_set_string(mpfr_ptr out, const char *str, int precision) {
+	mpfr_set_prec(out, precision);
+	mpfr_set_str(out, str, 10, MPFR_RNDN);
+}
+
 void bigdecimal_add(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
 	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
 	if (!*out) return;
@@ -44,6 +68,34 @@ void bigdecimal_div(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
 	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_div(*out, a, b, MPFR_RNDN);
+}
+
+void bigdecimal_add_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b) {
+	if (mpfr_get_prec(out) != mpfr_get_prec(a)) {
+		mpfr_set_prec(out, mpfr_get_prec(a));
+	}
+	mpfr_add(out, a, b, MPFR_RNDN);
+}
+
+void bigdecimal_mul_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b) {
+	if (mpfr_get_prec(out) != mpfr_get_prec(a)) {
+		mpfr_set_prec(out, mpfr_get_prec(a));
+	}
+	mpfr_mul(out, a, b, MPFR_RNDN);
+}
+
+void bigdecimal_div_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b) {
+	if (mpfr_get_prec(out) != mpfr_get_prec(a)) {
+		mpfr_set_prec(out, mpfr_get_prec(a));
+	}
+	mpfr_div(out, a, b, MPFR_RNDN);
+}
+
+void bigdecimal_sqrt_into(mpfr_ptr out, mpfr_ptr a) {
+	if (mpfr_get_prec(out) != mpfr_get_prec(a)) {
+		mpfr_set_prec(out, mpfr_get_prec(a));
+	}
+	mpfr_sqrt(out, a, MPFR_RNDN);
 }
 
 void bigdecimal_neg(mpfr_ptr *out, mpfr_ptr a) {
@@ -299,10 +351,19 @@ void bigdecimal_tanh(mpfr_ptr *out, mpfr_ptr a) {
 
 void bigdecimal_from_double(mpfr_ptr *out, double, int) { *out = nullptr; }
 void bigdecimal_from_string(mpfr_ptr *out, const char *, int) { *out = nullptr; }
+void bigdecimal_init(mpfr_ptr *out, int) { *out = nullptr; }
+void bigdecimal_clear(mpfr_ptr) { }
+void bigdecimal_set(mpfr_ptr, mpfr_ptr) { }
+void bigdecimal_set_double(mpfr_ptr, double) { }
+void bigdecimal_set_string(mpfr_ptr, const char *, int) { }
 void bigdecimal_add(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_sub(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_mul(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_div(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_add_into(mpfr_ptr, mpfr_ptr, mpfr_ptr) { }
+void bigdecimal_mul_into(mpfr_ptr, mpfr_ptr, mpfr_ptr) { }
+void bigdecimal_div_into(mpfr_ptr, mpfr_ptr, mpfr_ptr) { }
+void bigdecimal_sqrt_into(mpfr_ptr, mpfr_ptr) { }
 void bigdecimal_neg(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_abs(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
 int  bigdecimal_cmp(mpfr_ptr, mpfr_ptr) { return 0; }

@@ -103,7 +103,7 @@ public final class BigmathFFM {
 	 *
 	 * @return the native classifier for the current process
 	 */
-	public static String platformClassifier() {
+	private static String platformClassifier() {
 		StringBuilder sb = new StringBuilder();
 		switch (CURRENT_OS) {
 			case ANDROID -> sb.append("android");
@@ -269,28 +269,5 @@ public final class BigmathFFM {
 				.map(addr -> linker.downcallHandle(addr, key.descriptor()))
 				.orElseThrow(() -> new UnsatisfiedLinkError("Symbol not found: " + key.name()))
 		);
-	}
-
-	/**
-	 * Invokes a linked native method handle using varargs.
-	 * <p>
-	 * This helper keeps call sites concise in places where a strongly typed
-	 * {@code invokeExact} signature would add a large amount of local ceremony.
-	 * Runtime exceptions and errors are preserved as-is, while checked
-	 * throwables from the reflective invocation path are wrapped in a
-	 * {@link RuntimeException}.
-	 *
-	 * @param handle the linked native method handle to invoke
-	 * @param args the arguments to forward to the native call
-	 * @return the value returned by the target method handle
-	 */
-	public static Object invoke(MethodHandle handle, Object... args) {
-		try {
-			return handle.invokeWithArguments(args);
-		} catch (RuntimeException | Error e) {
-			throw e;
-		} catch (Throwable t) {
-			throw new RuntimeException(t);
-		}
 	}
 }

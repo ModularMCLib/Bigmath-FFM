@@ -99,6 +99,34 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 			"bigdecimal_from_string",
 			FunctionDescriptors.BIGDECIMAL_FROM_STRING
 	);
+	private static final MethodHandle BIGDECIMAL_SET_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigdecimal_set",
+			FunctionDescriptors.BIGDECIMAL_SET
+	);
+	private static final MethodHandle BIGDECIMAL_SET_DOUBLE_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigdecimal_set_double",
+			FunctionDescriptors.BIGDECIMAL_SET_DOUBLE
+	);
+	private static final MethodHandle BIGDECIMAL_SET_STRING_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigdecimal_set_string",
+			FunctionDescriptors.BIGDECIMAL_SET_STRING
+	);
+	private static final MethodHandle BIGDECIMAL_ADD_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigdecimal_add_into",
+			FunctionDescriptors.BIGDECIMAL_BINARY_INTO
+	);
+	private static final MethodHandle BIGDECIMAL_MUL_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigdecimal_mul_into",
+			FunctionDescriptors.BIGDECIMAL_BINARY_INTO
+	);
+	private static final MethodHandle BIGDECIMAL_DIV_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigdecimal_div_into",
+			FunctionDescriptors.BIGDECIMAL_BINARY_INTO
+	);
+	private static final MethodHandle BIGDECIMAL_SQRT_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigdecimal_sqrt_into",
+			FunctionDescriptors.BIGDECIMAL_UNARY_INTO
+	);
 	private static final MethodHandle BIGDECIMAL_TO_DOUBLE_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_to_double",
 			FunctionDescriptors.BIGDECIMAL_TO_DOUBLE
@@ -121,14 +149,28 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	);
 	private static final MemorySegment BIGDECIMAL_COMMA_SEPARATOR = Arena.global()
 			.allocateFrom(",", java.nio.charset.StandardCharsets.UTF_8);
-	public static final BigDeci ZERO = createConstant(0.0, CONSTANT_PRECISION);
-	public static final BigDeci ONE = createConstant(1.0, CONSTANT_PRECISION);
-	public static final BigDeci TWO = createConstant(2.0, CONSTANT_PRECISION);
-	public static final BigDeci TEN = createConstant(10.0, CONSTANT_PRECISION);
-	public static final BigDeci NEGATIVE_ONE = createConstant(-1.0, CONSTANT_PRECISION);
+
+	public static final BigDeci ZERO = createConstant(0.0);
+	public static final BigDeci ONE = createConstant(1.0);
+	public static final BigDeci TWO = createConstant(2.0);
+	public static final BigDeci TEN = createConstant(10.0);
+	public static final BigDeci NEGATIVE_ONE = createConstant(-1.0);
 
 	private final MemorySegment nativePtr;
 	private final Arena arena;
+
+	MemorySegment nativePtr() {
+		return nativePtr;
+	}
+
+	static BigDeci copyOf(MemorySegment value) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		invokeOutDoubleInt(result, 0.0, CONSTANT_PRECISION);
+		MemorySegment ptr = result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null);
+		invokeSet(ptr, value);
+		return new BigDeci(ptr, arena);
+	}
 
 	/**
 	 * Creates a {@code BigDeci} from a {@code double} with the given
@@ -141,7 +183,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	public static BigDeci fromDouble(double value, int precision) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
-		invokeOutDoubleInt(BIGDECIMAL_FROM_DOUBLE_HANDLE, ptr, value, precision);
+		invokeOutDoubleInt(ptr, value, precision);
 		return new BigDeci(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
@@ -157,7 +199,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
 		try (Arena tmp = Arena.ofConfined()) {
 			MemorySegment str = tmp.allocateFrom(value, java.nio.charset.StandardCharsets.UTF_8);
-			invokeOutAddressInt(BIGDECIMAL_FROM_STRING_HANDLE, ptr, str, precision);
+			invokeOutAddressInt(ptr, str, precision);
 		}
 		return new BigDeci(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
@@ -172,6 +214,94 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	 */
 	public static BigDeci fromBigInt(BigInt value, int precision) {
 		return fromString(value.toString(), precision);
+	}
+
+	/**
+	 * Replaces this value with {@code value}, preserving this instance's
+	 * current MPFR precision.
+	 *
+	 * @param value the source value
+	 * @return this instance
+	 */
+	public BigDeci set(double value) {
+		ensureMutable();
+		invokeSetDouble(nativePtr, value);
+		return this;
+	}
+
+	/**
+	 * Parses {@code value}, resets this instance to {@code precision}, and
+	 * stores the parsed decimal.
+	 *
+	 * @param value     the string to parse
+	 * @param precision the MPFR precision in bits
+	 * @return this instance
+	 */
+	public BigDeci set(String value, int precision) {
+		ensureMutable();
+		try (Arena tmp = Arena.ofConfined()) {
+			MemorySegment str = tmp.allocateFrom(value, java.nio.charset.StandardCharsets.UTF_8);
+			invokeSetString(nativePtr, str, precision);
+		}
+		return this;
+	}
+
+	/**
+	 * Copies {@code value} into this instance.
+	 *
+	 * @param value the source value
+	 * @return this instance
+	 */
+	public BigDeci set(BigDeci value) {
+		ensureMutable();
+		if (this != value) {
+			invokeSet(nativePtr, value.nativePtr);
+		}
+		return this;
+	}
+
+	/**
+	 * Replaces this value with {@code left + right}.
+	 *
+	 * @return this instance
+	 */
+	public BigDeci addInto(BigDeci left, BigDeci right) {
+		ensureMutable();
+		invokeBinaryOut(BIGDECIMAL_ADD_INTO_HANDLE, nativePtr, left.nativePtr, right.nativePtr);
+		return this;
+	}
+
+	/**
+	 * Replaces this value with {@code left * right}.
+	 *
+	 * @return this instance
+	 */
+	public BigDeci multiplyInto(BigDeci left, BigDeci right) {
+		ensureMutable();
+		invokeBinaryOut(BIGDECIMAL_MUL_INTO_HANDLE, nativePtr, left.nativePtr, right.nativePtr);
+		return this;
+	}
+
+	/**
+	 * Replaces this value with {@code left / right}.
+	 *
+	 * @return this instance
+	 */
+	public BigDeci divideInto(BigDeci left, BigDeci right) {
+		ensureMutable();
+		invokeBinaryOut(BIGDECIMAL_DIV_INTO_HANDLE, nativePtr, left.nativePtr, right.nativePtr);
+		return this;
+	}
+
+	/**
+	 * Replaces this value with {@code sqrt(value)}.
+	 *
+	 * @return this instance
+	 */
+	public BigDeci sqrtInto(BigDeci value) {
+		ensureMutable();
+		invokeUnaryOut(BIGDECIMAL_SQRT_INTO_HANDLE, nativePtr, value.nativePtr);
+		return this;
 	}
 
 	/**
@@ -344,7 +474,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	 */
 	@Override
 	public int compareTo(BigDeci other) {
-		return invokeIntBinary(BIGDECIMAL_CMP_HANDLE, nativePtr, other.nativePtr);
+		return invokeIntBinary(nativePtr, other.nativePtr);
 	}
 
 	@Override
@@ -376,7 +506,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	 * precision.
 	 */
 	public double toDouble() {
-		return invokeDoubleUnary(BIGDECIMAL_TO_DOUBLE_HANDLE, nativePtr);
+		return invokeDoubleUnary(nativePtr);
 	}
 
 	/**
@@ -384,7 +514,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	 */
 	@Override
 	public String toString() {
-		MemorySegment result = invokeString(BIGDECIMAL_TO_STRING_HANDLE, nativePtr);
+		MemorySegment result = invokeString(nativePtr);
 		try {
 			return result.reinterpret(Long.MAX_VALUE).getString(0);
 		} finally {
@@ -397,7 +527,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	 * group size 3, and comma separator.
 	 */
 	public String toFormattedString() {
-		MemorySegment result = invokeFormat(BIGDECIMAL_FORMAT_HANDLE, nativePtr, -1, 3, BIGDECIMAL_COMMA_SEPARATOR);
+		MemorySegment result = invokeFormat(nativePtr, -1, 3, BIGDECIMAL_COMMA_SEPARATOR);
 		try {
 			return result.reinterpret(Long.MAX_VALUE).getString(0);
 		} finally {
@@ -411,7 +541,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	 * @param scale number of fractional digits, or {@code -1} for auto-scale
 	 */
 	public String toFormattedString(int scale) {
-		MemorySegment result = invokeFormat(BIGDECIMAL_FORMAT_HANDLE, nativePtr, scale, 3, BIGDECIMAL_COMMA_SEPARATOR);
+		MemorySegment result = invokeFormat(nativePtr, scale, 3, BIGDECIMAL_COMMA_SEPARATOR);
 		try {
 			return result.reinterpret(Long.MAX_VALUE).getString(0);
 		} finally {
@@ -428,7 +558,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	 */
 	public String toFormattedString(int scale, int groupSize, String groupSep) {
 		if (",".equals(groupSep)) {
-			MemorySegment result = invokeFormat(BIGDECIMAL_FORMAT_HANDLE, nativePtr, scale, groupSize, BIGDECIMAL_COMMA_SEPARATOR);
+			MemorySegment result = invokeFormat(nativePtr, scale, groupSize, BIGDECIMAL_COMMA_SEPARATOR);
 			try {
 				return result.reinterpret(Long.MAX_VALUE).getString(0);
 			} finally {
@@ -437,7 +567,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 		try (Arena tmp = Arena.ofConfined()) {
 			MemorySegment sep = tmp.allocateFrom(groupSep, java.nio.charset.StandardCharsets.UTF_8);
-			MemorySegment result = invokeFormat(BIGDECIMAL_FORMAT_HANDLE, nativePtr, scale, groupSize, sep);
+			MemorySegment result = invokeFormat(nativePtr, scale, groupSize, sep);
 			try {
 				return result.reinterpret(Long.MAX_VALUE).getString(0);
 			} finally {
@@ -458,14 +588,13 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	/**
 	 * Creates a constant {@code BigDeci} in the global arena.
 	 *
-	 * @param value     the source value
-	 * @param precision the MPFR precision in bits
+	 * @param value the source value
 	 * @return a new constant {@code BigDeci}
 	 */
-	private static BigDeci createConstant(double value, int precision) {
+	private static BigDeci createConstant(double value) {
 		Arena arena = Arena.global();
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
-		invokeOutDoubleInt(BIGDECIMAL_FROM_DOUBLE_HANDLE, ptr, value, precision);
+		invokeOutDoubleInt(ptr, value, BigDeci.CONSTANT_PRECISION);
 		return new BigDeci(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
@@ -489,9 +618,9 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static MemorySegment invokeString(MethodHandle handle, MemorySegment value) {
+	private static MemorySegment invokeString(MemorySegment value) {
 		try {
-			return (MemorySegment) handle.invokeExact(value);
+			return (MemorySegment) BIGDECIMAL_TO_STRING_HANDLE.invokeExact(value);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -499,9 +628,9 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static MemorySegment invokeFormat(MethodHandle handle, MemorySegment value, int scale, int groupSize, MemorySegment separator) {
+	private static MemorySegment invokeFormat(MemorySegment value, int scale, int groupSize, MemorySegment separator) {
 		try {
-			return (MemorySegment) handle.invokeExact(value, scale, groupSize, separator);
+			return (MemorySegment) BIGDECIMAL_FORMAT_HANDLE.invokeExact(value, scale, groupSize, separator);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -509,9 +638,9 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static int invokeIntBinary(MethodHandle handle, MemorySegment left, MemorySegment right) {
+	private static int invokeIntBinary(MemorySegment left, MemorySegment right) {
 		try {
-			return (int) handle.invokeExact(left, right);
+			return (int) BIGDECIMAL_CMP_HANDLE.invokeExact(left, right);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -519,9 +648,9 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static void invokeOutDoubleInt(MethodHandle handle, MemorySegment out, double value, int precision) {
+	private static void invokeOutDoubleInt(MemorySegment out, double value, int precision) {
 		try {
-			handle.invokeExact(out, value, precision);
+			BIGDECIMAL_FROM_DOUBLE_HANDLE.invokeExact(out, value, precision);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -529,9 +658,9 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static void invokeOutAddressInt(MethodHandle handle, MemorySegment out, MemorySegment value, int precision) {
+	private static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int precision) {
 		try {
-			handle.invokeExact(out, value, precision);
+			BIGDECIMAL_FROM_STRING_HANDLE.invokeExact(out, value, precision);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -539,9 +668,9 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static double invokeDoubleUnary(MethodHandle handle, MemorySegment value) {
+	private static double invokeDoubleUnary(MemorySegment value) {
 		try {
-			return (double) handle.invokeExact(value);
+			return (double) BIGDECIMAL_TO_DOUBLE_HANDLE.invokeExact(value);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
@@ -556,6 +685,42 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 			throw e;
 		} catch (Throwable t) {
 			throw new RuntimeException(t);
+		}
+	}
+
+	private static void invokeSet(MemorySegment out, MemorySegment value) {
+		try {
+			BIGDECIMAL_SET_HANDLE.invokeExact(out, value);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	private static void invokeSetDouble(MemorySegment out, double value) {
+		try {
+			BIGDECIMAL_SET_DOUBLE_HANDLE.invokeExact(out, value);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	private static void invokeSetString(MemorySegment out, MemorySegment value, int precision) {
+		try {
+			BIGDECIMAL_SET_STRING_HANDLE.invokeExact(out, value, precision);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	private void ensureMutable() {
+		if (this == ZERO || this == ONE || this == TWO || this == TEN || this == NEGATIVE_ONE) {
+			throw new UnsupportedOperationException("BigDeci constants are shared and cannot be mutated");
 		}
 	}
 }

@@ -28,9 +28,39 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
 	);
 
+	/** {@code void bigint_init(void** out)} */
+	static final FunctionDescriptor BIGINT_INIT = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS
+	);
+
+	/** {@code void bigint_set(void* out, void* a)} */
+	static final FunctionDescriptor BIGINT_SET = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+
+	/** {@code void bigint_set_long(void* out, long value)} */
+	static final FunctionDescriptor BIGINT_SET_LONG = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.JAVA_LONG
+	);
+
+	/** {@code void bigint_set_string(void* out, const char* str, int radix)} */
+	static final FunctionDescriptor BIGINT_SET_STRING = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
+	);
+
 	/** {@code void bigint_op(void** out, void* a, void* b)} — add/sub/mul/div/mod/gcd/lcm/and/or/xor */
 	static final FunctionDescriptor BIGINT_BINARY = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+
+	/** {@code void bigint_op_into(void* out, void* a, void* b)} — add/mul/div */
+	static final FunctionDescriptor BIGINT_BINARY_INTO = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+
+	/** {@code void bigint_op_into(void* out, void* a)} — sqrt */
+	static final FunctionDescriptor BIGINT_UNARY_INTO = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS
 	);
 
 	/** {@code void bigint_op(void** out, void* a)} — neg/abs/sqrt/next_prime */
@@ -100,9 +130,39 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
 	);
 
+	/** {@code void bigdecimal_init(void** out, int precision)} */
+	static final FunctionDescriptor BIGDECIMAL_INIT = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.JAVA_INT
+	);
+
+	/** {@code void bigdecimal_set(void* out, void* a)} */
+	static final FunctionDescriptor BIGDECIMAL_SET = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+
+	/** {@code void bigdecimal_set_double(void* out, double value)} */
+	static final FunctionDescriptor BIGDECIMAL_SET_DOUBLE = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE
+	);
+
+	/** {@code void bigdecimal_set_string(void* out, const char* str, int precision)} */
+	static final FunctionDescriptor BIGDECIMAL_SET_STRING = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
+	);
+
 	/** {@code void bigdecimal_op(void** out, void* a, void* b)} — add/sub/mul/div/pow */
 	static final FunctionDescriptor BIGDECIMAL_BINARY = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+
+	/** {@code void bigdecimal_op_into(void* out, void* a, void* b)} — add/mul/div */
+	static final FunctionDescriptor BIGDECIMAL_BINARY_INTO = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+
+	/** {@code void bigdecimal_op_into(void* out, void* a)} — sqrt */
+	static final FunctionDescriptor BIGDECIMAL_UNARY_INTO = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS
 	);
 
 	/** {@code void bigdecimal_op(void** out, void* a)} — neg/abs/sqrt/log/exp/sin/cos/tan/ceil/floor/round */

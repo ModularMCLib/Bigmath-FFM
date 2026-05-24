@@ -36,6 +36,18 @@ class BigIntTest {
 	}
 
 	@Test
+	void addIntoReusesTarget() {
+		try (BigInt a = BigInt.fromLong(10);
+			BigInt b = BigInt.fromLong(32);
+			BigInt result = BigInt.fromLong(0)) {
+			assertSame(result, result.addInto(a, b));
+			assertEquals("42", result.toString());
+			result.addInto(result, b);
+			assertEquals("74", result.toString());
+		}
+	}
+
+	@Test
 	void subtract() {
 		try (BigInt a = BigInt.fromLong(100); BigInt b = BigInt.fromLong(58)) {
 			try (BigInt c = a.subtract(b)) {
@@ -50,6 +62,35 @@ class BigIntTest {
 			try (BigInt c = a.multiply(b)) {
 				assertEquals("42", c.toString());
 			}
+		}
+	}
+
+	@Test
+	void multiplyDivideAndSqrtIntoReuseTarget() {
+		try (BigInt a = BigInt.fromLong(6);
+			BigInt b = BigInt.fromLong(7);
+			BigInt divisor = BigInt.fromLong(2);
+			BigInt result = BigInt.fromLong(0)) {
+			result.multiplyInto(a, b);
+			assertEquals("42", result.toString());
+			result.divideInto(result, divisor);
+			assertEquals("21", result.toString());
+			result.set(144);
+			result.sqrtInto(result);
+			assertEquals("12", result.toString());
+		}
+	}
+
+	@Test
+	void setReusesTarget() {
+		try (BigInt source = BigInt.fromString("255", 10);
+			BigInt result = BigInt.fromLong(0)) {
+			assertSame(result, result.set(42));
+			assertEquals("42", result.toString());
+			result.set("ff", 16);
+			assertEquals("255", result.toString());
+			result.set(source);
+			assertEquals("255", result.toString());
 		}
 	}
 
