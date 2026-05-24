@@ -9,7 +9,7 @@ import java.lang.invoke.MethodHandle;
  * 128-bit signed integer value.
  * <p>
  * Hot-path small operations are implemented directly on two Java {@code long}
- * words. Native helpers remain for parsing and wide divide/mod fallback.
+ * words. Native helpers remain for parsing.
  */
 public final class Int128 extends Number implements AutoCloseable, Comparable<Int128> {
 
@@ -18,14 +18,6 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	private static final MethodHandle INT128_FROM_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"int128_from_string",
 			FunctionDescriptors.INT128_FROM_STRING
-	);
-	private static final MethodHandle INT128_DIV_HANDLE = BigmathFFM.getInstance().downcall(
-			"int128_div",
-			FunctionDescriptors.INT128_BINARY
-	);
-	private static final MethodHandle INT128_MOD_HANDLE = BigmathFFM.getInstance().downcall(
-			"int128_mod",
-			FunctionDescriptors.INT128_BINARY
 	);
 
 	public static final Int128 ZERO = fromLong(0);
@@ -66,13 +58,6 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		);
 	}
 
-	MemorySegment toSegment(Arena arena) {
-		MemorySegment ptr = arena.allocate(STRUCT_SIZE);
-		ptr.set(ValueLayout.JAVA_LONG, 0, lo);
-		ptr.set(ValueLayout.JAVA_LONG, 8, hi);
-		return ptr;
-	}
-
 	public long lo() {
 		return lo;
 	}
@@ -102,17 +87,25 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	}
 
 	public Int128 divide(Int128 other) {
+		if (other.isZero()) {
+			throw new ArithmeticException("/ by zero");
+		}
 		if (fitsInLong() && other.fitsInLong() && !(lo == Long.MIN_VALUE && other.lo == -1L)) {
 			return fromLong(lo / other.lo);
 		}
-		return invokeNativeBinary(INT128_DIV_HANDLE, this, other);
+		Int128 quotient = unsignedDivMod(absLo(), absHi(), other.absLo(), other.absHi(), false);
+		return (hi < 0) != (other.hi < 0) ? quotient.negate() : quotient;
 	}
 
 	public Int128 mod(Int128 other) {
+		if (other.isZero()) {
+			throw new ArithmeticException("/ by zero");
+		}
 		if (fitsInLong() && other.fitsInLong()) {
 			return fromLong(lo % other.lo);
 		}
-		return invokeNativeBinary(INT128_MOD_HANDLE, this, other);
+		Int128 remainder = unsignedDivMod(absLo(), absHi(), other.absLo(), other.absHi(), true);
+		return hi < 0 ? remainder.negate() : remainder;
 	}
 
 	public Int128 negate() {
@@ -196,6 +189,22 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 
 	private boolean fitsInLong() {
 		return hi == (lo < 0 ? -1L : 0L);
+	}
+
+	private boolean isZero() {
+		return hi == 0 && lo == 0;
+	}
+
+	private long absLo() {
+		return hi < 0 ? ~lo + 1L : lo;
+	}
+
+	private long absHi() {
+		if (hi >= 0) {
+			return hi;
+		}
+		long magnitudeLo = ~lo + 1L;
+		return ~hi + (magnitudeLo == 0 ? 1L : 0L);
 	}
 
 	private String toStringJava(int radix) {
@@ -306,16 +315,45 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return sb.toString();
 	}
 
-	private static Int128 invokeNativeBinary(MethodHandle handle, Int128 left, Int128 right) {
-		try (Arena arena = Arena.ofConfined()) {
-			MemorySegment result = arena.allocate(STRUCT_SIZE);
-			handle.invokeExact(result, left.toSegment(arena), right.toSegment(arena));
-			return fromSegment(result);
-		} catch (RuntimeException | Error e) {
-			throw e;
-		} catch (Throwable t) {
-			throw new RuntimeException(t);
+	private static Int128 unsignedDivMod(
+			long dividendLo,
+			long dividendHi,
+			long divisorLo,
+			long divisorHi,
+			boolean returnRemainder
+	) {
+		long quotientLo = 0;
+		long quotientHi = 0;
+		long remainderLo = 0;
+		long remainderHi = 0;
+
+		for (int bitIndex = 127; bitIndex >= 0; bitIndex--) {
+			long incomingBit = bitIndex >= 64
+					? (dividendHi >>> (bitIndex - 64)) & 1L
+					: (dividendLo >>> bitIndex) & 1L;
+			remainderHi = (remainderHi << 1) | (remainderLo >>> 63);
+			remainderLo = (remainderLo << 1) | incomingBit;
+
+			if (compareUnsigned(remainderLo, remainderHi, divisorLo, divisorHi) >= 0) {
+				long diffLo = remainderLo - divisorLo;
+				long borrow = Long.compareUnsigned(remainderLo, divisorLo) < 0 ? 1L : 0L;
+				remainderHi = remainderHi - divisorHi - borrow;
+				remainderLo = diffLo;
+				if (bitIndex >= 64) {
+					quotientHi |= 1L << (bitIndex - 64);
+				} else {
+					quotientLo |= 1L << bitIndex;
+				}
+			}
 		}
+		return returnRemainder
+				? new Int128(remainderLo, remainderHi)
+				: new Int128(quotientLo, quotientHi);
+	}
+
+	private static int compareUnsigned(long leftLo, long leftHi, long rightLo, long rightHi) {
+		int high = Long.compareUnsigned(leftHi, rightHi);
+		return high != 0 ? high : Long.compareUnsigned(leftLo, rightLo);
 	}
 
 	private static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int radix) {

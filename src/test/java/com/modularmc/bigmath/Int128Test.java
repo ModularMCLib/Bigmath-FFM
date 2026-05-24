@@ -70,11 +70,75 @@ class Int128Test {
 	}
 
 	@Test
+	void divideWidePositiveValue() {
+		try (Int128 a = Int128.fromString("123456789012345678901234567890", 10);
+			Int128 b = Int128.fromLong(123456789)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("1000000000100000000010", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void divideWideNegativeValue() {
+		try (Int128 a = Int128.fromString("-123456789012345678901234567890", 10);
+			Int128 b = Int128.fromLong(123456789)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("-1000000000100000000010", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void divideWideByWideValue() {
+		try (Int128 a = Int128.fromString("170141183460469231731687303715884105727", 10);
+			Int128 b = Int128.fromString("18446744073709551616", 10)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("9223372036854775807", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void divideByZeroThrows() {
+		try (Int128 a = Int128.fromLong(42)) {
+			assertThrows(ArithmeticException.class, () -> a.divide(Int128.ZERO));
+		}
+	}
+
+	@Test
 	void mod() {
 		try (Int128 a = Int128.fromLong(100); Int128 b = Int128.fromLong(30)) {
 			try (Int128 c = a.mod(b)) {
 				assertEquals("10", c.toString());
 			}
+		}
+	}
+
+	@Test
+	void modWidePositiveValue() {
+		try (Int128 a = Int128.fromString("123456789012345678901234567890", 10);
+			Int128 b = Int128.fromLong(123456789)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("0", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void modWideNegativeValueKeepsDividendSign() {
+		try (Int128 a = Int128.fromString("-123456789012345678901234567891", 10);
+			Int128 b = Int128.fromLong(123456789)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("-1", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void modByZeroThrows() {
+		try (Int128 a = Int128.fromLong(42)) {
+			assertThrows(ArithmeticException.class, () -> a.mod(Int128.ZERO));
 		}
 	}
 
