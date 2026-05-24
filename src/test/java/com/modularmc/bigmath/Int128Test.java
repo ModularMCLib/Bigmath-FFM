@@ -1,6 +1,7 @@
 package com.modularmc.bigmath;
 
 import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class Int128Test {
@@ -146,11 +147,55 @@ class Int128Test {
 	}
 
 	@Test
+	void maxPositiveInt128StringRoundTrip() {
+		String value = "170141183460469231731687303715884105727";
+		try (Int128 i = Int128.fromString(value, 10)) {
+			assertEquals(value, i.toString());
+			assertEquals("170,141,183,460,469,231,731,687,303,715,884,105,727", i.toFormattedString());
+		}
+	}
+
+	@Test
+	void minNegativeInt128StringRoundTrip() {
+		String value = "-170141183460469231731687303715884105728";
+		try (Int128 i = Int128.fromString(value, 10)) {
+			assertEquals(value, i.toString());
+			assertEquals("-170,141,183,460,469,231,731,687,303,715,884,105,728", i.toFormattedString());
+		}
+	}
+
+	@Test
 	void largeMultiplication() {
 		try (Int128 a = Int128.fromLong(1000000); Int128 b = Int128.fromLong(1000000)) {
 			try (Int128 c = a.multiply(b)) {
 				assertEquals("1000000000000", c.toString());
 			}
+		}
+	}
+
+	@Test
+	void multiplyCarriesIntoHighWord() {
+		try (Int128 a = Int128.fromLong(Long.MAX_VALUE); Int128 b = Int128.fromLong(2)) {
+			try (Int128 c = a.multiply(b)) {
+				assertEquals("18446744073709551614", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void multiplyNegativeSmallValues() {
+		try (Int128 a = Int128.fromLong(-123456789); Int128 b = Int128.fromLong(987654321)) {
+			try (Int128 c = a.multiply(b)) {
+				assertEquals("-121932631112635269", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void formatSmallValueInJava() {
+		try (Int128 i = Int128.fromLong(1234567890)) {
+			assertEquals("1,234,567,890", i.toFormattedString());
+			assertEquals("12_3456_7890", i.toFormattedString(4, "_"));
 		}
 	}
 

@@ -9,18 +9,15 @@ import java.lang.invoke.MethodHandle;
  * 128-bit signed integer value.
  * <p>
  * Hot-path small operations are implemented directly on two Java {@code long}
- * words. Native helpers remain for parsing, wide arithmetic, and formatting.
+ * words. Native helpers remain for parsing and wide divide/mod fallback.
  */
 public final class Int128 extends Number implements AutoCloseable, Comparable<Int128> {
 
 	private static final long STRUCT_SIZE = 16L;
+	private static final char[] DIGITS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 	private static final MethodHandle INT128_FROM_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"int128_from_string",
 			FunctionDescriptors.INT128_FROM_STRING
-	);
-	private static final MethodHandle INT128_MUL_HANDLE = BigmathFFM.getInstance().downcall(
-			"int128_mul",
-			FunctionDescriptors.INT128_BINARY
 	);
 	private static final MethodHandle INT128_DIV_HANDLE = BigmathFFM.getInstance().downcall(
 			"int128_div",
@@ -30,20 +27,6 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 			"int128_mod",
 			FunctionDescriptors.INT128_BINARY
 	);
-	private static final MethodHandle INT128_TO_STRING_HANDLE = BigmathFFM.getInstance().downcall(
-			"int128_to_string",
-			FunctionDescriptors.INT128_TO_STRING
-	);
-	private static final MethodHandle INT128_FORMAT_HANDLE = BigmathFFM.getInstance().downcall(
-			"int128_format",
-			FunctionDescriptors.INT128_FORMAT
-	);
-	private static final MethodHandle INT128_FREE_STRING_HANDLE = BigmathFFM.getInstance().downcall(
-			"int128_free_string",
-			FunctionDescriptors.INT128_FREE_STRING
-	);
-	private static final MemorySegment INT128_COMMA_SEPARATOR = Arena.global()
-			.allocateFrom(",", java.nio.charset.StandardCharsets.UTF_8);
 
 	public static final Int128 ZERO = fromLong(0);
 	public static final Int128 ONE = fromLong(1);
@@ -111,7 +94,11 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	}
 
 	public Int128 multiply(Int128 other) {
-		return invokeNativeBinary(INT128_MUL_HANDLE, this, other);
+		long productLo = lo * other.lo;
+		long productHi = Math.unsignedMultiplyHigh(lo, other.lo)
+				+ lo * other.hi
+				+ hi * other.lo;
+		return new Int128(productLo, productHi);
 	}
 
 	public Int128 divide(Int128 other) {
@@ -171,39 +158,30 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	}
 
 	public String toString(int radix) {
-		try (Arena arena = Arena.ofConfined()) {
-			MemorySegment result = invokeStringWithRadix(toSegment(arena), radix);
-			try {
-				return result.reinterpret(Long.MAX_VALUE).getString(0);
-			} finally {
-				invokeVoidAddress(result);
-			}
+		if (radix < 2 || radix > DIGITS.length) {
+			throw new IllegalArgumentException("radix must be between 2 and 62");
 		}
+		if (fitsInLong() && radix <= Character.MAX_RADIX) {
+			return Long.toString(lo, radix);
+		}
+		return toStringJava(radix);
 	}
 
 	public String toFormattedString() {
-		try (Arena arena = Arena.ofConfined()) {
-			MemorySegment result = invokeFormat(toSegment(arena), 3, INT128_COMMA_SEPARATOR);
-			try {
-				return result.reinterpret(Long.MAX_VALUE).getString(0);
-			} finally {
-				invokeVoidAddress(result);
-			}
+		if (fitsInLong()) {
+			return formatGroupedDecimal(Long.toString(lo), 3, ",");
 		}
+		return toFormattedStringJava(3, ",");
 	}
 
 	public String toFormattedString(int groupSize, String groupSep) {
-		try (Arena arena = Arena.ofConfined()) {
-			MemorySegment sep = ",".equals(groupSep)
-					? INT128_COMMA_SEPARATOR
-					: arena.allocateFrom(groupSep, java.nio.charset.StandardCharsets.UTF_8);
-			MemorySegment result = invokeFormat(toSegment(arena), groupSize, sep);
-			try {
-				return result.reinterpret(Long.MAX_VALUE).getString(0);
-			} finally {
-				invokeVoidAddress(result);
-			}
+		if (groupSize <= 0 || groupSep == null || groupSep.isEmpty()) {
+			return toString();
 		}
+		if (fitsInLong()) {
+			return formatGroupedDecimal(Long.toString(lo), groupSize, groupSep);
+		}
+		return toFormattedStringJava(groupSize, groupSep);
 	}
 
 	@Override
@@ -218,6 +196,114 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 
 	private boolean fitsInLong() {
 		return hi == (lo < 0 ? -1L : 0L);
+	}
+
+	private String toStringJava(int radix) {
+		char[] buffer = new char[130];
+		int pos = writeDigits(buffer, radix);
+		return new String(buffer, pos, buffer.length - pos);
+	}
+
+	private String toFormattedStringJava(int groupSize, String groupSep) {
+		char[] raw = new char[130];
+		int pos = writeDigits(raw, 10);
+		boolean negative = raw[pos] == '-';
+		int digitStart = negative ? pos + 1 : pos;
+		int digits = raw.length - digitStart;
+		if (digits <= groupSize) {
+			return new String(raw, pos, raw.length - pos);
+		}
+
+		int sepLength = groupSep.length();
+		int sepCount = (digits - 1) / groupSize;
+		char[] formatted = new char[(negative ? 1 : 0) + digits + sepCount * sepLength];
+		int out = 0;
+		if (negative) {
+			formatted[out++] = '-';
+		}
+		int firstGroup = digits % groupSize;
+		if (firstGroup == 0) {
+			firstGroup = groupSize;
+		}
+		System.arraycopy(raw, digitStart, formatted, out, firstGroup);
+		out += firstGroup;
+		int in = digitStart + firstGroup;
+		while (in < raw.length) {
+			groupSep.getChars(0, sepLength, formatted, out);
+			out += sepLength;
+			System.arraycopy(raw, in, formatted, out, groupSize);
+			out += groupSize;
+			in += groupSize;
+		}
+		return new String(formatted);
+	}
+
+	private int writeDigits(char[] buffer, int radix) {
+		if (hi == 0 && lo == 0) {
+			buffer[buffer.length - 1] = '0';
+			return buffer.length - 1;
+		}
+		boolean negative = hi < 0;
+		long magnitudeLo = lo;
+		long magnitudeHi = hi;
+		if (negative) {
+			magnitudeLo = ~magnitudeLo + 1L;
+			magnitudeHi = ~magnitudeHi + (magnitudeLo == 0 ? 1L : 0L);
+		}
+
+		int pos = buffer.length;
+		while (magnitudeHi != 0 || magnitudeLo != 0) {
+			long remainder = 0;
+
+			long part = (remainder << 32) + (magnitudeHi >>> 32);
+			long qHiHigh = part / radix;
+			remainder = part - qHiHigh * radix;
+
+			part = (remainder << 32) + (magnitudeHi & 0xffff_ffffL);
+			long qHiLow = part / radix;
+			remainder = part - qHiLow * radix;
+
+			part = (remainder << 32) + (magnitudeLo >>> 32);
+			long qLoHigh = part / radix;
+			remainder = part - qLoHigh * radix;
+
+			part = (remainder << 32) + (magnitudeLo & 0xffff_ffffL);
+			long qLoLow = part / radix;
+			remainder = part - qLoLow * radix;
+
+			buffer[--pos] = DIGITS[(int) remainder];
+			magnitudeHi = (qHiHigh << 32) | qHiLow;
+			magnitudeLo = (qLoHigh << 32) | qLoLow;
+		}
+		if (negative) {
+			buffer[--pos] = '-';
+		}
+		return pos;
+	}
+
+	private static String formatGroupedDecimal(String value, int groupSize, String groupSep) {
+		int signOffset = value.startsWith("-") ? 1 : 0;
+		int digits = value.length() - signOffset;
+		if (digits <= groupSize) {
+			return value;
+		}
+		StringBuilder sb = new StringBuilder(value.length() + (digits - 1) / groupSize * groupSep.length());
+		if (signOffset != 0) {
+			sb.append('-');
+		}
+		int firstGroup = digits % groupSize;
+		if (firstGroup == 0) {
+			firstGroup = groupSize;
+		}
+		int index = signOffset;
+		sb.append(value, index, index + firstGroup);
+		index += firstGroup;
+		while (index < value.length()) {
+			sb.append(groupSep);
+			sb.append(value, index, index + groupSize);
+			index += groupSize;
+		}
+		return sb.toString();
 	}
 
 	private static Int128 invokeNativeBinary(MethodHandle handle, Int128 left, Int128 right) {
@@ -235,36 +321,6 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	private static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int radix) {
 		try {
 			INT128_FROM_STRING_HANDLE.invokeExact(out, value, radix);
-		} catch (RuntimeException | Error e) {
-			throw e;
-		} catch (Throwable t) {
-			throw new RuntimeException(t);
-		}
-	}
-
-	private static MemorySegment invokeStringWithRadix(MemorySegment value, int radix) {
-		try {
-			return (MemorySegment) INT128_TO_STRING_HANDLE.invokeExact(value, radix);
-		} catch (RuntimeException | Error e) {
-			throw e;
-		} catch (Throwable t) {
-			throw new RuntimeException(t);
-		}
-	}
-
-	private static MemorySegment invokeFormat(MemorySegment value, int groupSize, MemorySegment separator) {
-		try {
-			return (MemorySegment) INT128_FORMAT_HANDLE.invokeExact(value, groupSize, separator);
-		} catch (RuntimeException | Error e) {
-			throw e;
-		} catch (Throwable t) {
-			throw new RuntimeException(t);
-		}
-	}
-
-	private static void invokeVoidAddress(MemorySegment value) {
-		try {
-			INT128_FREE_STRING_HANDLE.invokeExact(value);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
