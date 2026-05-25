@@ -161,7 +161,7 @@ if(WIN32)
 endif()
 
 if(GMP_FOUND AND MPFR_FOUND)
-	target_link_libraries(bigmath_ffm PRIVATE GMP::GMP MPFR::MPFR)
+	target_link_libraries(bigmath_ffm PRIVATE MPFR::MPFR GMP::GMP)
 	target_compile_definitions(bigmath_ffm PRIVATE BIGMATH_HAS_GMP)
 	if(UNIX AND NOT APPLE AND NOT ANDROID AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 		target_link_options(bigmath_ffm PRIVATE -static-libstdc++ -static-libgcc)
