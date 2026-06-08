@@ -154,16 +154,10 @@ static std::vector<uint64_t> export_base_2_16(mpz_ptr value) {
 	size_t count = (mpz_sizeinbase(value, 2) + 15) / 16;
 	if (count == 0) return {0};
 
-	std::vector<uint16_t> words(count);
+	std::vector<uint64_t> digits(count);
 	size_t written = 0;
-	mpz_export(words.data(), &written, -1, sizeof(uint16_t), 0, 0, value);
-
-	std::vector<uint64_t> digits;
-	digits.reserve(written == 0 ? 1 : written);
-	for (size_t i = 0; i < written; i++) {
-		digits.push_back(words[i]);
-	}
-	if (digits.empty()) digits.push_back(0);
+	mpz_export(digits.data(), &written, -1, sizeof(uint64_t), 0, 48, value);
+	digits.resize(written == 0 ? 1 : written);
 	return digits;
 }
 
