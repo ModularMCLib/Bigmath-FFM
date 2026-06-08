@@ -140,7 +140,7 @@ void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
 			mpz_set(*out, a);
 			return;
 		case 2:
-			mpz_sqr(*out, a);
+			mpz_mul(*out, a, a);
 			return;
 		default:
 			break;
