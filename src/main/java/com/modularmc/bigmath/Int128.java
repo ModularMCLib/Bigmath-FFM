@@ -15,6 +15,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 
 	private static final long STRUCT_SIZE = 16L;
 	private static final long UNSIGNED_INT_MASK = 0xffff_ffffL;
+	private static final long UNSIGNED_INT_BASE = 1L << 32;
 	private static final long DECIMAL_CHUNK_BASE = 1_000_000_000L;
 	private static final int DECIMAL_CHUNK_DIGITS = 9;
 	private static final char[] DIGITS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
@@ -499,6 +500,9 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	}
 
 	private static Int128 unsignedDivideByUnsignedLong(long dividendLo, long dividendHi, long divisor) {
+		if (Long.compareUnsigned(dividendHi, divisor) < 0) {
+			return new Int128(unsignedDivideByUnsignedLongLow(dividendLo, dividendHi, divisor), 0);
+		}
 		long quotientHi = Long.divideUnsigned(dividendHi, divisor);
 		long remainderHi = Long.remainderUnsigned(dividendHi, divisor);
 		long quotientLo = unsignedDivideByUnsignedLongLow(dividendLo, remainderHi, divisor);
@@ -506,18 +510,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	}
 
 	private static long unsignedDivideByUnsignedLongLow(long dividendLo, long dividendHi, long divisor) {
-		long quotient = 0;
-		long remainder = dividendHi;
-
-		for (int bitIndex = 63; bitIndex >= 0; bitIndex--) {
-			long shiftedRemainder = (remainder << 1) | ((dividendLo >>> bitIndex) & 1L);
-			if ((remainder >>> 63) != 0 || Long.compareUnsigned(shiftedRemainder, divisor) >= 0) {
-				shiftedRemainder -= divisor;
-				quotient |= 1L << bitIndex;
-			}
-			remainder = shiftedRemainder;
-		}
-		return quotient;
+		return unsignedDivideAndRemainderByUnsignedLongLow(dividendLo, dividendHi, divisor, false);
 	}
 
 	private static long unsignedRemainderByUnsignedInt(long dividendLo, long dividendHi, long divisor) {
@@ -537,21 +530,62 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	}
 
 	private static long unsignedRemainderByUnsignedLong(long dividendLo, long dividendHi, long divisor) {
+		if (Long.compareUnsigned(dividendHi, divisor) < 0) {
+			return unsignedRemainderByUnsignedLongLow(dividendLo, dividendHi, divisor);
+		}
 		long remainderHi = Long.remainderUnsigned(dividendHi, divisor);
 		return unsignedRemainderByUnsignedLongLow(dividendLo, remainderHi, divisor);
 	}
 
 	private static long unsignedRemainderByUnsignedLongLow(long dividendLo, long dividendHi, long divisor) {
-		long remainder = dividendHi;
+		return unsignedDivideAndRemainderByUnsignedLongLow(dividendLo, dividendHi, divisor, true);
+	}
 
-		for (int bitIndex = 63; bitIndex >= 0; bitIndex--) {
-			long shiftedRemainder = (remainder << 1) | ((dividendLo >>> bitIndex) & 1L);
-			if ((remainder >>> 63) != 0 || Long.compareUnsigned(shiftedRemainder, divisor) >= 0) {
-				shiftedRemainder -= divisor;
+	private static long unsignedDivideAndRemainderByUnsignedLongLow(
+			long dividendLo,
+			long dividendHi,
+			long divisor,
+			boolean returnRemainder
+	) {
+		int shift = Long.numberOfLeadingZeros(divisor);
+		long normalizedDivisor = divisor << shift;
+		long divisorHigh = normalizedDivisor >>> 32;
+		long divisorLow = normalizedDivisor & UNSIGNED_INT_MASK;
+		long carry = shift == 0 ? 0 : dividendLo >>> (64 - shift);
+		long numeratorHigh = (dividendHi << shift) | carry;
+		long numeratorLow = dividendLo << shift;
+		long numeratorMid = numeratorLow >>> 32;
+		long numeratorLowWord = numeratorLow & UNSIGNED_INT_MASK;
+
+		long quotientHigh = Long.divideUnsigned(numeratorHigh, divisorHigh);
+		long remainderHat = numeratorHigh - quotientHigh * divisorHigh;
+		while (Long.compareUnsigned(quotientHigh, UNSIGNED_INT_BASE) >= 0
+				|| Long.compareUnsigned(quotientHigh * divisorLow, (remainderHat << 32) | numeratorMid) > 0) {
+			quotientHigh--;
+			remainderHat += divisorHigh;
+			if (Long.compareUnsigned(remainderHat, UNSIGNED_INT_BASE) >= 0) {
+				break;
 			}
-			remainder = shiftedRemainder;
 		}
-		return remainder;
+
+		long numeratorCombined = (numeratorHigh << 32) + numeratorMid - quotientHigh * normalizedDivisor;
+		long quotientLow = Long.divideUnsigned(numeratorCombined, divisorHigh);
+		remainderHat = numeratorCombined - quotientLow * divisorHigh;
+		while (Long.compareUnsigned(quotientLow, UNSIGNED_INT_BASE) >= 0
+				|| Long.compareUnsigned(quotientLow * divisorLow, (remainderHat << 32) | numeratorLowWord) > 0) {
+			quotientLow--;
+			remainderHat += divisorHigh;
+			if (Long.compareUnsigned(remainderHat, UNSIGNED_INT_BASE) >= 0) {
+				break;
+			}
+		}
+
+		if (!returnRemainder) {
+			return (quotientHigh << 32) | (quotientLow & UNSIGNED_INT_MASK);
+		}
+
+		long normalizedRemainder = (numeratorCombined << 32) + numeratorLowWord - quotientLow * normalizedDivisor;
+		return shift == 0 ? normalizedRemainder : normalizedRemainder >>> shift;
 	}
 
 	private static int decimalDigits(int value) {
