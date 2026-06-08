@@ -118,6 +118,13 @@ public class BigIntBenchmark {
 	}
 
 	@Benchmark
+	public void gcdLarge(LargeState state, Blackhole blackhole) {
+		try (BigInt result = state.left.gcd(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
 	public void multiplyVeryLarge(VeryLargeState state, Blackhole blackhole) {
 		try (BigInt result = state.left.multiply(state.right)) {
 			blackhole.consume(result);

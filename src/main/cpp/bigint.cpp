@@ -217,13 +217,7 @@ void bigint_gcd(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
-	int abits = mpz_sizeinbase(a, 2);
-	int bbits = mpz_sizeinbase(b, 2);
-	if (abits + bbits <= bigmath::ALGO_THRESHOLD) {
-		bigmath::binary_gcd(*out, a, b);
-	} else {
-		mpz_gcd(*out, a, b);
-	}
+	mpz_gcd(*out, a, b);
 }
 
 void bigint_lcm(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
