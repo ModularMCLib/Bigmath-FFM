@@ -101,7 +101,7 @@ public class BigIntBenchmark {
 
 	@State(Scope.Thread)
 	public static class PowState {
-		@Param({"32", "128", "512"})
+		@Param({"32", "512"})
 		public long exponent;
 
 		BigInt base;
@@ -119,7 +119,7 @@ public class BigIntBenchmark {
 
 	@State(Scope.Thread)
 	public static class LongState {
-		@Param({"42", "-42", "9223372036854775807", "-9223372036854775808"})
+		@Param({"42", "-9223372036854775808"})
 		public long value;
 
 		BigInt bigint;

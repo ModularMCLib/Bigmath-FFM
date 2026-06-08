@@ -50,10 +50,10 @@ public class BigDeciBenchmark {
 
 	@State(Scope.Thread)
 	public static class PowState {
-		@Param({"64", "256", "1024"})
+		@Param({"64", "1024"})
 		public int precision;
 
-		@Param({"2", "10", "128"})
+		@Param({"2", "128"})
 		public long exponent;
 
 		BigDeci base;
