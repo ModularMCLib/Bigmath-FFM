@@ -117,6 +117,27 @@ public class BigIntBenchmark {
 		}
 	}
 
+	@State(Scope.Thread)
+	public static class LongState {
+		@Param({"42", "-42", "9223372036854775807", "-9223372036854775808"})
+		public long value;
+
+		BigInt bigint;
+		BigInt result;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			bigint = BigInt.fromLong(value);
+			result = BigInt.fromLong(0);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			bigint.close();
+			result.close();
+		}
+	}
+
 	@Benchmark
 	public void addSmall(SmallState state, Blackhole blackhole) {
 		try (BigInt result = state.left.add(state.right)) {
@@ -160,6 +181,23 @@ public class BigIntBenchmark {
 		try (BigInt result = state.base.pow(state.exponent)) {
 			blackhole.consume(result);
 		}
+	}
+
+	@Benchmark
+	public void fromLong(LongState state, Blackhole blackhole) {
+		try (BigInt result = BigInt.fromLong(state.value)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void setLong(LongState state, Blackhole blackhole) {
+		blackhole.consume(state.result.set(state.value));
+	}
+
+	@Benchmark
+	public void longValue(LongState state, Blackhole blackhole) {
+		blackhole.consume(state.bigint.longValue());
 	}
 
 	@Benchmark

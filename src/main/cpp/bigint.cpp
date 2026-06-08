@@ -6,17 +6,30 @@
 
 #ifndef BIGMATH_NO_GMP
 
+static void mpz_set_int64(mpz_ptr out, int64_t val) {
+	if (val >= static_cast<int64_t>(std::numeric_limits<long>::min())
+			&& val <= static_cast<int64_t>(std::numeric_limits<long>::max())) {
+		mpz_set_si(out, static_cast<long>(val));
+		return;
+	}
+	uint64_t magnitude = val >= 0
+		? static_cast<uint64_t>(val)
+		: static_cast<uint64_t>(-(val + 1)) + 1;
+	if (magnitude <= static_cast<uint64_t>(std::numeric_limits<unsigned long>::max())) {
+		mpz_set_ui(out, static_cast<unsigned long>(magnitude));
+	} else {
+		mpz_import(out, 1, -1, sizeof(magnitude), 0, 0, &magnitude);
+	}
+	if (val < 0) {
+		mpz_neg(out, out);
+	}
+}
+
 void bigint_from_long(mpz_ptr *out, int64_t val) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
-	uint64_t magnitude = val >= 0
-		? static_cast<uint64_t>(val)
-		: static_cast<uint64_t>(-(val + 1)) + 1;
-	mpz_import(*out, 1, -1, sizeof(magnitude), 0, 0, &magnitude);
-	if (val < 0) {
-		mpz_neg(*out, *out);
-	}
+	mpz_set_int64(*out, val);
 }
 
 void bigint_from_string(mpz_ptr *out, const char *str, int radix) {
@@ -41,13 +54,7 @@ void bigint_set(mpz_ptr out, mpz_ptr a) {
 }
 
 void bigint_set_long(mpz_ptr out, int64_t val) {
-	uint64_t magnitude = val >= 0
-		? static_cast<uint64_t>(val)
-		: static_cast<uint64_t>(-(val + 1)) + 1;
-	mpz_import(out, 1, -1, sizeof(magnitude), 0, 0, &magnitude);
-	if (val < 0) {
-		mpz_neg(out, out);
-	}
+	mpz_set_int64(out, val);
 }
 
 void bigint_set_string(mpz_ptr out, const char *str, int radix) {
@@ -154,12 +161,8 @@ int64_t bigint_to_long(mpz_ptr a) {
 	if (mpz_sgn(a) == 0) {
 		return 0;
 	}
-	mpz_t abs;
-	mpz_init(abs);
-	mpz_abs(abs, a);
 	uint64_t magnitude = 0;
-	mpz_export(&magnitude, nullptr, -1, sizeof(magnitude), 0, 0, abs);
-	mpz_clear(abs);
+	mpz_export(&magnitude, nullptr, -1, sizeof(magnitude), 0, 0, a);
 	if (mpz_sgn(a) > 0) {
 		return static_cast<int64_t>(magnitude);
 	}
