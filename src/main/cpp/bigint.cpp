@@ -178,6 +178,9 @@ int64_t bigint_to_long(mpz_ptr a) {
 	if (mpz_sgn(a) == 0) {
 		return 0;
 	}
+	if (mpz_fits_slong_p(a)) {
+		return static_cast<int64_t>(mpz_get_si(a));
+	}
 	uint64_t magnitude = 0;
 	mpz_export(&magnitude, nullptr, -1, sizeof(magnitude), 0, 0, a);
 	if (mpz_sgn(a) > 0) {
