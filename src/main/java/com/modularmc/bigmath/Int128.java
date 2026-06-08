@@ -100,9 +100,14 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		long dividendHi = absHi();
 		long divisorLo = other.absLo();
 		long divisorHi = other.absHi();
-		Int128 quotient = divisorHi == 0 && Long.compareUnsigned(divisorLo, UNSIGNED_INT_MASK) <= 0
-				? unsignedDivideByUnsignedInt(dividendLo, dividendHi, divisorLo)
-				: unsignedDivMod(dividendLo, dividendHi, divisorLo, divisorHi, false);
+		Int128 quotient;
+		if (dividendHi == 0 && divisorHi == 0) {
+			quotient = fromWords(Long.divideUnsigned(dividendLo, divisorLo), 0);
+		} else if (divisorHi == 0 && Long.compareUnsigned(divisorLo, UNSIGNED_INT_MASK) <= 0) {
+			quotient = unsignedDivideByUnsignedInt(dividendLo, dividendHi, divisorLo);
+		} else {
+			quotient = unsignedDivMod(dividendLo, dividendHi, divisorLo, divisorHi, false);
+		}
 		return (hi < 0) != (other.hi < 0) ? quotient.negate() : quotient;
 	}
 
@@ -117,9 +122,14 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		long dividendHi = absHi();
 		long divisorLo = other.absLo();
 		long divisorHi = other.absHi();
-		Int128 remainder = divisorHi == 0 && Long.compareUnsigned(divisorLo, UNSIGNED_INT_MASK) <= 0
-				? fromLong(unsignedRemainderByUnsignedInt(dividendLo, dividendHi, divisorLo))
-				: unsignedDivMod(dividendLo, dividendHi, divisorLo, divisorHi, true);
+		Int128 remainder;
+		if (dividendHi == 0 && divisorHi == 0) {
+			remainder = fromLong(Long.remainderUnsigned(dividendLo, divisorLo));
+		} else if (divisorHi == 0 && Long.compareUnsigned(divisorLo, UNSIGNED_INT_MASK) <= 0) {
+			remainder = fromLong(unsignedRemainderByUnsignedInt(dividendLo, dividendHi, divisorLo));
+		} else {
+			remainder = unsignedDivMod(dividendLo, dividendHi, divisorLo, divisorHi, true);
+		}
 		return hi < 0 ? remainder.negate() : remainder;
 	}
 
