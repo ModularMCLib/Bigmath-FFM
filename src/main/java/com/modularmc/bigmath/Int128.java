@@ -109,6 +109,8 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		Int128 quotient;
 		if (dividendHi == 0 && divisorHi == 0) {
 			quotient = fromWords(Long.divideUnsigned(dividendLo, divisorLo), 0);
+		} else if (divisorHi == 0 && Long.compareUnsigned(dividendHi, divisorLo) < 0) {
+			quotient = fromWords(unsignedDivideByUnsignedLong(dividendLo, dividendHi, divisorLo), 0);
 		} else if (divisorHi == 0 && Long.compareUnsigned(divisorLo, UNSIGNED_INT_MASK) <= 0) {
 			quotient = unsignedDivideByUnsignedInt(dividendLo, dividendHi, divisorLo);
 		} else {
@@ -134,6 +136,8 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		Int128 remainder;
 		if (dividendHi == 0 && divisorHi == 0) {
 			remainder = fromLong(Long.remainderUnsigned(dividendLo, divisorLo));
+		} else if (divisorHi == 0 && Long.compareUnsigned(dividendHi, divisorLo) < 0) {
+			remainder = fromLong(unsignedRemainderByUnsignedLong(dividendLo, dividendHi, divisorLo));
 		} else if (divisorHi == 0 && Long.compareUnsigned(divisorLo, UNSIGNED_INT_MASK) <= 0) {
 			remainder = fromLong(unsignedRemainderByUnsignedInt(dividendLo, dividendHi, divisorLo));
 		} else {
@@ -494,6 +498,21 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return new Int128((qLoHigh << 32) | qLoLow, (qHiHigh << 32) | qHiLow);
 	}
 
+	private static long unsignedDivideByUnsignedLong(long dividendLo, long dividendHi, long divisor) {
+		long quotient = 0;
+		long remainder = dividendHi;
+
+		for (int bitIndex = 63; bitIndex >= 0; bitIndex--) {
+			long shiftedRemainder = (remainder << 1) | ((dividendLo >>> bitIndex) & 1L);
+			if ((remainder >>> 63) != 0 || Long.compareUnsigned(shiftedRemainder, divisor) >= 0) {
+				shiftedRemainder -= divisor;
+				quotient |= 1L << bitIndex;
+			}
+			remainder = shiftedRemainder;
+		}
+		return quotient;
+	}
+
 	private static long unsignedRemainderByUnsignedInt(long dividendLo, long dividendHi, long divisor) {
 		long remainder = 0;
 
@@ -508,6 +527,19 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 
 		part = (remainder << 32) | (dividendLo & UNSIGNED_INT_MASK);
 		return Long.remainderUnsigned(part, divisor);
+	}
+
+	private static long unsignedRemainderByUnsignedLong(long dividendLo, long dividendHi, long divisor) {
+		long remainder = dividendHi;
+
+		for (int bitIndex = 63; bitIndex >= 0; bitIndex--) {
+			long shiftedRemainder = (remainder << 1) | ((dividendLo >>> bitIndex) & 1L);
+			if ((remainder >>> 63) != 0 || Long.compareUnsigned(shiftedRemainder, divisor) >= 0) {
+				shiftedRemainder -= divisor;
+			}
+			remainder = shiftedRemainder;
+		}
+		return remainder;
 	}
 
 	private static int decimalDigits(int value) {
