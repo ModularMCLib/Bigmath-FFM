@@ -319,7 +319,6 @@ class Int128Test {
 	void loHi() {
 		try (Int128 i = Int128.fromLong(0x1234567890abcdefL)) {
 			assertEquals(0x1234567890abcdefL, i.lo());
-			// hi should be 0 for positive numbers that fit in 64 bits
 			assertEquals(0, i.hi());
 		}
 	}
