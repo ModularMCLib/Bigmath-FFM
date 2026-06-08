@@ -173,40 +173,32 @@ char *bigint_to_string(mpz_ptr a, int radix) {
 }
 
 char *bigint_format(mpz_ptr a, int group_size, const char *group_sep) {
+	char *raw = mpz_get_str(nullptr, 10, a);
 	if (group_size <= 0 || group_sep == nullptr || *group_sep == '\0') {
-		return mpz_get_str(nullptr, 10, a);
-	}
-	size_t sep_len = strlen(group_sep);
-	size_t raw_capacity = mpz_sizeinbase(a, 10) + 3;
-	size_t max_digits = raw_capacity - 2;
-	size_t max_groups = (max_digits + (size_t)group_size - 1) / (size_t)group_size;
-	size_t max_len = 1 + max_digits + (max_groups > 0 ? (max_groups - 1) * sep_len : 0);
-	size_t raw_offset = max_len + 1;
-	char *out = (char *)malloc(raw_offset + raw_capacity);
-	if (!out) return nullptr;
-
-	char *raw = out + raw_offset;
-	if (!mpz_get_str(raw, 10, a)) {
-		free(out);
-		return nullptr;
+		return raw;
 	}
 	bool neg = (raw[0] == '-');
 	const char *digits = raw + (neg ? 1 : 0);
 	size_t len = strlen(digits);
-	size_t groups = (len + (size_t)group_size - 1) / (size_t)group_size;
+	size_t sep_len = strlen(group_sep);
+	size_t groups = (len + group_size - 1) / group_size;
+	size_t new_len = (neg ? 1 : 0) + len + (groups - 1) * sep_len;
+	char *out = (char *)malloc(new_len + 1);
+	if (!out) { free(raw); return nullptr; }
 	size_t pos = 0;
 	if (neg) out[pos++] = '-';
-	size_t first_group = len % (size_t)group_size;
-	if (first_group == 0) first_group = (size_t)group_size;
+	size_t first_group = len % group_size;
+	if (first_group == 0) first_group = group_size;
 	memcpy(out + pos, digits, first_group);
 	pos += first_group;
-	for (size_t i = first_group; i < len; i += (size_t)group_size) {
+	for (size_t i = first_group; i < len; i += group_size) {
 		memcpy(out + pos, group_sep, sep_len);
 		pos += sep_len;
 		memcpy(out + pos, digits + i, group_size);
 		pos += group_size;
 	}
 	out[pos] = '\0';
+	free(raw);
 	return out;
 }
 
