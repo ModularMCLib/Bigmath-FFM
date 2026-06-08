@@ -217,12 +217,8 @@ char *bigdecimal_format(mpfr_ptr a, int scale, int group_size, const char *group
 	if (first_group == 0) first_group = (size_t)group_size;
 	for (size_t i = 0; i < int_len; i++) {
 		if (sep_len > 0 && i > 0 && (i == first_group || (i > first_group && (i - first_group) % (size_t)group_size == 0))) {
-			if (sep_len == 1) {
-				out[pos++] = group_sep[0];
-			} else {
-				memcpy(out + pos, group_sep, sep_len);
-				pos += sep_len;
-			}
+			memcpy(out + pos, group_sep, sep_len);
+			pos += sep_len;
 		}
 		out[pos++] = (exp > 0 && i < digit_len) ? p[i] : '0';
 	}
