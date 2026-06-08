@@ -110,6 +110,16 @@ class Int128Test {
 	}
 
 	@Test
+	void divideWideBySignedRangeUnsignedLongValue() {
+		try (Int128 a = Int128.fromString("170141183460469231731687303715884105727", 10);
+			Int128 b = Int128.fromString("9223372036854775807", 10)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("18446744073709551618", c.toString());
+			}
+		}
+	}
+
+	@Test
 	void divideUnsignedLongBenchmarkCase() {
 		try (Int128 a = Int128.fromString("12345678901234567890", 10);
 			Int128 b = Int128.fromLong(987654321)) {
@@ -191,6 +201,16 @@ class Int128Test {
 			Int128 b = Int128.fromString("18446744073709551615", 10)) {
 			try (Int128 c = a.mod(b)) {
 				assertEquals("9223372036854775807", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void modWideBySignedRangeUnsignedLongValue() {
+		try (Int128 a = Int128.fromString("170141183460469231731687303715884105727", 10);
+			Int128 b = Int128.fromString("9223372036854775807", 10)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("1", c.toString());
 			}
 		}
 	}
