@@ -138,6 +138,26 @@ public class BigIntBenchmark {
 		}
 	}
 
+	@State(Scope.Thread)
+	public static class StringState {
+		@Param({"128", "2048"})
+		public int digits;
+
+		String value;
+		BigInt result;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			value = repeatDigits("1234567890", digits);
+			result = BigInt.fromLong(0);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			result.close();
+		}
+	}
+
 	@Benchmark
 	public void addSmall(SmallState state, Blackhole blackhole) {
 		try (BigInt result = state.left.add(state.right)) {
@@ -191,8 +211,20 @@ public class BigIntBenchmark {
 	}
 
 	@Benchmark
+	public void fromString(StringState state, Blackhole blackhole) {
+		try (BigInt result = BigInt.fromString(state.value, 10)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
 	public void setLong(LongState state, Blackhole blackhole) {
 		blackhole.consume(state.result.set(state.value));
+	}
+
+	@Benchmark
+	public void setString(StringState state, Blackhole blackhole) {
+		blackhole.consume(state.result.set(state.value, 10));
 	}
 
 	@Benchmark

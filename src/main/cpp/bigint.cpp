@@ -40,8 +40,7 @@ void bigint_from_long(mpz_ptr *out, int64_t val) {
 void bigint_from_string(mpz_ptr *out, const char *str, int radix) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mpz_init(*out);
-	mpz_set_str(*out, str, radix);
+	mpz_init_set_str(*out, str, radix);
 }
 
 void bigint_init(mpz_ptr *out) {
