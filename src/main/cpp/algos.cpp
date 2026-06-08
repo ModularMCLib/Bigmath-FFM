@@ -151,6 +151,24 @@ void karatsuba_mul(limb_t *out, const limb_t *a, int alen, const limb_t *b, int 
 #ifndef BIGMATH_NO_GMP
 
 static std::vector<uint64_t> export_base_2_16(mpz_ptr value) {
+#if defined(_WIN32)
+	std::vector<uint64_t> digits;
+	digits.reserve((mpz_sizeinbase(value, 2) + 15) / 16);
+
+	mpz_t tmp, digit;
+	mpz_init_set(tmp, value);
+	mpz_init(digit);
+	while (mpz_sgn(tmp) > 0) {
+		mpz_tdiv_r_2exp(digit, tmp, 16);
+		digits.push_back(mpz_get_ui(digit));
+		mpz_tdiv_q_2exp(tmp, tmp, 16);
+	}
+	mpz_clear(tmp);
+	mpz_clear(digit);
+
+	if (digits.empty()) digits.push_back(0);
+	return digits;
+#else
 	size_t count = (mpz_sizeinbase(value, 2) + 15) / 16;
 	if (count == 0) return {0};
 
@@ -159,6 +177,7 @@ static std::vector<uint64_t> export_base_2_16(mpz_ptr value) {
 	mpz_export(digits.data(), &written, -1, sizeof(uint64_t), 0, 48, value);
 	digits.resize(written == 0 ? 1 : written);
 	return digits;
+#endif
 }
 
 // ---- Binary GCD (Stein's algorithm) ----
