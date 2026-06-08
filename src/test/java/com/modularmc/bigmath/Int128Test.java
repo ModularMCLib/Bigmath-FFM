@@ -126,6 +126,26 @@ class Int128Test {
 	}
 
 	@Test
+	void divideWideByUnsignedIntFastPath() {
+		try (Int128 a = Int128.fromString("170141183460469231731687303715884105727", 10);
+			Int128 b = Int128.fromLong(4294967295L)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("39614081266355540835774234624", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void modWideByUnsignedIntFastPath() {
+		try (Int128 a = Int128.fromString("170141183460469231731687303715884105727", 10);
+			Int128 b = Int128.fromLong(4294967295L)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("2147483647", c.toString());
+			}
+		}
+	}
+
+	@Test
 	void modWideNegativeValueKeepsDividendSign() {
 		try (Int128 a = Int128.fromString("-123456789012345678901234567891", 10);
 			Int128 b = Int128.fromLong(123456789)) {
@@ -225,6 +245,13 @@ class Int128Test {
 		try (Int128 i = Int128.fromString(value, 10)) {
 			assertEquals(value, i.toString());
 			assertEquals("-170,141,183,460,469,231,731,687,303,715,884,105,728", i.toFormattedString());
+		}
+	}
+
+	@Test
+	void wideDecimalFormattingWithCustomGrouping() {
+		try (Int128 i = Int128.fromString("170141183460469231731687303715884105727", 10)) {
+			assertEquals("1701_41183_46046_92317_31687_30371_58841_05727", i.toFormattedString(5, "_"));
 		}
 	}
 
