@@ -48,6 +48,30 @@ public class BigDeciBenchmark {
 		}
 	}
 
+	@State(Scope.Thread)
+	public static class PowState {
+		@Param({"64", "256", "1024"})
+		public int precision;
+
+		@Param({"2", "10", "128"})
+		public long exponent;
+
+		BigDeci base;
+		BigDeci decimalExponent;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			base = BigDeci.fromString("1.000123456789", precision);
+			decimalExponent = BigDeci.fromDouble((double) exponent, precision);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			base.close();
+			decimalExponent.close();
+		}
+	}
+
 	@Benchmark
 	public void add(PrecisionState state, Blackhole blackhole) {
 		try (BigDeci result = state.left.add(state.right)) {
@@ -82,6 +106,20 @@ public class BigDeciBenchmark {
 	@Benchmark
 	public void sqrtInto(PrecisionState state, Blackhole blackhole) {
 		blackhole.consume(state.result.sqrtInto(state.left));
+	}
+
+	@Benchmark
+	public void pow(PowState state, Blackhole blackhole) {
+		try (BigDeci result = state.base.pow(state.decimalExponent)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void powLong(PowState state, Blackhole blackhole) {
+		try (BigDeci result = state.base.pow(state.exponent)) {
+			blackhole.consume(result);
+		}
 	}
 
 	@Benchmark

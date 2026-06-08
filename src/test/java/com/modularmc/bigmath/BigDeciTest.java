@@ -147,6 +147,18 @@ class BigDeciTest {
 	}
 
 	@Test
+	void powLong() {
+		try (BigDeci base = BigDeci.fromDouble(2.0, 128)) {
+			try (BigDeci c = base.pow(10)) {
+				assertEquals(1024.0, c.toDouble(), 1e-6);
+			}
+			try (BigDeci c = base.pow(-3)) {
+				assertEquals(0.125, c.toDouble(), 1e-12);
+			}
+		}
+	}
+
+	@Test
 	void log() {
 		try (BigDeci a = BigDeci.fromDouble(Math.E, 64)) {
 			try (BigDeci c = a.log()) {

@@ -155,6 +155,11 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
 	);
 
+	/** {@code void bigdecimal_pow_long(void** out, void* a, long exp)} */
+	static final FunctionDescriptor BIGDECIMAL_POW_LONG = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG
+	);
+
 	/** {@code void bigdecimal_op_into(void* out, void* a, void* b)} — add/mul/div */
 	static final FunctionDescriptor BIGDECIMAL_BINARY_INTO = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS

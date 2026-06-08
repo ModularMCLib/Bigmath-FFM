@@ -1,6 +1,7 @@
 #include "bigmath_ffm.h"
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 #ifndef BIGMATH_NO_GMP
 
@@ -232,6 +233,22 @@ void bigdecimal_pow(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
 	mpfr_pow(*out, a, b, MPFR_RNDN);
 }
 
+void bigdecimal_pow_long(mpfr_ptr *out, mpfr_ptr a, int64_t exp) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
+	mpfr_init2(*out, mpfr_get_prec(a));
+	if (exp >= static_cast<int64_t>(std::numeric_limits<long>::min())
+			&& exp <= static_cast<int64_t>(std::numeric_limits<long>::max())) {
+		mpfr_pow_si(*out, a, static_cast<long>(exp), MPFR_RNDN);
+		return;
+	}
+	mpfr_t exponent;
+	mpfr_init2(exponent, 64);
+	mpfr_set_sj(exponent, exp, MPFR_RNDN);
+	mpfr_pow(*out, a, exponent, MPFR_RNDN);
+	mpfr_clear(exponent);
+}
+
 void bigdecimal_log(mpfr_ptr *out, mpfr_ptr a) {
 	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
 	if (!*out) return;
@@ -357,6 +374,7 @@ void bigdecimal_free_string(char *) { }
 void bigdecimal_free(mpfr_ptr) { }
 void bigdecimal_sqrt(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_pow(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_pow_long(mpfr_ptr *out, mpfr_ptr, int64_t) { *out = nullptr; }
 void bigdecimal_log(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_exp(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_sin(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }

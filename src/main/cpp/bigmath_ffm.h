@@ -88,6 +88,7 @@ BIGMATH_EXPORT void   bigdecimal_free_string(char *s);
 
 BIGMATH_EXPORT void   bigdecimal_sqrt(mpfr_ptr *out, mpfr_ptr a);
 BIGMATH_EXPORT void   bigdecimal_pow(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
+BIGMATH_EXPORT void   bigdecimal_pow_long(mpfr_ptr *out, mpfr_ptr a, int64_t exp);
 BIGMATH_EXPORT void   bigdecimal_log(mpfr_ptr *out, mpfr_ptr a);
 BIGMATH_EXPORT void   bigdecimal_exp(mpfr_ptr *out, mpfr_ptr a);
 BIGMATH_EXPORT void   bigdecimal_sin(mpfr_ptr *out, mpfr_ptr a);

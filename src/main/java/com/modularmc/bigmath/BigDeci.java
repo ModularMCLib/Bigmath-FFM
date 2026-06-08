@@ -59,6 +59,10 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 			"bigdecimal_pow",
 			FunctionDescriptors.BIGDECIMAL_BINARY
 	);
+	private static final MethodHandle BIGDECIMAL_POW_LONG_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigdecimal_pow_long",
+			FunctionDescriptors.BIGDECIMAL_POW_LONG
+	);
 	private static final MethodHandle BIGDECIMAL_LOG_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_log",
 			FunctionDescriptors.BIGDECIMAL_UNARY
@@ -387,6 +391,18 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	}
 
 	/**
+	 * Returns {@code this}<sup>{@code exponent}</sup>.
+	 *
+	 * @param exponent the integer exponent
+	 */
+	public BigDeci pow(long exponent) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		invokeOutAddressLong(BIGDECIMAL_POW_LONG_HANDLE, result, nativePtr, exponent);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+	}
+
+	/**
 	 * Returns the natural logarithm.
 	 */
 	public BigDeci log() {
@@ -671,6 +687,16 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	private static double invokeDoubleUnary(MemorySegment value) {
 		try {
 			return (double) BIGDECIMAL_TO_DOUBLE_HANDLE.invokeExact(value);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	private static void invokeOutAddressLong(MethodHandle handle, MemorySegment out, MemorySegment value, long argument) {
+		try {
+			handle.invokeExact(out, value, argument);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
