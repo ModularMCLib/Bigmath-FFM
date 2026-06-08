@@ -60,6 +60,24 @@ public class Int128Benchmark {
 	}
 
 	@State(Scope.Thread)
+	public static class SmallerMagnitudeDivisionState {
+		Int128 left;
+		Int128 right;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			left = Int128.fromLong(123456789);
+			right = Int128.fromString("18446744073709551616", 10);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			left.close();
+			right.close();
+		}
+	}
+
+	@State(Scope.Thread)
 	public static class ColdStringState {
 		Int128 value;
 
@@ -97,6 +115,20 @@ public class Int128Benchmark {
 
 	@Benchmark
 	public void modWideByUnsignedLong(WideDivisionState state, Blackhole blackhole) {
+		try (Int128 result = state.left.mod(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void divideMagnitudeSmallerThanWideDivisor(SmallerMagnitudeDivisionState state, Blackhole blackhole) {
+		try (Int128 result = state.left.divide(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void modMagnitudeSmallerThanWideDivisor(SmallerMagnitudeDivisionState state, Blackhole blackhole) {
 		try (Int128 result = state.left.mod(state.right)) {
 			blackhole.consume(result);
 		}

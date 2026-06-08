@@ -107,6 +107,9 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		long dividendHi = absHi();
 		long divisorLo = other.absLo();
 		long divisorHi = other.absHi();
+		if (compareUnsigned(dividendLo, dividendHi, divisorLo, divisorHi) < 0) {
+			return ZERO;
+		}
 		Int128 quotient;
 		if (dividendHi == 0 && divisorHi == 0) {
 			quotient = fromWords(Long.divideUnsigned(dividendLo, divisorLo), 0);
@@ -134,6 +137,9 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		long dividendHi = absHi();
 		long divisorLo = other.absLo();
 		long divisorHi = other.absHi();
+		if (compareUnsigned(dividendLo, dividendHi, divisorLo, divisorHi) < 0) {
+			return fromWords(lo, hi);
+		}
 		Int128 remainder;
 		if (dividendHi == 0 && divisorHi == 0) {
 			remainder = fromLong(Long.remainderUnsigned(dividendLo, divisorLo));
