@@ -247,6 +247,8 @@ void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 
 	// Convert to base-2^16 digits
 	std::vector<uint64_t> ad, bd;
+	ad.reserve((mpz_sizeinbase(abs_a, 2) + 15) / 16);
+	bd.reserve((mpz_sizeinbase(abs_b, 2) + 15) / 16);
 	mpz_t tmp, digit;
 	mpz_init(tmp);
 	mpz_init(digit);
@@ -273,6 +275,10 @@ void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 
 	// NTT convolution
 	auto conv = ntt::convolve(ad, bd, BASE);
+	if (conv.empty()) {
+		mpz_mul(out, a, b);
+		return;
+	}
 
 	// Carry propagation
 	uint64_t carry = 0;
@@ -281,7 +287,8 @@ void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 		conv[i] = val & BASE_MASK;
 		carry = val >> 16;
 	}
-	conv.push_back(carry);
+	if (carry != 0) conv.push_back(carry);
+	while (conv.size() > 1 && conv.back() == 0) conv.pop_back();
 
 	// Build result: most significant digit first
 	mpz_set_ui(out, 0);

@@ -69,6 +69,30 @@ public class BigIntBenchmark {
 		}
 	}
 
+	@State(Scope.Thread)
+	public static class NttState {
+		@Param({"4096", "8192"})
+		public int digits;
+
+		BigInt left;
+		BigInt right;
+		BigInt result;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			left = BigInt.fromString(repeatDigits("1234567890", digits), 10);
+			right = BigInt.fromString(repeatDigits("9876543210", digits), 10);
+			result = BigInt.fromLong(0);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			left.close();
+			right.close();
+			result.close();
+		}
+	}
+
 	@Benchmark
 	public void addSmall(SmallState state, Blackhole blackhole) {
 		try (BigInt result = state.left.add(state.right)) {
@@ -90,6 +114,18 @@ public class BigIntBenchmark {
 
 	@Benchmark
 	public void multiplyLargeInto(LargeState state, Blackhole blackhole) {
+		blackhole.consume(state.result.multiplyInto(state.left, state.right));
+	}
+
+	@Benchmark
+	public void multiplyNtt(NttState state, Blackhole blackhole) {
+		try (BigInt result = state.left.multiply(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void multiplyNttInto(NttState state, Blackhole blackhole) {
 		blackhole.consume(state.result.multiplyInto(state.left, state.right));
 	}
 

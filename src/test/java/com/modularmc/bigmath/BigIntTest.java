@@ -360,6 +360,23 @@ class BigIntTest {
 	}
 
 	@Test
+	void nttLargeMultiplicationMatchesBigInteger() {
+		String left = repeatDigits("1234567890", 5000);
+		String right = repeatDigits("9876543210", 5000);
+		java.math.BigInteger expected = new java.math.BigInteger(left).multiply(new java.math.BigInteger(right));
+		try (BigInt a = BigInt.fromString(left, 10);
+			BigInt b = BigInt.fromString(right, 10)) {
+			try (BigInt c = a.multiply(b)) {
+				assertEquals(expected.toString(), c.toString());
+			}
+			try (BigInt c = BigInt.fromLong(0)) {
+				c.multiplyInto(a, b);
+				assertEquals(expected.toString(), c.toString());
+			}
+		}
+	}
+
+	@Test
 	void formatting() {
 		try (BigInt bi = BigInt.fromString("1234567", 10)) {
 			assertEquals("1,234,567", bi.toFormattedString());
@@ -489,5 +506,14 @@ class BigIntTest {
 		try (BigInt bi = BigInt.fromLong(0x1_0000_0000L)) {
 			assertTrue(bi.intValue() == (int) bi.longValue());
 		}
+	}
+
+	private static String repeatDigits(String pattern, int digits) {
+		StringBuilder sb = new StringBuilder(digits);
+		while (sb.length() < digits) {
+			sb.append(pattern);
+		}
+		sb.setLength(digits);
+		return sb.toString();
 	}
 }
