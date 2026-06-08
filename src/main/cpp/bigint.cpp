@@ -28,6 +28,11 @@ static void mpz_set_int64(mpz_ptr out, int64_t val) {
 void bigint_from_long(mpz_ptr *out, int64_t val) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
+	if (val >= static_cast<int64_t>(std::numeric_limits<long>::min())
+			&& val <= static_cast<int64_t>(std::numeric_limits<long>::max())) {
+		mpz_init_set_si(*out, static_cast<long>(val));
+		return;
+	}
 	mpz_init(*out);
 	mpz_set_int64(*out, val);
 }
