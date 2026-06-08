@@ -18,6 +18,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	private static final long DECIMAL_CHUNK_BASE = 1_000_000_000L;
 	private static final int DECIMAL_CHUNK_DIGITS = 9;
 	private static final char[] DIGITS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
+	private static final char[] PADDED_THREE_DIGIT_TABLE = createPaddedThreeDigitTable();
 	private static final MethodHandle INT128_FROM_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"int128_from_string",
 			FunctionDescriptors.INT128_FROM_STRING
@@ -302,20 +303,20 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 			long remainder = 0;
 
 			long part = magnitudeHi >>> 32;
-			long qHiHigh = Long.divideUnsigned(part, DECIMAL_CHUNK_BASE);
-			remainder = Long.remainderUnsigned(part, DECIMAL_CHUNK_BASE);
+			long qHiHigh = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qHiHigh * DECIMAL_CHUNK_BASE;
 
 			part = (remainder << 32) | (magnitudeHi & UNSIGNED_INT_MASK);
-			long qHiLow = Long.divideUnsigned(part, DECIMAL_CHUNK_BASE);
-			remainder = Long.remainderUnsigned(part, DECIMAL_CHUNK_BASE);
+			long qHiLow = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qHiLow * DECIMAL_CHUNK_BASE;
 
 			part = (remainder << 32) | (magnitudeLo >>> 32);
-			long qLoHigh = Long.divideUnsigned(part, DECIMAL_CHUNK_BASE);
-			remainder = Long.remainderUnsigned(part, DECIMAL_CHUNK_BASE);
+			long qLoHigh = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qLoHigh * DECIMAL_CHUNK_BASE;
 
 			part = (remainder << 32) | (magnitudeLo & UNSIGNED_INT_MASK);
-			long qLoLow = Long.divideUnsigned(part, DECIMAL_CHUNK_BASE);
-			remainder = Long.remainderUnsigned(part, DECIMAL_CHUNK_BASE);
+			long qLoLow = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qLoLow * DECIMAL_CHUNK_BASE;
 
 			chunks[chunkCount++] = (int) remainder;
 			magnitudeHi = (qHiHigh << 32) | qHiLow;
@@ -535,12 +536,13 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	}
 
 	private static void writePaddedNineDigits(int value, char[] buffer, int pos) {
-		int current = value;
-		for (int index = pos + DECIMAL_CHUNK_DIGITS - 1; index >= pos; index--) {
-			int quotient = current / 10;
-			buffer[index] = (char) ('0' + (current - quotient * 10));
-			current = quotient;
-		}
+		int high = value / 1_000_000;
+		int remainder = value - high * 1_000_000;
+		int middle = remainder / 1_000;
+		int low = remainder - middle * 1_000;
+		copyPaddedThreeDigits(high, buffer, pos);
+		copyPaddedThreeDigits(middle, buffer, pos + 3);
+		copyPaddedThreeDigits(low, buffer, pos + 6);
 	}
 
 	private static Int128 unsignedDivMod(
@@ -582,6 +584,24 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	private static int compareUnsigned(long leftLo, long leftHi, long rightLo, long rightHi) {
 		int high = Long.compareUnsigned(leftHi, rightHi);
 		return high != 0 ? high : Long.compareUnsigned(leftLo, rightLo);
+	}
+
+	private static void copyPaddedThreeDigits(int value, char[] buffer, int pos) {
+		int source = value * 3;
+		buffer[pos] = PADDED_THREE_DIGIT_TABLE[source];
+		buffer[pos + 1] = PADDED_THREE_DIGIT_TABLE[source + 1];
+		buffer[pos + 2] = PADDED_THREE_DIGIT_TABLE[source + 2];
+	}
+
+	private static char[] createPaddedThreeDigitTable() {
+		char[] table = new char[1_000 * 3];
+		for (int value = 0; value < 1_000; value++) {
+			int pos = value * 3;
+			table[pos] = (char) ('0' + value / 100);
+			table[pos + 1] = (char) ('0' + (value / 10) % 10);
+			table[pos + 2] = (char) ('0' + value % 10);
+		}
+		return table;
 	}
 
 	private static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int radix) {

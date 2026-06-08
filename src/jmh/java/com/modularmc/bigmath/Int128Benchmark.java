@@ -41,6 +41,39 @@ public class Int128Benchmark {
 		}
 	}
 
+	@State(Scope.Thread)
+	public static class WideDivisionState {
+		Int128 left;
+		Int128 right;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			left = Int128.fromString("170141183460469231731687303715884105727", 10);
+			right = Int128.fromString("18446744073709551615", 10);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			left.close();
+			right.close();
+		}
+	}
+
+	@State(Scope.Thread)
+	public static class ColdStringState {
+		Int128 value;
+
+		@Setup(Level.Invocation)
+		public void setup() {
+			value = Int128.fromWords(-1L, Long.MAX_VALUE);
+		}
+
+		@TearDown(Level.Invocation)
+		public void tearDown() {
+			value.close();
+		}
+	}
+
 	@Benchmark
 	public void add(ArithmeticState state, Blackhole blackhole) {
 		try (Int128 result = state.left.add(state.right)) {
@@ -56,6 +89,20 @@ public class Int128Benchmark {
 	}
 
 	@Benchmark
+	public void divideWideByUnsignedLong(WideDivisionState state, Blackhole blackhole) {
+		try (Int128 result = state.left.divide(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void modWideByUnsignedLong(WideDivisionState state, Blackhole blackhole) {
+		try (Int128 result = state.left.mod(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
 	public String toStringBase10(ArithmeticState state) {
 		return state.left.toString();
 	}
@@ -63,5 +110,15 @@ public class Int128Benchmark {
 	@Benchmark
 	public String formatBase10(ArithmeticState state) {
 		return state.left.toFormattedString();
+	}
+
+	@Benchmark
+	public String toStringBase10Cold(ColdStringState state) {
+		return state.value.toString();
+	}
+
+	@Benchmark
+	public String formatBase10Cold(ColdStringState state) {
+		return state.value.toFormattedString();
 	}
 }
