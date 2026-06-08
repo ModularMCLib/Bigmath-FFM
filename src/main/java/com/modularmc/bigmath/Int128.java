@@ -31,6 +31,8 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 
 	private final long lo;
 	private final long hi;
+	private String cachedDecimalString;
+	private String cachedFormattedDecimalString;
 
 	private Int128(long lo, long hi) {
 		this.lo = lo;
@@ -179,31 +181,51 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		if (radix < 2 || radix > DIGITS.length) {
 			throw new IllegalArgumentException("radix must be between 2 and 62");
 		}
+		if (radix == 10) {
+			String cached = cachedDecimalString;
+			if (cached != null) {
+				return cached;
+			}
+			String value;
+			if (fitsInLong()) {
+				value = Long.toString(lo);
+			} else if (hi == 0) {
+				value = Long.toUnsignedString(lo);
+			} else {
+				value = toDecimalString();
+			}
+			cachedDecimalString = value;
+			return value;
+		}
 		if (fitsInLong() && radix <= Character.MAX_RADIX) {
 			return Long.toString(lo, radix);
-		}
-		if (radix == 10) {
-			if (hi == 0) {
-				return Long.toUnsignedString(lo);
-			}
-			return toDecimalString();
 		}
 		return toStringJava(radix);
 	}
 
 	public String toFormattedString() {
+		String cached = cachedFormattedDecimalString;
+		if (cached != null) {
+			return cached;
+		}
+		String value;
 		if (fitsInLong()) {
-			return formatGroupedDecimal(Long.toString(lo), 3, ",");
+			value = formatGroupedDecimal(Long.toString(lo), 3, ",");
+		} else if (hi == 0) {
+			value = formatGroupedDecimal(Long.toUnsignedString(lo), 3, ",");
+		} else {
+			value = toFormattedDecimalString(3, ",");
 		}
-		if (hi == 0) {
-			return formatGroupedDecimal(Long.toUnsignedString(lo), 3, ",");
-		}
-		return toFormattedDecimalString(3, ",");
+		cachedFormattedDecimalString = value;
+		return value;
 	}
 
 	public String toFormattedString(int groupSize, String groupSep) {
 		if (groupSize <= 0 || groupSep == null || groupSep.isEmpty()) {
 			return toString();
+		}
+		if (groupSize == 3 && groupSep.equals(",")) {
+			return toFormattedString();
 		}
 		if (fitsInLong()) {
 			return formatGroupedDecimal(Long.toString(lo), groupSize, groupSep);
