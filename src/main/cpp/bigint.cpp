@@ -206,27 +206,30 @@ char *bigint_format(mpz_ptr a, int group_size, const char *group_sep) {
 		return raw;
 	}
 	bool neg = (raw[0] == '-');
-	const char *digits = raw + (neg ? 1 : 0);
+	char *digits = raw + (neg ? 1 : 0);
 	size_t len = strlen(digits);
 	size_t sep_len = strlen(group_sep);
-	size_t groups = (len + group_size - 1) / group_size;
-	size_t new_len = (neg ? 1 : 0) + len + (groups - 1) * sep_len;
-	char *out = (char *)malloc(new_len + 1);
-	if (!out) { free(raw); return nullptr; }
-	size_t pos = 0;
-	if (neg) out[pos++] = '-';
-	size_t first_group = len % group_size;
-	if (first_group == 0) first_group = group_size;
-	memcpy(out + pos, digits, first_group);
-	pos += first_group;
-	for (size_t i = first_group; i < len; i += group_size) {
-		memcpy(out + pos, group_sep, sep_len);
-		pos += sep_len;
-		memcpy(out + pos, digits + i, group_size);
-		pos += group_size;
+	if (len <= static_cast<size_t>(group_size)) {
+		return raw;
 	}
-	out[pos] = '\0';
-	free(raw);
+	size_t sep_count = (len - 1) / static_cast<size_t>(group_size);
+	size_t new_len = (neg ? 1 : 0) + len + sep_count * sep_len;
+	char *out = (char *)realloc(raw, new_len + 1);
+	if (!out) { free(raw); return nullptr; }
+	size_t read = (neg ? 1 : 0) + len;
+	size_t write = new_len;
+	out[write--] = '\0';
+	size_t group_digits = 0;
+	while (read > (neg ? 1 : 0)) {
+		out[write--] = out[--read];
+		group_digits++;
+		if (group_digits == static_cast<size_t>(group_size) && read > (neg ? 1 : 0)) {
+			write -= sep_len - 1;
+			memcpy(out + write, group_sep, sep_len);
+			write--;
+			group_digits = 0;
+		}
+	}
 	return out;
 }
 
