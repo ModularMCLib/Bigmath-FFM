@@ -206,24 +206,38 @@ char *bigint_format(mpz_ptr a, int group_size, const char *group_sep) {
 		return raw;
 	}
 	bool neg = (raw[0] == '-');
-	char *digits = raw + (neg ? 1 : 0);
+	size_t sign_offset = neg ? 1 : 0;
+	char *digits = raw + sign_offset;
 	size_t len = strlen(digits);
 	size_t sep_len = strlen(group_sep);
 	if (len <= static_cast<size_t>(group_size)) {
 		return raw;
 	}
 	size_t sep_count = (len - 1) / static_cast<size_t>(group_size);
-	size_t new_len = (neg ? 1 : 0) + len + sep_count * sep_len;
+	size_t new_len = sign_offset + len + sep_count * sep_len;
 	char *out = (char *)realloc(raw, new_len + 1);
 	if (!out) { free(raw); return nullptr; }
-	size_t read = (neg ? 1 : 0) + len;
+	size_t read = sign_offset + len;
 	size_t write = new_len;
 	out[write--] = '\0';
+	if (group_size == 3 && sep_len == 1) {
+		char sep = group_sep[0];
+		while (read - sign_offset > 3) {
+			out[write--] = out[--read];
+			out[write--] = out[--read];
+			out[write--] = out[--read];
+			out[write--] = sep;
+		}
+		while (read > sign_offset) {
+			out[write--] = out[--read];
+		}
+		return out;
+	}
 	size_t group_digits = 0;
-	while (read > (neg ? 1 : 0)) {
+	while (read > sign_offset) {
 		out[write--] = out[--read];
 		group_digits++;
-		if (group_digits == static_cast<size_t>(group_size) && read > (neg ? 1 : 0)) {
+		if (group_digits == static_cast<size_t>(group_size) && read > sign_offset) {
 			if (sep_len == 1) {
 				out[write--] = group_sep[0];
 			} else {
