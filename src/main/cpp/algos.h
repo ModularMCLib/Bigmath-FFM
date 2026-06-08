@@ -19,7 +19,7 @@ namespace bigmath {
 
 constexpr int KARATSUBA_THRESHOLD = 32;
 constexpr int ALGO_THRESHOLD     = 64;
-constexpr int NTT_THRESHOLD      = 512;
+constexpr int NTT_THRESHOLD      = 4096;
 
 using limb_t = uint64_t;
 

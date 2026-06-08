@@ -360,7 +360,7 @@ class BigIntTest {
 	}
 
 	@Test
-	void nttLargeMultiplicationMatchesBigInteger() {
+	void veryLargeMultiplicationMatchesBigInteger() {
 		String left = repeatDigits("1234567890", 5000);
 		String right = repeatDigits("9876543210", 5000);
 		java.math.BigInteger expected = new java.math.BigInteger(left).multiply(new java.math.BigInteger(right));

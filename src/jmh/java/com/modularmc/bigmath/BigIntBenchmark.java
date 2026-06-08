@@ -70,7 +70,7 @@ public class BigIntBenchmark {
 	}
 
 	@State(Scope.Thread)
-	public static class NttState {
+	public static class VeryLargeState {
 		@Param({"4096", "8192"})
 		public int digits;
 
@@ -118,14 +118,14 @@ public class BigIntBenchmark {
 	}
 
 	@Benchmark
-	public void multiplyNtt(NttState state, Blackhole blackhole) {
+	public void multiplyVeryLarge(VeryLargeState state, Blackhole blackhole) {
 		try (BigInt result = state.left.multiply(state.right)) {
 			blackhole.consume(result);
 		}
 	}
 
 	@Benchmark
-	public void multiplyNttInto(NttState state, Blackhole blackhole) {
+	public void multiplyVeryLargeInto(VeryLargeState state, Blackhole blackhole) {
 		blackhole.consume(state.result.multiplyInto(state.left, state.right));
 	}
 
