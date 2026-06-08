@@ -93,6 +93,12 @@ public class BigIntBenchmark {
 		}
 	}
 
+	@State(Scope.Thread)
+	public static class FactorialState {
+		@Param({"10", "128", "512", "5000"})
+		public long n;
+	}
+
 	@Benchmark
 	public void addSmall(SmallState state, Blackhole blackhole) {
 		try (BigInt result = state.left.add(state.right)) {
@@ -120,6 +126,13 @@ public class BigIntBenchmark {
 	@Benchmark
 	public void gcdLarge(LargeState state, Blackhole blackhole) {
 		try (BigInt result = state.left.gcd(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void factorial(FactorialState state, Blackhole blackhole) {
+		try (BigInt result = BigInt.factorial(state.n)) {
 			blackhole.consume(result);
 		}
 	}
