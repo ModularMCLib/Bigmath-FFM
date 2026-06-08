@@ -130,6 +130,11 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
 	);
 
+	/** {@code void bigdecimal_from_bigint(void** out, void* value, int precision)} */
+	static final FunctionDescriptor BIGDECIMAL_FROM_BIGINT = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
+	);
+
 	/** {@code void bigdecimal_init(void** out, int precision)} */
 	static final FunctionDescriptor BIGDECIMAL_INIT = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.JAVA_INT

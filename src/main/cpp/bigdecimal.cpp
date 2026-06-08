@@ -19,6 +19,13 @@ void bigdecimal_from_string(mpfr_ptr *out, const char *str, int precision) {
 	mpfr_set_str(*out, str, 10, MPFR_RNDN);
 }
 
+void bigdecimal_from_bigint(mpfr_ptr *out, mpz_ptr val, int precision) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
+	mpfr_init2(*out, precision);
+	mpfr_set_z(*out, val, MPFR_RNDN);
+}
+
 void bigdecimal_init(mpfr_ptr *out, int precision) {
 	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
 	if (!*out) return;
@@ -367,6 +374,7 @@ void bigdecimal_tanh(mpfr_ptr *out, mpfr_ptr a) {
 
 void bigdecimal_from_double(mpfr_ptr *out, double, int) { *out = nullptr; }
 void bigdecimal_from_string(mpfr_ptr *out, const char *, int) { *out = nullptr; }
+void bigdecimal_from_bigint(mpfr_ptr *out, mpz_ptr, int) { *out = nullptr; }
 void bigdecimal_init(mpfr_ptr *out, int) { *out = nullptr; }
 void bigdecimal_clear(mpfr_ptr) { }
 void bigdecimal_set(mpfr_ptr, mpfr_ptr) { }

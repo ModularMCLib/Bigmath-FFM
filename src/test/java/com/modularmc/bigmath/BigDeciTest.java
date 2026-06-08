@@ -249,6 +249,15 @@ class BigDeciTest {
 	}
 
 	@Test
+	void fromLargeBigInt() {
+		try (BigInt bi = BigInt.fromString("123456789012345678901234567890", 10)) {
+			try (BigDeci bd = BigDeci.fromBigInt(bi, 256)) {
+				assertTrue(bd.toString().startsWith("123456789012345678901234567890"));
+			}
+		}
+	}
+
+	@Test
 	void formatting() {
 		try (BigDeci bd = BigDeci.fromString("1234567.89", 64)) {
 			assertEquals("1,234,567.89", bd.toFormattedString());

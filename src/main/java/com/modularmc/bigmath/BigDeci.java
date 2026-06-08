@@ -103,6 +103,10 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 			"bigdecimal_from_string",
 			FunctionDescriptors.BIGDECIMAL_FROM_STRING
 	);
+	private static final MethodHandle BIGDECIMAL_FROM_BIGINT_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigdecimal_from_bigint",
+			FunctionDescriptors.BIGDECIMAL_FROM_BIGINT
+	);
 	private static final MethodHandle BIGDECIMAL_SET_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_set",
 			FunctionDescriptors.BIGDECIMAL_SET
@@ -217,7 +221,10 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	 * @return a new {@code BigDeci}
 	 */
 	public static BigDeci fromBigInt(BigInt value, int precision) {
-		return fromString(value.toString(), precision);
+		Arena arena = Arena.ofConfined();
+		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
+		invokeOutAddressInt(BIGDECIMAL_FROM_BIGINT_HANDLE, ptr, value.nativePtr(), precision);
+		return new BigDeci(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
@@ -677,6 +684,16 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	private static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int precision) {
 		try {
 			BIGDECIMAL_FROM_STRING_HANDLE.invokeExact(out, value, precision);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	private static void invokeOutAddressInt(MethodHandle handle, MemorySegment out, MemorySegment value, int precision) {
+		try {
+			handle.invokeExact(out, value, precision);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {

@@ -72,6 +72,27 @@ public class BigDeciBenchmark {
 		}
 	}
 
+	@State(Scope.Thread)
+	public static class BigIntState {
+		@Param({"64", "1024"})
+		public int precision;
+
+		@Param({"128", "2048"})
+		public int digits;
+
+		BigInt value;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			value = BigInt.fromString(repeatDigits("1234567890", digits), 10);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			value.close();
+		}
+	}
+
 	@Benchmark
 	public void add(PrecisionState state, Blackhole blackhole) {
 		try (BigDeci result = state.left.add(state.right)) {
@@ -123,6 +144,13 @@ public class BigDeciBenchmark {
 	}
 
 	@Benchmark
+	public void fromBigInt(BigIntState state, Blackhole blackhole) {
+		try (BigDeci result = BigDeci.fromBigInt(state.value, state.precision)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
 	public String toString(PrecisionState state) {
 		return state.left.toString();
 	}
@@ -130,5 +158,14 @@ public class BigDeciBenchmark {
 	@Benchmark
 	public String format(PrecisionState state) {
 		return state.left.toFormattedString();
+	}
+
+	private static String repeatDigits(String pattern, int digits) {
+		StringBuilder sb = new StringBuilder(digits);
+		while (sb.length() < digits) {
+			sb.append(pattern);
+		}
+		sb.setLength(digits);
+		return sb.toString();
 	}
 }

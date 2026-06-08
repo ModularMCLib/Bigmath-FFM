@@ -64,6 +64,7 @@ BIGMATH_EXPORT double bigint_to_double(mpz_ptr a);
 /* BigDecimal */
 BIGMATH_EXPORT void   bigdecimal_from_double(mpfr_ptr *out, double val, int precision);
 BIGMATH_EXPORT void   bigdecimal_from_string(mpfr_ptr *out, const char *str, int precision);
+BIGMATH_EXPORT void   bigdecimal_from_bigint(mpfr_ptr *out, mpz_ptr val, int precision);
 BIGMATH_EXPORT void   bigdecimal_init(mpfr_ptr *out, int precision);
 BIGMATH_EXPORT void   bigdecimal_clear(mpfr_ptr a);
 BIGMATH_EXPORT void   bigdecimal_set(mpfr_ptr out, mpfr_ptr a);
