@@ -173,6 +173,9 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 			return Long.toString(lo, radix);
 		}
 		if (radix == 10) {
+			if (hi == 0) {
+				return Long.toUnsignedString(lo);
+			}
 			return toDecimalString();
 		}
 		return toStringJava(radix);
@@ -181,6 +184,9 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	public String toFormattedString() {
 		if (fitsInLong()) {
 			return formatGroupedDecimal(Long.toString(lo), 3, ",");
+		}
+		if (hi == 0) {
+			return formatGroupedDecimal(Long.toUnsignedString(lo), 3, ",");
 		}
 		return toFormattedDecimalString(3, ",");
 	}
@@ -191,6 +197,9 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		}
 		if (fitsInLong()) {
 			return formatGroupedDecimal(Long.toString(lo), groupSize, groupSep);
+		}
+		if (hi == 0) {
+			return formatGroupedDecimal(Long.toUnsignedString(lo), groupSize, groupSep);
 		}
 		if (groupSep.equals(",") && groupSize == 3) {
 			return toFormattedDecimalString(groupSize, groupSep);

@@ -210,6 +210,14 @@ class Int128Test {
 	}
 
 	@Test
+	void unsignedLongDecimalStringFastPath() {
+		try (Int128 i = Int128.fromString("12345678901234567890", 10)) {
+			assertEquals(0, i.hi());
+			assertEquals("12345678901234567890", i.toString());
+		}
+	}
+
+	@Test
 	void hexString() {
 		try (Int128 i = Int128.fromString("ff", 16)) {
 			assertEquals("255", i.toString());
@@ -287,6 +295,14 @@ class Int128Test {
 		try (Int128 i = Int128.fromLong(1234567890)) {
 			assertEquals("1,234,567,890", i.toFormattedString());
 			assertEquals("12_3456_7890", i.toFormattedString(4, "_"));
+		}
+	}
+
+	@Test
+	void formatUnsignedLongValue() {
+		try (Int128 i = Int128.fromString("12345678901234567890", 10)) {
+			assertEquals("12,345,678,901,234,567,890", i.toFormattedString());
+			assertEquals("1234_5678_9012_3456_7890", i.toFormattedString(4, "_"));
 		}
 	}
 
