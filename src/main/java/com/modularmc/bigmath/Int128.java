@@ -220,7 +220,12 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		if (cached != null) {
 			return cached;
 		}
-		String value = formatGroupedDecimalDefault(toString());
+		String value;
+		if (fitsInLong() || hi == 0) {
+			value = formatGroupedDecimalDefault(toString());
+		} else {
+			value = toFormattedDecimalStringDefault();
+		}
 		cachedFormattedDecimalString = value;
 		return value;
 	}
@@ -237,9 +242,6 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		}
 		if (hi == 0) {
 			return formatGroupedDecimal(Long.toUnsignedString(lo), groupSize, groupSep);
-		}
-		if (groupSep.equals(",") && groupSize == 3) {
-			return toFormattedDecimalString(groupSize, groupSep);
 		}
 		return toFormattedStringJava(groupSize, groupSep);
 	}
@@ -344,8 +346,80 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return new String(buffer);
 	}
 
-	private String toFormattedDecimalString(int groupSize, String groupSep) {
-		return formatGroupedDecimal(toDecimalString(), groupSize, groupSep);
+	private String toFormattedDecimalStringDefault() {
+		long magnitudeLo = lo;
+		long magnitudeHi = hi;
+		boolean negative = magnitudeHi < 0;
+		if (negative) {
+			magnitudeLo = ~magnitudeLo + 1L;
+			magnitudeHi = ~magnitudeHi + (magnitudeLo == 0 ? 1L : 0L);
+		}
+
+		int[] chunks = new int[5];
+		int chunkCount = 0;
+		while (magnitudeHi != 0 || magnitudeLo != 0) {
+			long remainder = 0;
+
+			long part = magnitudeHi >>> 32;
+			long qHiHigh = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qHiHigh * DECIMAL_CHUNK_BASE;
+
+			part = (remainder << 32) | (magnitudeHi & UNSIGNED_INT_MASK);
+			long qHiLow = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qHiLow * DECIMAL_CHUNK_BASE;
+
+			part = (remainder << 32) | (magnitudeLo >>> 32);
+			long qLoHigh = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qLoHigh * DECIMAL_CHUNK_BASE;
+
+			part = (remainder << 32) | (magnitudeLo & UNSIGNED_INT_MASK);
+			long qLoLow = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qLoLow * DECIMAL_CHUNK_BASE;
+
+			chunks[chunkCount++] = (int) remainder;
+			magnitudeHi = (qHiHigh << 32) | qHiLow;
+			magnitudeLo = (qLoHigh << 32) | qLoLow;
+		}
+
+		int firstChunk = chunks[chunkCount - 1];
+		int firstDigits = decimalDigits(firstChunk);
+		int plainDigits = firstDigits + (chunkCount - 1) * DECIMAL_CHUNK_DIGITS;
+		int length = (negative ? 1 : 0) + plainDigits;
+		int sepCount = (plainDigits - 1) / 3;
+		char[] plain = new char[length];
+		char[] formatted = new char[length + sepCount];
+		int plainPos = 0;
+		int formattedPos = 0;
+		if (negative) {
+			plain[plainPos++] = '-';
+			formatted[formattedPos++] = '-';
+		}
+
+		plainPos = writeUnsignedInt(firstChunk, plain, plainPos);
+		for (int index = chunkCount - 2; index >= 0; index--) {
+			writePaddedNineDigits(chunks[index], plain, plainPos);
+			plainPos += DECIMAL_CHUNK_DIGITS;
+		}
+
+		String plainValue = new String(plain);
+		cachedDecimalString = plainValue;
+		int signOffset = negative ? 1 : 0;
+		int firstGroup = plainDigits % 3;
+		if (firstGroup == 0) {
+			firstGroup = 3;
+		}
+		int in = signOffset;
+		System.arraycopy(plain, in, formatted, formattedPos, firstGroup);
+		formattedPos += firstGroup;
+		in += firstGroup;
+		int end = plain.length;
+		while (in < end) {
+			formatted[formattedPos++] = ',';
+			System.arraycopy(plain, in, formatted, formattedPos, 3);
+			formattedPos += 3;
+			in += 3;
+		}
+		return new String(formatted);
 	}
 
 	private String toFormattedStringJava(int groupSize, String groupSep) {
