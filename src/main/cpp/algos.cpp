@@ -150,36 +150,6 @@ void karatsuba_mul(limb_t *out, const limb_t *a, int alen, const limb_t *b, int 
 
 #ifndef BIGMATH_NO_GMP
 
-static std::vector<uint64_t> export_base_2_16(mpz_ptr value) {
-#if defined(_WIN32)
-	std::vector<uint64_t> digits;
-	digits.reserve((mpz_sizeinbase(value, 2) + 15) / 16);
-
-	mpz_t tmp, digit;
-	mpz_init_set(tmp, value);
-	mpz_init(digit);
-	while (mpz_sgn(tmp) > 0) {
-		mpz_tdiv_r_2exp(digit, tmp, 16);
-		digits.push_back(mpz_get_ui(digit));
-		mpz_tdiv_q_2exp(tmp, tmp, 16);
-	}
-	mpz_clear(tmp);
-	mpz_clear(digit);
-
-	if (digits.empty()) digits.push_back(0);
-	return digits;
-#else
-	size_t count = (mpz_sizeinbase(value, 2) + 15) / 16;
-	if (count == 0) return {0};
-
-	std::vector<uint64_t> digits(count);
-	size_t written = 0;
-	mpz_export(digits.data(), &written, -1, sizeof(uint64_t), 0, 48, value);
-	digits.resize(written == 0 ? 1 : written);
-	return digits;
-#endif
-}
-
 // ---- Binary GCD (Stein's algorithm) ----
 void binary_gcd(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	if (mpz_sgn(a) == 0) { mpz_set(out, b); mpz_abs(out, out); return; }
@@ -275,9 +245,31 @@ void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	static constexpr uint64_t BASE = 1ULL << 16;
 	static constexpr uint64_t BASE_MASK = BASE - 1;
 
-	// Convert to base-2^16 digits in one GMP export instead of repeated division.
-	std::vector<uint64_t> ad = export_base_2_16(abs_a);
-	std::vector<uint64_t> bd = export_base_2_16(abs_b);
+	// Convert to base-2^16 digits
+	std::vector<uint64_t> ad, bd;
+	ad.reserve((mpz_sizeinbase(abs_a, 2) + 15) / 16);
+	bd.reserve((mpz_sizeinbase(abs_b, 2) + 15) / 16);
+	mpz_t tmp, digit;
+	mpz_init(tmp);
+	mpz_init(digit);
+	mpz_set(tmp, abs_a);
+	while (mpz_sgn(tmp) > 0) {
+		mpz_tdiv_r_2exp(digit, tmp, 16);
+		ad.push_back(mpz_get_ui(digit));
+		mpz_tdiv_q_2exp(tmp, tmp, 16);
+	}
+	if (ad.empty()) ad.push_back(0);
+
+	mpz_set(tmp, abs_b);
+	while (mpz_sgn(tmp) > 0) {
+		mpz_tdiv_r_2exp(digit, tmp, 16);
+		bd.push_back(mpz_get_ui(digit));
+		mpz_tdiv_q_2exp(tmp, tmp, 16);
+	}
+	if (bd.empty()) bd.push_back(0);
+
+	mpz_clear(tmp);
+	mpz_clear(digit);
 	mpz_clear(abs_a);
 	mpz_clear(abs_b);
 
