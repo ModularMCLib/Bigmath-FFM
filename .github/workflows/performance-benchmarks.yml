@@ -129,13 +129,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/reports/jmh
-          ./gradlew jmh "-PjmhArgs=-wi 2 -i 3 -r 1s -w 1s -foe true -rf csv -rff build/reports/jmh/jmh-result-${{ matrix.label }}.csv"
+          ./gradlew jmh "-PjmhIncludes=com.modularmc.bigmath.Big(Int|Deci)Benchmark" "-PjmhArgs=-wi 2 -i 3 -r 1s -w 1s -foe true -rf csv -rff build/reports/jmh/jmh-result-${{ matrix.label }}.csv"
       - name: Run JMH
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -Force -ItemType Directory -Path build/reports/jmh | Out-Null
-          .\gradlew.bat jmh "-PjmhArgs=-wi 2 -i 3 -r 1s -w 1s -foe true -rf csv -rff build/reports/jmh/jmh-result-${{ matrix.label }}.csv"
+          .\gradlew.bat jmh "-PjmhIncludes=com.modularmc.bigmath.Big(Int|Deci)Benchmark" "-PjmhArgs=-wi 2 -i 3 -r 1s -w 1s -foe true -rf csv -rff build/reports/jmh/jmh-result-${{ matrix.label }}.csv"
       - name: Publish benchmark summary
         shell: bash
         run: |
