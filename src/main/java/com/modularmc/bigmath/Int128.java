@@ -95,6 +95,9 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		if (other.isZero()) {
 			throw new ArithmeticException("/ by zero");
 		}
+		if (hi == 0 && other.hi == 0) {
+			return fromWords(Long.divideUnsigned(lo, other.lo), 0);
+		}
 		if (fitsInLong() && other.fitsInLong() && !(lo == Long.MIN_VALUE && other.lo == -1L)) {
 			return fromLong(lo / other.lo);
 		}
@@ -116,6 +119,9 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	public Int128 mod(Int128 other) {
 		if (other.isZero()) {
 			throw new ArithmeticException("/ by zero");
+		}
+		if (hi == 0 && other.hi == 0) {
+			return fromLong(Long.remainderUnsigned(lo, other.lo));
 		}
 		if (fitsInLong() && other.fitsInLong()) {
 			return fromLong(lo % other.lo);
