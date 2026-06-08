@@ -237,6 +237,22 @@ void bigdecimal_pow_long(mpfr_ptr *out, mpfr_ptr a, int64_t exp) {
 	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
 	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
+	switch (exp) {
+		case 0:
+			mpfr_set_ui(*out, 1, MPFR_RNDN);
+			return;
+		case 1:
+			mpfr_set(*out, a, MPFR_RNDN);
+			return;
+		case 2:
+			mpfr_sqr(*out, a, MPFR_RNDN);
+			return;
+		case -1:
+			mpfr_ui_div(*out, 1, a, MPFR_RNDN);
+			return;
+		default:
+			break;
+	}
 	if (exp >= static_cast<int64_t>(std::numeric_limits<long>::min())
 			&& exp <= static_cast<int64_t>(std::numeric_limits<long>::max())) {
 		mpfr_pow_si(*out, a, static_cast<long>(exp), MPFR_RNDN);
