@@ -138,7 +138,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		long divisorLo = other.absLo();
 		long divisorHi = other.absHi();
 		if (compareUnsigned(dividendLo, dividendHi, divisorLo, divisorHi) < 0) {
-			return fromWords(lo, hi);
+			return this;
 		}
 		Int128 remainder;
 		if (dividendHi == 0 && divisorHi == 0) {

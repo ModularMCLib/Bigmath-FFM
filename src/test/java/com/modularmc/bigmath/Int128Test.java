@@ -251,6 +251,7 @@ class Int128Test {
 			Int128 b = Int128.fromString("18446744073709551616", 10)) {
 			try (Int128 c = a.mod(b)) {
 				assertEquals("123456789", c.toString());
+				assertSame(a, c);
 			}
 		}
 	}
