@@ -391,6 +391,13 @@ class BigIntTest {
 	}
 
 	@Test
+	void formattingNegative() {
+		try (BigInt bi = BigInt.fromString("-1234567890", 10)) {
+			assertEquals("-1,234,567,890", bi.toFormattedString());
+		}
+	}
+
+	@Test
 	void formattingCustom() {
 		try (BigInt bi = BigInt.fromString("12345678", 10)) {
 			assertEquals("1234 5678", bi.toFormattedString(4, " "));
