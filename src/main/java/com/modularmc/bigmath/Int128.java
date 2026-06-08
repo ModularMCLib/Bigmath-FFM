@@ -247,7 +247,20 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 
 	@Override
 	public String toString() {
-		return toString(10);
+		String cached = cachedDecimalString;
+		if (cached != null) {
+			return cached;
+		}
+		String value;
+		if (fitsInLong()) {
+			value = Long.toString(lo);
+		} else if (hi == 0) {
+			value = Long.toUnsignedString(lo);
+		} else {
+			value = toDecimalString();
+		}
+		cachedDecimalString = value;
+		return value;
 	}
 
 	@Override
