@@ -99,6 +99,24 @@ public class BigIntBenchmark {
 		public long n;
 	}
 
+	@State(Scope.Thread)
+	public static class PowState {
+		@Param({"32", "128", "512"})
+		public long exponent;
+
+		BigInt base;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			base = BigInt.fromString("12345678901234567890", 10);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			base.close();
+		}
+	}
+
 	@Benchmark
 	public void addSmall(SmallState state, Blackhole blackhole) {
 		try (BigInt result = state.left.add(state.right)) {
@@ -133,6 +151,13 @@ public class BigIntBenchmark {
 	@Benchmark
 	public void factorial(FactorialState state, Blackhole blackhole) {
 		try (BigInt result = BigInt.factorial(state.n)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void pow(PowState state, Blackhole blackhole) {
+		try (BigInt result = state.base.pow(state.exponent)) {
 			blackhole.consume(result);
 		}
 	}

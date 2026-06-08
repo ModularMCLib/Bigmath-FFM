@@ -2,6 +2,7 @@
 #include "algos.h"
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 #ifndef BIGMATH_NO_GMP
 
@@ -120,7 +121,11 @@ void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
-	bigmath::fast_pow(*out, a, exp);
+	if (exp <= static_cast<uint64_t>(std::numeric_limits<unsigned long>::max())) {
+		mpz_pow_ui(*out, a, static_cast<unsigned long>(exp));
+	} else {
+		bigmath::fast_pow(*out, a, exp);
+	}
 }
 
 void bigint_neg(mpz_ptr *out, mpz_ptr a) {
