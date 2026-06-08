@@ -224,9 +224,13 @@ char *bigint_format(mpz_ptr a, int group_size, const char *group_sep) {
 		out[write--] = out[--read];
 		group_digits++;
 		if (group_digits == static_cast<size_t>(group_size) && read > (neg ? 1 : 0)) {
-			write -= sep_len - 1;
-			memcpy(out + write, group_sep, sep_len);
-			write--;
+			if (sep_len == 1) {
+				out[write--] = group_sep[0];
+			} else {
+				write -= sep_len - 1;
+				memcpy(out + write, group_sep, sep_len);
+				write--;
+			}
 			group_digits = 0;
 		}
 	}
