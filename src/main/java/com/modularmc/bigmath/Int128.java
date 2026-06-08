@@ -214,14 +214,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		if (cached != null) {
 			return cached;
 		}
-		String value;
-		if (fitsInLong()) {
-			value = formatGroupedDecimal(Long.toString(lo), 3, ",");
-		} else if (hi == 0) {
-			value = formatGroupedDecimal(Long.toUnsignedString(lo), 3, ",");
-		} else {
-			value = toFormattedDecimalString(3, ",");
-		}
+		String value = formatGroupedDecimalDefault(toString());
 		cachedFormattedDecimalString = value;
 		return value;
 	}
@@ -449,6 +442,34 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 			index += groupSize;
 		}
 		return sb.toString();
+	}
+
+	private static String formatGroupedDecimalDefault(String value) {
+		int signOffset = value.startsWith("-") ? 1 : 0;
+		int digits = value.length() - signOffset;
+		if (digits <= 3) {
+			return value;
+		}
+		int sepCount = (digits - 1) / 3;
+		char[] formatted = new char[value.length() + sepCount];
+		int out = 0;
+		if (signOffset != 0) {
+			formatted[out++] = '-';
+		}
+		int firstGroup = digits % 3;
+		if (firstGroup == 0) {
+			firstGroup = 3;
+		}
+		value.getChars(signOffset, signOffset + firstGroup, formatted, out);
+		out += firstGroup;
+		int in = signOffset + firstGroup;
+		while (in < value.length()) {
+			formatted[out++] = ',';
+			value.getChars(in, in + 3, formatted, out);
+			out += 3;
+			in += 3;
+		}
+		return new String(formatted);
 	}
 
 	private static Int128 unsignedDivideByUnsignedInt(long dividendLo, long dividendHi, long divisor) {
