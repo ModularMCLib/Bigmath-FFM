@@ -133,6 +133,19 @@ void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
+	switch (exp) {
+		case 0:
+			mpz_set_ui(*out, 1);
+			return;
+		case 1:
+			mpz_set(*out, a);
+			return;
+		case 2:
+			mpz_mul(*out, a, a);
+			return;
+		default:
+			break;
+	}
 	if (exp <= static_cast<uint64_t>(std::numeric_limits<unsigned long>::max())) {
 		mpz_pow_ui(*out, a, static_cast<unsigned long>(exp));
 	} else {

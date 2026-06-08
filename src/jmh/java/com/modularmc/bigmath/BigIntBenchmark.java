@@ -101,7 +101,7 @@ public class BigIntBenchmark {
 
 	@State(Scope.Thread)
 	public static class PowState {
-		@Param({"32", "512"})
+		@Param({"2", "32", "512"})
 		public long exponent;
 
 		BigInt base;
