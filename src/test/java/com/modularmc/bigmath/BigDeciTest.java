@@ -251,6 +251,13 @@ class BigDeciTest {
 	}
 
 	@Test
+	void formattingSmallFraction() {
+		try (BigDeci bd = BigDeci.fromString("0.00125", 64)) {
+			assertEquals("0.00125", bd.toFormattedString());
+		}
+	}
+
+	@Test
 	void intValueTruncatesFraction() {
 		try (BigDeci bd = BigDeci.fromDouble(42.7, 64)) {
 			assertEquals(42, bd.intValue());

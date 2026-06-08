@@ -88,4 +88,9 @@ public class BigDeciBenchmark {
 	public String toString(PrecisionState state) {
 		return state.left.toString();
 	}
+
+	@Benchmark
+	public String format(PrecisionState state) {
+		return state.left.toFormattedString();
+	}
 }

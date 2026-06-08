@@ -123,7 +123,16 @@ double bigdecimal_to_double(mpfr_ptr a) {
 char *bigdecimal_to_string(mpfr_ptr a) {
 	mpfr_exp_t exp;
 	char *str = mpfr_get_str(nullptr, &exp, 10, 0, a, MPFR_RNDN);
-	return str;
+	if (!str) return nullptr;
+	size_t len = strlen(str);
+	char *out = (char *)malloc(len + 1);
+	if (!out) {
+		mpfr_free_str(str);
+		return nullptr;
+	}
+	memcpy(out, str, len + 1);
+	mpfr_free_str(str);
+	return out;
 }
 
 char *bigdecimal_format(mpfr_ptr a, int scale, int group_size, const char *group_sep) {
@@ -139,87 +148,61 @@ char *bigdecimal_format(mpfr_ptr a, int scale, int group_size, const char *group
 	char *p = digits + (neg ? 1 : 0);
 	size_t digit_len = strlen(p);
 
-	int int_digits = (int)exp;
-	if (int_digits < 0) int_digits = 0;
-	size_t frac_len = (scale >= 0) ? (size_t)scale : (digit_len - int_digits);
-	if (frac_len > digit_len - int_digits) {
-		frac_len = digit_len - int_digits;
-	}
+	auto frac_digit = [&](size_t index) -> char {
+		if (exp > 0) {
+			size_t source = (size_t)exp + index;
+			return source < digit_len ? p[source] : '0';
+		}
+		size_t leading_zeros = (size_t)(-exp);
+		if (index < leading_zeros) {
+			return '0';
+		}
+		size_t source = index - leading_zeros;
+		return source < digit_len ? p[source] : '0';
+	};
 
-	char *int_part = (char *)malloc(int_digits + 1);
-	if (!int_part) { mpfr_free_str(digits); return nullptr; }
-	if (int_digits > 0) {
-		memcpy(int_part, p, int_digits);
-		int_part[int_digits] = '\0';
+	size_t int_len = exp > 0 ? (size_t)exp : 1;
+	size_t frac_len;
+	if (scale >= 0) {
+		frac_len = (size_t)scale;
+	} else if (exp > 0) {
+		frac_len = (size_t)exp < digit_len ? digit_len - (size_t)exp : 0;
 	} else {
-		int_part[0] = '0';
-		int_part[1] = '\0';
-		int_digits = 1;
+		frac_len = (size_t)(-exp) + digit_len;
+	}
+	if (scale < 0) {
+		while (frac_len > 0 && frac_digit(frac_len - 1) == '0') {
+			frac_len--;
+		}
 	}
 
 	size_t sep_len = (group_sep && group_size > 0) ? strlen(group_sep) : 0;
-	size_t ig_len = strlen(int_part);
-	size_t groups = ig_len > 0 ? (ig_len + group_size - 1) / group_size : 0;
-	char *int_fmt;
-	if (sep_len > 0 && group_size > 0 && ig_len > 0) {
-		size_t fmt_len = ig_len + (groups - 1) * sep_len;
-		int_fmt = (char *)malloc(fmt_len + 1);
-		if (!int_fmt) { free(int_part); mpfr_free_str(digits); return nullptr; }
-		size_t first_group = ig_len % group_size;
-		if (first_group == 0) first_group = group_size;
-		size_t out_pos = 0;
-		memcpy(int_fmt, int_part, first_group);
-		out_pos += first_group;
-		for (size_t i = first_group; i < ig_len; i += group_size) {
-			memcpy(int_fmt + out_pos, group_sep, sep_len);
-			out_pos += sep_len;
-			memcpy(int_fmt + out_pos, int_part + i, group_size);
-			out_pos += group_size;
-		}
-		int_fmt[out_pos] = '\0';
-	} else {
-		int_fmt = strdup(int_part);
-	}
-	free(int_part);
-
-	size_t frac_copy = frac_len;
-	if (frac_copy > digit_len - int_digits) {
-		frac_copy = digit_len - int_digits;
-	}
-	char *frac_str = (char *)malloc(frac_copy + 1);
-	if (!frac_str) { free(int_fmt); mpfr_free_str(digits); return nullptr; }
-	if (frac_copy > 0) {
-		memcpy(frac_str, p + int_digits, frac_copy);
-	}
-	frac_str[frac_copy] = '\0';
-	if (scale < 0) {
-		while (frac_copy > 0 && frac_str[frac_copy - 1] == '0') frac_copy--;
-		frac_str[frac_copy] = '\0';
-	} else {
-		while (frac_copy < (size_t)scale) {
-			frac_str[frac_copy++] = '0';
-			frac_str[frac_copy] = '\0';
-		}
-	}
-
-	size_t sign_len = (neg ? 1 : 0);
-	size_t int_fmt_len = strlen(int_fmt);
-	size_t total = sign_len + int_fmt_len + (frac_copy > 0 ? 1 + frac_copy : 0);
+	size_t sep_count = sep_len > 0 && int_len > 0 ? (int_len - 1) / (size_t)group_size : 0;
+	size_t int_fmt_len = int_len + sep_count * sep_len;
+	size_t total = (neg ? 1 : 0) + int_fmt_len + (frac_len > 0 ? 1 + frac_len : 0);
 	char *out = (char *)malloc(total + 1);
-	if (!out) { free(frac_str); free(int_fmt); mpfr_free_str(digits); return nullptr; }
+	if (!out) { mpfr_free_str(digits); return nullptr; }
 	size_t pos = 0;
 	if (neg) out[pos++] = '-';
-	memcpy(out + pos, int_fmt, int_fmt_len);
-	pos += int_fmt_len;
-	if (frac_copy > 0) {
+
+	size_t first_group = sep_len > 0 ? int_len % (size_t)group_size : int_len;
+	if (first_group == 0) first_group = (size_t)group_size;
+	for (size_t i = 0; i < int_len; i++) {
+		if (sep_len > 0 && i > 0 && (i == first_group || (i > first_group && (i - first_group) % (size_t)group_size == 0))) {
+			memcpy(out + pos, group_sep, sep_len);
+			pos += sep_len;
+		}
+		out[pos++] = (exp > 0 && i < digit_len) ? p[i] : '0';
+	}
+
+	if (frac_len > 0) {
 		out[pos++] = '.';
-		memcpy(out + pos, frac_str, frac_copy);
-		pos += frac_copy;
+		for (size_t i = 0; i < frac_len; i++) {
+			out[pos++] = frac_digit(i);
+		}
 	}
 	out[pos] = '\0';
 
-	free(frac_str);
-	free(int_fmt);
 	mpfr_free_str(digits);
 	return out;
 }

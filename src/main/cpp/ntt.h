@@ -19,17 +19,9 @@ inline constexpr uint64_t PRIMITIVE_ROOT = 3;
 
 using u64 = uint64_t;
 
-// Modular multiplication (portable, binary exponentiation)
+// The configured NTT primes keep residue products below uint64_t overflow.
 inline u64 mod_mul(u64 a, u64 b, u64 mod) {
-	a %= mod;
-	b %= mod;
-	u64 r = 0;
-	while (b) {
-		if (b & 1) { r += a; if (r >= mod) r -= mod; }
-		a <<= 1; if (a >= mod) a -= mod;
-		b >>= 1;
-	}
-	return r;
+	return (a % mod) * (b % mod) % mod;
 }
 
 inline u64 mod_pow(u64 a, u64 e, u64 mod) {
