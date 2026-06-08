@@ -483,15 +483,15 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 
 		long part = dividendHi >>> 32;
 		long qHiHigh = Long.divideUnsigned(part, divisor);
-		remainder = Long.remainderUnsigned(part, divisor);
+		remainder = part - qHiHigh * divisor;
 
 		part = (remainder << 32) | (dividendHi & UNSIGNED_INT_MASK);
 		long qHiLow = Long.divideUnsigned(part, divisor);
-		remainder = Long.remainderUnsigned(part, divisor);
+		remainder = part - qHiLow * divisor;
 
 		part = (remainder << 32) | (dividendLo >>> 32);
 		long qLoHigh = Long.divideUnsigned(part, divisor);
-		remainder = Long.remainderUnsigned(part, divisor);
+		remainder = part - qLoHigh * divisor;
 
 		part = (remainder << 32) | (dividendLo & UNSIGNED_INT_MASK);
 		long qLoLow = Long.divideUnsigned(part, divisor);
@@ -504,7 +504,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 			return new Int128(unsignedDivideByUnsignedLongLow(dividendLo, dividendHi, divisor), 0);
 		}
 		long quotientHi = Long.divideUnsigned(dividendHi, divisor);
-		long remainderHi = Long.remainderUnsigned(dividendHi, divisor);
+		long remainderHi = dividendHi - quotientHi * divisor;
 		long quotientLo = unsignedDivideByUnsignedLongLow(dividendLo, remainderHi, divisor);
 		return new Int128(quotientLo, quotientHi);
 	}
