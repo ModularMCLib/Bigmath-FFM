@@ -31,6 +31,12 @@ static bool mpz_ior_nonnegative_fast(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	if (asize < 0 || bsize < 0) {
 		return false;
 	}
+	if (asize > 0 && asize == bsize) {
+		mpz_init2(out, static_cast<mp_bitcnt_t>(asize) * GMP_NUMB_BITS);
+		mpn_ior_n(out->_mp_d, a->_mp_d, b->_mp_d, asize);
+		out->_mp_size = asize;
+		return true;
+	}
 	if (asize == 0) {
 		mpz_init_set(out, b);
 		return true;
