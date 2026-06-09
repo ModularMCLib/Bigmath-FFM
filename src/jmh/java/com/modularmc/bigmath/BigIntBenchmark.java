@@ -190,6 +190,13 @@ public class BigIntBenchmark {
 	}
 
 	@Benchmark
+	public void lcmLarge(LargeState state, Blackhole blackhole) {
+		try (BigInt result = state.left.lcm(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
 	public void sqrtLarge(LargeState state, Blackhole blackhole) {
 		try (BigInt result = state.left.sqrt()) {
 			blackhole.consume(result);
