@@ -669,7 +669,13 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 
 	@Override
 	public void close() {
-		invokeVoidAddress(BIGINT_FREE_HANDLE, nativePtr);
+		try {
+			BIGINT_FREE_HANDLE.invokeExact(nativePtr);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
 		arena.close();
 	}
 
