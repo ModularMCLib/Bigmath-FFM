@@ -291,8 +291,7 @@ void bigint_lcm(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 void bigint_sqrt(mpz_ptr *out, mpz_ptr a) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mp_bitcnt_t bits = static_cast<mp_bitcnt_t>((mpz_sizeinbase(a, 2) + 1) / 2 + 1);
-	mpz_init2(*out, bits);
+	mpz_init(*out);
 	mpz_sqrt(*out, a);
 }
 
