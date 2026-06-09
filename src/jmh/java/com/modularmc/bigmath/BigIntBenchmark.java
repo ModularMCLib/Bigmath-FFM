@@ -225,6 +225,13 @@ public class BigIntBenchmark {
 	}
 
 	@Benchmark
+	public void orLarge(BitwiseState state, Blackhole blackhole) {
+		try (BigInt result = state.left.or(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
 	public void sqrtLarge(LargeState state, Blackhole blackhole) {
 		try (BigInt result = state.left.sqrt()) {
 			blackhole.consume(result);
