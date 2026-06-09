@@ -99,9 +99,8 @@ void bigdecimal_div(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
 }
 
 void bigdecimal_add_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b) {
-	mpfr_prec_t precision = mpfr_get_prec(a);
-	if (mpfr_get_prec(out) != precision) {
-		mpfr_set_prec(out, precision);
+	if (mpfr_get_prec(out) != mpfr_get_prec(a)) {
+		mpfr_set_prec(out, mpfr_get_prec(a));
 	}
 	mpfr_add(out, a, b, MPFR_RNDN);
 }
