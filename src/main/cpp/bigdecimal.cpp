@@ -57,9 +57,7 @@ void bigdecimal_clear(mpfr_ptr a) {
 }
 
 void bigdecimal_set(mpfr_ptr out, mpfr_ptr a) {
-	if (mpfr_get_prec(out) != mpfr_get_prec(a)) {
-		mpfr_set_prec(out, mpfr_get_prec(a));
-	}
+	mpfr_set_prec(out, mpfr_get_prec(a));
 	mpfr_set(out, a, MPFR_RNDN);
 }
 
