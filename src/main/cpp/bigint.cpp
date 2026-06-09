@@ -1,5 +1,6 @@
 #include "bigmath_ffm.h"
 #include "algos.h"
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -305,7 +306,12 @@ void bigint_and(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 void bigint_or(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mpz_init(*out);
+	mp_size_t limbs = std::max(mpz_size(a), mpz_size(b));
+	if (limbs > 1) {
+		mpz_init2(*out, static_cast<mp_bitcnt_t>(limbs + 1) * GMP_NUMB_BITS);
+	} else {
+		mpz_init(*out);
+	}
 	mpz_ior(*out, a, b);
 }
 
