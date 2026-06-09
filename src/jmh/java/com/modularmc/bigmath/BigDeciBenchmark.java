@@ -106,6 +106,11 @@ public class BigDeciBenchmark {
 	}
 
 	@Benchmark
+	public void setValue(PrecisionState state, Blackhole blackhole) {
+		blackhole.consume(state.result.set(state.left));
+	}
+
+	@Benchmark
 	public void divide(PrecisionState state, Blackhole blackhole) {
 		try (BigDeci result = state.left.divide(state.right)) {
 			blackhole.consume(result);
