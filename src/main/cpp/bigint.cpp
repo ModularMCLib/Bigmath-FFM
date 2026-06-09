@@ -6,12 +6,6 @@
 
 #ifndef BIGMATH_NO_GMP
 
-#if defined(__linux__) && (defined(__x86_64__) || defined(__amd64__) || defined(_M_X64))
-#define BIGMATH_BIGINT_FORMAT_REALLOC_DECIMAL 1
-#else
-#define BIGMATH_BIGINT_FORMAT_REALLOC_DECIMAL 0
-#endif
-
 static void mpz_set_int64(mpz_ptr out, int64_t val) {
 	if (val >= static_cast<int64_t>(std::numeric_limits<long>::min())
 			&& val <= static_cast<int64_t>(std::numeric_limits<long>::max())) {
@@ -214,15 +208,9 @@ char *bigint_format(mpz_ptr a, int group_size, const char *group_sep) {
 	if (group_size <= 0 || group_sep == nullptr || *group_sep == '\0') {
 		return mpz_get_str(nullptr, 10, a);
 	}
-#if BIGMATH_BIGINT_FORMAT_REALLOC_DECIMAL
-	char *raw = mpz_get_str(nullptr, 10, a);
-	if (!raw) return nullptr;
-#else
 	size_t digit_cap = mpz_sizeinbase(a, 10);
 	bool value_neg = mpz_sgn(a) < 0;
-#endif
 	size_t sep_len = group_sep[1] == '\0' ? 1 : strlen(group_sep);
-#if !BIGMATH_BIGINT_FORMAT_REALLOC_DECIMAL
 	size_t estimated_sep_count = digit_cap > 0 ? (digit_cap - 1) / static_cast<size_t>(group_size) : 0;
 	size_t capacity = (value_neg ? 1 : 0) + digit_cap + estimated_sep_count * sep_len + 1;
 	char *raw = (char *)malloc(capacity);
@@ -231,7 +219,6 @@ char *bigint_format(mpz_ptr a, int group_size, const char *group_sep) {
 		free(raw);
 		return nullptr;
 	}
-#endif
 	bool neg = (raw[0] == '-');
 	size_t sign_offset = neg ? 1 : 0;
 	char *digits = raw + sign_offset;
@@ -241,14 +228,6 @@ char *bigint_format(mpz_ptr a, int group_size, const char *group_sep) {
 	}
 	size_t sep_count = (len - 1) / static_cast<size_t>(group_size);
 	size_t new_len = sign_offset + len + sep_count * sep_len;
-#if BIGMATH_BIGINT_FORMAT_REALLOC_DECIMAL
-	char *grown = (char *)realloc(raw, new_len + 1);
-	if (!grown) {
-		free(raw);
-		return nullptr;
-	}
-	raw = grown;
-#endif
 	char *out = raw;
 	size_t read = sign_offset + len;
 	size_t write = new_len;
