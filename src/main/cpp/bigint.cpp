@@ -330,7 +330,7 @@ void bigint_factorial(mpz_ptr *out, uint64_t n) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
-	bigmath::product_tree_factorial(*out, n);
+	mpz_fac_ui(*out, n);
 }
 
 void bigint_next_prime(mpz_ptr *out, mpz_ptr a) {
