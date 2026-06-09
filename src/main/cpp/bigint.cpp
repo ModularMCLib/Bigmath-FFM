@@ -33,8 +33,18 @@ void bigint_from_long(mpz_ptr *out, int64_t val) {
 		mpz_init_set_si(*out, static_cast<long>(val));
 		return;
 	}
-	mpz_init(*out);
-	mpz_set_int64(*out, val);
+	uint64_t magnitude = val >= 0
+		? static_cast<uint64_t>(val)
+		: static_cast<uint64_t>(-(val + 1)) + 1;
+	if (magnitude <= static_cast<uint64_t>(std::numeric_limits<unsigned long>::max())) {
+		mpz_init_set_ui(*out, static_cast<unsigned long>(magnitude));
+	} else {
+		mpz_init2(*out, 64);
+		mpz_import(*out, 1, -1, sizeof(magnitude), 0, 0, &magnitude);
+	}
+	if (val < 0) {
+		mpz_neg(*out, *out);
+	}
 }
 
 void bigint_from_string(mpz_ptr *out, const char *str, int radix) {
