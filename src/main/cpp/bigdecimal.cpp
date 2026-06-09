@@ -150,16 +150,15 @@ double bigdecimal_to_double(mpfr_ptr a) {
 
 char *bigdecimal_to_string(mpfr_ptr a) {
 	mpfr_exp_t exp;
-	char *str = mpfr_get_str(nullptr, &exp, 10, 0, a, MPFR_RNDN);
-	if (!str) return nullptr;
-	size_t len = strlen(str);
-	char *out = (char *)malloc(len + 1);
-	if (!out) {
-		mpfr_free_str(str);
+	size_t digits = mpfr_get_str_ndigits(10, mpfr_get_prec(a));
+	size_t len = digits + 2;
+	if (len < 7) len = 7;
+	char *out = (char *)malloc(len);
+	if (!out) return nullptr;
+	if (!mpfr_get_str(out, &exp, 10, 0, a, MPFR_RNDN)) {
+		free(out);
 		return nullptr;
 	}
-	memcpy(out, str, len + 1);
-	mpfr_free_str(str);
 	return out;
 }
 
