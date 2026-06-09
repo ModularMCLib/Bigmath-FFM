@@ -82,9 +82,13 @@ void bigint_sub(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 void bigint_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mpz_init(*out);
 	int alen = mpz_size(a);
 	int blen = mpz_size(b);
+	if (alen == 0 || blen == 0) {
+		mpz_init(*out);
+	} else {
+		mpz_init2(*out, static_cast<mp_bitcnt_t>(alen + blen + 1) * GMP_NUMB_BITS);
+	}
 	if (alen + blen >= bigmath::NTT_THRESHOLD) {
 		bigmath::fft_multiply(*out, a, b);
 	} else {
