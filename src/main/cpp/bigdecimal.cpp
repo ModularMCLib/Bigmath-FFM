@@ -215,10 +215,12 @@ char *bigdecimal_format(mpfr_ptr a, int scale, int group_size, const char *group
 
 	size_t first_group = sep_len > 0 ? int_len % (size_t)group_size : int_len;
 	if (first_group == 0) first_group = (size_t)group_size;
+	size_t next_group = first_group;
 	for (size_t i = 0; i < int_len; i++) {
-		if (sep_len > 0 && i > 0 && (i == first_group || (i > first_group && (i - first_group) % (size_t)group_size == 0))) {
+		if (sep_len > 0 && i == next_group) {
 			memcpy(out + pos, group_sep, sep_len);
 			pos += sep_len;
+			next_group += (size_t)group_size;
 		}
 		out[pos++] = (exp > 0 && i < digit_len) ? p[i] : '0';
 	}
