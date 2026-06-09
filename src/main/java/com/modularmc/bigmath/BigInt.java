@@ -844,7 +844,8 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	}
 
 	private static BigInt adoptOwnedResult(Arena arena, MemorySegment result) {
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		long rawAddr = result.get(ValueLayout.JAVA_LONG, 0);
+		return new BigInt(MemorySegment.ofAddress(rawAddr).reinterpret(arena, null), arena);
 	}
 
 	/**
