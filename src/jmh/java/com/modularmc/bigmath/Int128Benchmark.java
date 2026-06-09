@@ -18,8 +18,8 @@ import java.util.concurrent.TimeUnit;
 
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
-@Warmup(iterations = 8, time = 2)
-@Measurement(iterations = 8, time = 2)
+@Warmup(iterations = 8, time = 1)
+@Measurement(iterations = 5, time = 1)
 @Fork(1)
 public class Int128Benchmark {
 
