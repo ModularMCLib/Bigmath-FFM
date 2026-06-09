@@ -94,6 +94,27 @@ public class BigIntBenchmark {
 	}
 
 	@State(Scope.Thread)
+	public static class BitwiseState {
+		@Param({"256", "1024", "4096", "16384"})
+		public int hexDigits;
+
+		BigInt left;
+		BigInt right;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			left = BigInt.fromString(repeatDigits("fedcba9876543210", hexDigits), 16);
+			right = BigInt.fromString(repeatDigits("aaaaaaaa55555555", hexDigits), 16);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			left.close();
+			right.close();
+		}
+	}
+
+	@State(Scope.Thread)
 	public static class FactorialState {
 		@Param({"10", "128", "512", "5000"})
 		public long n;
@@ -192,6 +213,13 @@ public class BigIntBenchmark {
 	@Benchmark
 	public void lcmLarge(LargeState state, Blackhole blackhole) {
 		try (BigInt result = state.left.lcm(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void andLarge(BitwiseState state, Blackhole blackhole) {
+		try (BigInt result = state.left.and(state.right)) {
 			blackhole.consume(result);
 		}
 	}
