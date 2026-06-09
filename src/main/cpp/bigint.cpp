@@ -150,12 +150,7 @@ void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
 			break;
 	}
 	if (exp <= static_cast<uint64_t>(std::numeric_limits<unsigned long>::max())) {
-		unsigned long ui_exp = static_cast<unsigned long>(exp);
-		if (mpz_sgn(a) >= 0 && mpz_fits_ulong_p(a)) {
-			mpz_ui_pow_ui(*out, mpz_get_ui(a), ui_exp);
-		} else {
-			mpz_pow_ui(*out, a, ui_exp);
-		}
+		mpz_pow_ui(*out, a, static_cast<unsigned long>(exp));
 	} else {
 		bigmath::fast_pow(*out, a, exp);
 	}
