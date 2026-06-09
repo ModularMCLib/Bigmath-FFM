@@ -175,7 +175,8 @@ int bigint_sign(mpz_ptr a) {
 }
 
 int64_t bigint_to_long(mpz_ptr a) {
-	if (mpz_sgn(a) == 0) {
+	int sign = mpz_sgn(a);
+	if (sign == 0) {
 		return 0;
 	}
 	if (mpz_fits_slong_p(a)) {
@@ -183,7 +184,7 @@ int64_t bigint_to_long(mpz_ptr a) {
 	}
 	uint64_t magnitude = 0;
 	mpz_export(&magnitude, nullptr, -1, sizeof(magnitude), 0, 0, a);
-	if (mpz_sgn(a) > 0) {
+	if (sign > 0) {
 		return static_cast<int64_t>(magnitude);
 	}
 	if (magnitude == (uint64_t{1} << 63)) {
