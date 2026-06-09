@@ -55,19 +55,6 @@ static bool mpz_ior_nonnegative_fast(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	return true;
 }
 
-extern "C" {
-typedef void (*bigmath_gmp_freefunc_t)(void *, size_t);
-}
-
-static bigmath_gmp_freefunc_t gmp_free_func() {
-	static bigmath_gmp_freefunc_t free_func = [] {
-		bigmath_gmp_freefunc_t fn = nullptr;
-		mp_get_memory_functions(nullptr, nullptr, &fn);
-		return fn;
-	}();
-	return free_func;
-}
-
 void bigint_from_long(mpz_ptr *out, int64_t val) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
@@ -311,14 +298,10 @@ void bigint_free_string(char *s) {
 }
 
 void bigint_free(mpz_ptr a) {
-	if (!a) {
-		return;
+	if (a) {
+		mpz_clear(a);
+		free(a);
 	}
-	const int alloc = a->_mp_alloc;
-	if (alloc) {
-		gmp_free_func()(a->_mp_d, static_cast<size_t>(alloc) * sizeof(mp_limb_t));
-	}
-	free(a);
 }
 
 void bigint_gcd(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
