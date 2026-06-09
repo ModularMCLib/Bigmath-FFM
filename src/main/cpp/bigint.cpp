@@ -25,6 +25,36 @@ static void mpz_set_int64(mpz_ptr out, int64_t val) {
 	}
 }
 
+static bool mpz_ior_nonnegative_fast(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+	const mp_size_t asize = a->_mp_size;
+	const mp_size_t bsize = b->_mp_size;
+	if (asize < 0 || bsize < 0) {
+		return false;
+	}
+	if (asize == 0) {
+		mpz_init_set(out, b);
+		return true;
+	}
+	if (bsize == 0) {
+		mpz_init_set(out, a);
+		return true;
+	}
+	if (asize >= bsize) {
+		mpz_init2(out, static_cast<mp_bitcnt_t>(asize) * GMP_NUMB_BITS);
+		mpn_ior_n(out->_mp_d, a->_mp_d, b->_mp_d, bsize);
+		if (asize > bsize) {
+			mpn_copyi(out->_mp_d + bsize, a->_mp_d + bsize, asize - bsize);
+		}
+		out->_mp_size = asize;
+		return true;
+	}
+	mpz_init2(out, static_cast<mp_bitcnt_t>(bsize) * GMP_NUMB_BITS);
+	mpn_ior_n(out->_mp_d, a->_mp_d, b->_mp_d, asize);
+	mpn_copyi(out->_mp_d + asize, b->_mp_d + asize, bsize - asize);
+	out->_mp_size = bsize;
+	return true;
+}
+
 void bigint_from_long(mpz_ptr *out, int64_t val) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
@@ -305,8 +335,10 @@ void bigint_and(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 void bigint_or(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mpz_init(*out);
-	mpz_ior(*out, a, b);
+	if (!mpz_ior_nonnegative_fast(*out, a, b)) {
+		mpz_init(*out);
+		mpz_ior(*out, a, b);
+	}
 }
 
 void bigint_xor(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
