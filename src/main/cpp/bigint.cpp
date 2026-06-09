@@ -135,16 +135,7 @@ void bigint_sqrt_into(mpz_ptr out, mpz_ptr a) {
 void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	if (exp > 2) {
-		size_t base_bits = mpz_sizeinbase(a, 2);
-		if (base_bits > 0 && exp <= 512 && base_bits <= 128) {
-			mpz_init2(*out, static_cast<mp_bitcnt_t>(base_bits * exp + GMP_NUMB_BITS));
-		} else {
-			mpz_init(*out);
-		}
-	} else {
-		mpz_init(*out);
-	}
+	mpz_init(*out);
 	switch (exp) {
 		case 0:
 			mpz_set_ui(*out, 1);
