@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
-@Warmup(iterations = 3, time = 1)
+@Warmup(iterations = 8, time = 1)
 @Measurement(iterations = 5, time = 1)
 @Fork(1)
 public class BigIntBenchmark {
@@ -69,6 +69,116 @@ public class BigIntBenchmark {
 		}
 	}
 
+	@State(Scope.Thread)
+	public static class VeryLargeState {
+		@Param({"4096", "8192"})
+		public int digits;
+
+		BigInt left;
+		BigInt right;
+		BigInt result;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			left = BigInt.fromString(repeatDigits("1234567890", digits), 10);
+			right = BigInt.fromString(repeatDigits("9876543210", digits), 10);
+			result = BigInt.fromLong(0);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			left.close();
+			right.close();
+			result.close();
+		}
+	}
+
+	@State(Scope.Thread)
+	public static class BitwiseState {
+		@Param({"256", "1024", "4096", "16384"})
+		public int hexDigits;
+
+		BigInt left;
+		BigInt right;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			left = BigInt.fromString(repeatDigits("fedcba9876543210", hexDigits), 16);
+			right = BigInt.fromString(repeatDigits("aaaaaaaa55555555", hexDigits), 16);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			left.close();
+			right.close();
+		}
+	}
+
+	@State(Scope.Thread)
+	public static class FactorialState {
+		@Param({"10", "128", "512", "5000"})
+		public long n;
+	}
+
+	@State(Scope.Thread)
+	public static class PowState {
+		@Param({"2", "32", "512"})
+		public long exponent;
+
+		BigInt base;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			base = BigInt.fromString("12345678901234567890", 10);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			base.close();
+		}
+	}
+
+	@State(Scope.Thread)
+	public static class LongState {
+		@Param({"42", "-9223372036854775808"})
+		public long value;
+
+		BigInt bigint;
+		BigInt result;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			bigint = BigInt.fromLong(value);
+			result = BigInt.fromLong(0);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			bigint.close();
+			result.close();
+		}
+	}
+
+	@State(Scope.Thread)
+	public static class StringState {
+		@Param({"128", "2048"})
+		public int digits;
+
+		String value;
+		BigInt result;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			value = repeatDigits("1234567890", digits);
+			result = BigInt.fromLong(0);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			result.close();
+		}
+	}
+
 	@Benchmark
 	public void addSmall(SmallState state, Blackhole blackhole) {
 		try (BigInt result = state.left.add(state.right)) {
@@ -90,6 +200,96 @@ public class BigIntBenchmark {
 
 	@Benchmark
 	public void multiplyLargeInto(LargeState state, Blackhole blackhole) {
+		blackhole.consume(state.result.multiplyInto(state.left, state.right));
+	}
+
+	@Benchmark
+	public void gcdLarge(LargeState state, Blackhole blackhole) {
+		try (BigInt result = state.left.gcd(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void lcmLarge(LargeState state, Blackhole blackhole) {
+		try (BigInt result = state.left.lcm(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void andLarge(BitwiseState state, Blackhole blackhole) {
+		try (BigInt result = state.left.and(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void orLarge(BitwiseState state, Blackhole blackhole) {
+		try (BigInt result = state.left.or(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void sqrtLarge(LargeState state, Blackhole blackhole) {
+		try (BigInt result = state.left.sqrt()) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void factorial(FactorialState state, Blackhole blackhole) {
+		try (BigInt result = BigInt.factorial(state.n)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void pow(PowState state, Blackhole blackhole) {
+		try (BigInt result = state.base.pow(state.exponent)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void fromLong(LongState state, Blackhole blackhole) {
+		try (BigInt result = BigInt.fromLong(state.value)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void fromString(StringState state, Blackhole blackhole) {
+		try (BigInt result = BigInt.fromString(state.value, 10)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void setLong(LongState state, Blackhole blackhole) {
+		blackhole.consume(state.result.set(state.value));
+	}
+
+	@Benchmark
+	public void setString(StringState state, Blackhole blackhole) {
+		blackhole.consume(state.result.set(state.value, 10));
+	}
+
+	@Benchmark
+	public void longValue(LongState state, Blackhole blackhole) {
+		blackhole.consume(state.bigint.longValue());
+	}
+
+	@Benchmark
+	public void multiplyVeryLarge(VeryLargeState state, Blackhole blackhole) {
+		try (BigInt result = state.left.multiply(state.right)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void multiplyVeryLargeInto(VeryLargeState state, Blackhole blackhole) {
 		blackhole.consume(state.result.multiplyInto(state.left, state.right));
 	}
 

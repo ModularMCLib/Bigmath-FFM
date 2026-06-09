@@ -484,8 +484,8 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	public BigInt or(BigInt other) {
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
-		invokeBinaryOut(BIGINT_OR_HANDLE, result, nativePtr, other.nativePtr);
-		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+		invokeOrOut(result, nativePtr, other.nativePtr);
+		return adoptOwnedResult(arena, result);
 	}
 
 	/**
@@ -693,6 +693,16 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
+	private static void invokeOrOut(MemorySegment out, MemorySegment left, MemorySegment right) {
+		try {
+			BIGINT_OR_HANDLE.invokeExact(out, left, right);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
 	private static void invokeSet(MemorySegment out, MemorySegment value) {
 		try {
 			BIGINT_SET_HANDLE.invokeExact(out, value);
@@ -831,6 +841,10 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		} catch (Throwable t) {
 			throw new RuntimeException(t);
 		}
+	}
+
+	private static BigInt adoptOwnedResult(Arena arena, MemorySegment result) {
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**

@@ -64,6 +64,7 @@ BIGMATH_EXPORT double bigint_to_double(mpz_ptr a);
 /* BigDecimal */
 BIGMATH_EXPORT void   bigdecimal_from_double(mpfr_ptr *out, double val, int precision);
 BIGMATH_EXPORT void   bigdecimal_from_string(mpfr_ptr *out, const char *str, int precision);
+BIGMATH_EXPORT void   bigdecimal_from_bigint(mpfr_ptr *out, mpz_ptr val, int precision);
 BIGMATH_EXPORT void   bigdecimal_init(mpfr_ptr *out, int precision);
 BIGMATH_EXPORT void   bigdecimal_clear(mpfr_ptr a);
 BIGMATH_EXPORT void   bigdecimal_set(mpfr_ptr out, mpfr_ptr a);
@@ -88,6 +89,7 @@ BIGMATH_EXPORT void   bigdecimal_free_string(char *s);
 
 BIGMATH_EXPORT void   bigdecimal_sqrt(mpfr_ptr *out, mpfr_ptr a);
 BIGMATH_EXPORT void   bigdecimal_pow(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
+BIGMATH_EXPORT void   bigdecimal_pow_long(mpfr_ptr *out, mpfr_ptr a, int64_t exp);
 BIGMATH_EXPORT void   bigdecimal_log(mpfr_ptr *out, mpfr_ptr a);
 BIGMATH_EXPORT void   bigdecimal_exp(mpfr_ptr *out, mpfr_ptr a);
 BIGMATH_EXPORT void   bigdecimal_sin(mpfr_ptr *out, mpfr_ptr a);

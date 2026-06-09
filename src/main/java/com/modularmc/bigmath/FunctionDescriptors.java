@@ -130,6 +130,11 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
 	);
 
+	/** {@code void bigdecimal_from_bigint(void** out, void* value, int precision)} */
+	static final FunctionDescriptor BIGDECIMAL_FROM_BIGINT = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
+	);
+
 	/** {@code void bigdecimal_init(void** out, int precision)} */
 	static final FunctionDescriptor BIGDECIMAL_INIT = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.JAVA_INT
@@ -153,6 +158,11 @@ final class FunctionDescriptors {
 	/** {@code void bigdecimal_op(void** out, void* a, void* b)} — add/sub/mul/div/pow */
 	static final FunctionDescriptor BIGDECIMAL_BINARY = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+
+	/** {@code void bigdecimal_pow_long(void** out, void* a, long exp)} */
+	static final FunctionDescriptor BIGDECIMAL_POW_LONG = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG
 	);
 
 	/** {@code void bigdecimal_op_into(void* out, void* a, void* b)} — add/mul/div */

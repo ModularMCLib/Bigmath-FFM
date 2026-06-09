@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
-@Warmup(iterations = 3, time = 1)
+@Warmup(iterations = 8, time = 1)
 @Measurement(iterations = 5, time = 1)
 @Fork(1)
 public class JdkComparisonBenchmark {

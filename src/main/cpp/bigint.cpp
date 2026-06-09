@@ -2,27 +2,75 @@
 #include "algos.h"
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 #ifndef BIGMATH_NO_GMP
+
+static void mpz_set_int64(mpz_ptr out, int64_t val) {
+	if (val >= static_cast<int64_t>(std::numeric_limits<long>::min())
+			&& val <= static_cast<int64_t>(std::numeric_limits<long>::max())) {
+		mpz_set_si(out, static_cast<long>(val));
+		return;
+	}
+	uint64_t magnitude = val >= 0
+		? static_cast<uint64_t>(val)
+		: static_cast<uint64_t>(-(val + 1)) + 1;
+	if (magnitude <= static_cast<uint64_t>(std::numeric_limits<unsigned long>::max())) {
+		mpz_set_ui(out, static_cast<unsigned long>(magnitude));
+	} else {
+		mpz_import(out, 1, -1, sizeof(magnitude), 0, 0, &magnitude);
+	}
+	if (val < 0) {
+		mpz_neg(out, out);
+	}
+}
+
+static bool mpz_ior_nonnegative_fast(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+	const mp_size_t asize = a->_mp_size;
+	const mp_size_t bsize = b->_mp_size;
+	if (asize < 0 || bsize < 0) {
+		return false;
+	}
+	if (asize == 0) {
+		mpz_init_set(out, b);
+		return true;
+	}
+	if (bsize == 0) {
+		mpz_init_set(out, a);
+		return true;
+	}
+	if (asize >= bsize) {
+		mpz_init2(out, static_cast<mp_bitcnt_t>(asize) * GMP_NUMB_BITS);
+		mpn_ior_n(out->_mp_d, a->_mp_d, b->_mp_d, bsize);
+		if (asize > bsize) {
+			mpn_copyi(out->_mp_d + bsize, a->_mp_d + bsize, asize - bsize);
+		}
+		out->_mp_size = asize;
+		return true;
+	}
+	mpz_init2(out, static_cast<mp_bitcnt_t>(bsize) * GMP_NUMB_BITS);
+	mpn_ior_n(out->_mp_d, a->_mp_d, b->_mp_d, asize);
+	mpn_copyi(out->_mp_d + asize, b->_mp_d + asize, bsize - asize);
+	out->_mp_size = bsize;
+	return true;
+}
 
 void bigint_from_long(mpz_ptr *out, int64_t val) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mpz_init(*out);
-	uint64_t magnitude = val >= 0
-		? static_cast<uint64_t>(val)
-		: static_cast<uint64_t>(-(val + 1)) + 1;
-	mpz_import(*out, 1, -1, sizeof(magnitude), 0, 0, &magnitude);
-	if (val < 0) {
-		mpz_neg(*out, *out);
+	if (val >= static_cast<int64_t>(std::numeric_limits<long>::min())
+			&& val <= static_cast<int64_t>(std::numeric_limits<long>::max())) {
+		mpz_init_set_si(*out, static_cast<long>(val));
+		return;
 	}
+	mpz_init(*out);
+	mpz_set_int64(*out, val);
 }
 
 void bigint_from_string(mpz_ptr *out, const char *str, int radix) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mpz_init(*out);
-	mpz_set_str(*out, str, radix);
+	mpz_init_set_str(*out, str, radix);
 }
 
 void bigint_init(mpz_ptr *out) {
@@ -40,13 +88,7 @@ void bigint_set(mpz_ptr out, mpz_ptr a) {
 }
 
 void bigint_set_long(mpz_ptr out, int64_t val) {
-	uint64_t magnitude = val >= 0
-		? static_cast<uint64_t>(val)
-		: static_cast<uint64_t>(-(val + 1)) + 1;
-	mpz_import(out, 1, -1, sizeof(magnitude), 0, 0, &magnitude);
-	if (val < 0) {
-		mpz_neg(out, out);
-	}
+	mpz_set_int64(out, val);
 }
 
 void bigint_set_string(mpz_ptr out, const char *str, int radix) {
@@ -70,9 +112,13 @@ void bigint_sub(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 void bigint_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mpz_init(*out);
 	int alen = mpz_size(a);
 	int blen = mpz_size(b);
+	if (alen == 0 || blen == 0) {
+		mpz_init(*out);
+	} else {
+		mpz_init2(*out, static_cast<mp_bitcnt_t>(alen + blen + 1) * GMP_NUMB_BITS);
+	}
 	if (alen + blen >= bigmath::NTT_THRESHOLD) {
 		bigmath::fft_multiply(*out, a, b);
 	} else {
@@ -120,7 +166,24 @@ void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
-	bigmath::fast_pow(*out, a, exp);
+	switch (exp) {
+		case 0:
+			mpz_set_ui(*out, 1);
+			return;
+		case 1:
+			mpz_set(*out, a);
+			return;
+		case 2:
+			mpz_mul(*out, a, a);
+			return;
+		default:
+			break;
+	}
+	if (exp <= static_cast<uint64_t>(std::numeric_limits<unsigned long>::max())) {
+		mpz_pow_ui(*out, a, static_cast<unsigned long>(exp));
+	} else {
+		bigmath::fast_pow(*out, a, exp);
+	}
 }
 
 void bigint_neg(mpz_ptr *out, mpz_ptr a) {
@@ -149,12 +212,11 @@ int64_t bigint_to_long(mpz_ptr a) {
 	if (mpz_sgn(a) == 0) {
 		return 0;
 	}
-	mpz_t abs;
-	mpz_init(abs);
-	mpz_abs(abs, a);
+	if (mpz_fits_slong_p(a)) {
+		return static_cast<int64_t>(mpz_get_si(a));
+	}
 	uint64_t magnitude = 0;
-	mpz_export(&magnitude, nullptr, -1, sizeof(magnitude), 0, 0, abs);
-	mpz_clear(abs);
+	mpz_export(&magnitude, nullptr, -1, sizeof(magnitude), 0, 0, a);
 	if (mpz_sgn(a) > 0) {
 		return static_cast<int64_t>(magnitude);
 	}
@@ -173,32 +235,61 @@ char *bigint_to_string(mpz_ptr a, int radix) {
 }
 
 char *bigint_format(mpz_ptr a, int group_size, const char *group_sep) {
-	char *raw = mpz_get_str(nullptr, 10, a);
 	if (group_size <= 0 || group_sep == nullptr || *group_sep == '\0') {
-		return raw;
+		return mpz_get_str(nullptr, 10, a);
+	}
+	size_t digit_cap = mpz_sizeinbase(a, 10);
+	bool value_neg = mpz_sgn(a) < 0;
+	size_t sep_len = group_sep[1] == '\0' ? 1 : strlen(group_sep);
+	size_t estimated_sep_count = digit_cap > 0 ? (digit_cap - 1) / static_cast<size_t>(group_size) : 0;
+	size_t capacity = (value_neg ? 1 : 0) + digit_cap + estimated_sep_count * sep_len + 1;
+	char *raw = (char *)malloc(capacity);
+	if (!raw) return nullptr;
+	if (!mpz_get_str(raw, 10, a)) {
+		free(raw);
+		return nullptr;
 	}
 	bool neg = (raw[0] == '-');
-	const char *digits = raw + (neg ? 1 : 0);
+	size_t sign_offset = neg ? 1 : 0;
+	char *digits = raw + sign_offset;
 	size_t len = strlen(digits);
-	size_t sep_len = strlen(group_sep);
-	size_t groups = (len + group_size - 1) / group_size;
-	size_t new_len = (neg ? 1 : 0) + len + (groups - 1) * sep_len;
-	char *out = (char *)malloc(new_len + 1);
-	if (!out) { free(raw); return nullptr; }
-	size_t pos = 0;
-	if (neg) out[pos++] = '-';
-	size_t first_group = len % group_size;
-	if (first_group == 0) first_group = group_size;
-	memcpy(out + pos, digits, first_group);
-	pos += first_group;
-	for (size_t i = first_group; i < len; i += group_size) {
-		memcpy(out + pos, group_sep, sep_len);
-		pos += sep_len;
-		memcpy(out + pos, digits + i, group_size);
-		pos += group_size;
+	if (len <= static_cast<size_t>(group_size)) {
+		return raw;
 	}
-	out[pos] = '\0';
-	free(raw);
+	size_t sep_count = (len - 1) / static_cast<size_t>(group_size);
+	size_t new_len = sign_offset + len + sep_count * sep_len;
+	char *out = raw;
+	size_t read = sign_offset + len;
+	size_t write = new_len;
+	out[write--] = '\0';
+	if (group_size == 3 && sep_len == 1) {
+		char sep = group_sep[0];
+		while (read - sign_offset > 3) {
+			out[write--] = out[--read];
+			out[write--] = out[--read];
+			out[write--] = out[--read];
+			out[write--] = sep;
+		}
+		while (read > sign_offset) {
+			out[write--] = out[--read];
+		}
+		return out;
+	}
+	size_t group_digits = 0;
+	while (read > sign_offset) {
+		out[write--] = out[--read];
+		group_digits++;
+		if (group_digits == static_cast<size_t>(group_size) && read > sign_offset) {
+			if (sep_len == 1) {
+				out[write--] = group_sep[0];
+			} else {
+				write -= sep_len - 1;
+				memcpy(out + write, group_sep, sep_len);
+				write--;
+			}
+			group_digits = 0;
+		}
+	}
 	return out;
 }
 
@@ -217,13 +308,7 @@ void bigint_gcd(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
-	int abits = mpz_sizeinbase(a, 2);
-	int bbits = mpz_sizeinbase(b, 2);
-	if (abits + bbits <= bigmath::ALGO_THRESHOLD) {
-		bigmath::binary_gcd(*out, a, b);
-	} else {
-		mpz_gcd(*out, a, b);
-	}
+	mpz_gcd(*out, a, b);
 }
 
 void bigint_lcm(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
@@ -250,8 +335,10 @@ void bigint_and(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 void bigint_or(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mpz_init(*out);
-	mpz_ior(*out, a, b);
+	if (!mpz_ior_nonnegative_fast(*out, a, b)) {
+		mpz_init(*out);
+		mpz_ior(*out, a, b);
+	}
 }
 
 void bigint_xor(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
@@ -283,7 +370,7 @@ void bigint_factorial(mpz_ptr *out, uint64_t n) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
-	bigmath::product_tree_factorial(*out, n);
+	mpz_fac_ui(*out, n);
 }
 
 void bigint_next_prime(mpz_ptr *out, mpz_ptr a) {

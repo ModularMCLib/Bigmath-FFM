@@ -147,6 +147,18 @@ class BigDeciTest {
 	}
 
 	@Test
+	void powLong() {
+		try (BigDeci base = BigDeci.fromDouble(2.0, 128)) {
+			try (BigDeci c = base.pow(10)) {
+				assertEquals(1024.0, c.toDouble(), 1e-6);
+			}
+			try (BigDeci c = base.pow(-3)) {
+				assertEquals(0.125, c.toDouble(), 1e-12);
+			}
+		}
+	}
+
+	@Test
 	void log() {
 		try (BigDeci a = BigDeci.fromDouble(Math.E, 64)) {
 			try (BigDeci c = a.log()) {
@@ -237,6 +249,15 @@ class BigDeciTest {
 	}
 
 	@Test
+	void fromLargeBigInt() {
+		try (BigInt bi = BigInt.fromString("123456789012345678901234567890", 10)) {
+			try (BigDeci bd = BigDeci.fromBigInt(bi, 256)) {
+				assertTrue(bd.toString().startsWith("123456789012345678901234567890"));
+			}
+		}
+	}
+
+	@Test
 	void formatting() {
 		try (BigDeci bd = BigDeci.fromString("1234567.89", 64)) {
 			assertEquals("1,234,567.89", bd.toFormattedString());
@@ -247,6 +268,13 @@ class BigDeciTest {
 	void formattingWithScale() {
 		try (BigDeci bd = BigDeci.fromString("3.14159", 64)) {
 			assertEquals("3.14", bd.toFormattedString(2));
+		}
+	}
+
+	@Test
+	void formattingSmallFraction() {
+		try (BigDeci bd = BigDeci.fromString("0.00125", 64)) {
+			assertEquals("0.00125", bd.toFormattedString());
 		}
 	}
 

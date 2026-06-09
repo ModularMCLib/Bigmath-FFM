@@ -100,6 +100,86 @@ class Int128Test {
 	}
 
 	@Test
+	void divideWideByUnsignedLongValue() {
+		try (Int128 a = Int128.fromString("170141183460469231731687303715884105727", 10);
+			Int128 b = Int128.fromString("18446744073709551615", 10)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("9223372036854775808", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void divideMagnitudeSmallerThanWideDivisorReturnsZero() {
+		try (Int128 a = Int128.fromLong(123456789);
+			Int128 b = Int128.fromString("18446744073709551616", 10)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("0", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void divideNegativeMagnitudeSmallerThanWideDivisorReturnsZero() {
+		try (Int128 a = Int128.fromLong(-123456789);
+			Int128 b = Int128.fromString("18446744073709551616", 10)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("0", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void divideLongMinByMinNegativeInt128ReturnsZero() {
+		try (Int128 a = Int128.fromLong(Long.MIN_VALUE);
+			Int128 b = Int128.fromString("-170141183460469231731687303715884105728", 10)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("0", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void divideMagnitudeEqualToMinNegativeInt128DoesNotEarlyReturn() {
+		try (Int128 a = Int128.fromString("-170141183460469231731687303715884105728", 10);
+			Int128 b = Int128.fromString("-170141183460469231731687303715884105728", 10)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("1", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void divideWideBySignedRangeUnsignedLongValue() {
+		try (Int128 a = Int128.fromString("170141183460469231731687303715884105727", 10);
+			Int128 b = Int128.fromString("9223372036854775807", 10)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("18446744073709551618", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void divideUnsignedLongBenchmarkCase() {
+		try (Int128 a = Int128.fromString("12345678901234567890", 10);
+			Int128 b = Int128.fromLong(987654321)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("12499999887", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void divideMinNegativeInt128ByNegativeOneKeepsTwosComplementValue() {
+		try (Int128 a = Int128.fromString("-170141183460469231731687303715884105728", 10);
+			Int128 b = Int128.fromLong(-1)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("-170141183460469231731687303715884105728", c.toString());
+			}
+		}
+	}
+
+	@Test
 	void divideByZeroThrows() {
 		try (Int128 a = Int128.fromLong(42)) {
 			assertThrows(ArithmeticException.class, () -> a.divide(Int128.ZERO));
@@ -126,11 +206,122 @@ class Int128Test {
 	}
 
 	@Test
+	void modUnsignedLongBenchmarkCase() {
+		try (Int128 a = Int128.fromString("12345678901234567890", 10);
+			Int128 b = Int128.fromLong(987654321)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("339506163", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void divideWideByUnsignedIntFastPath() {
+		try (Int128 a = Int128.fromString("170141183460469231731687303715884105727", 10);
+			Int128 b = Int128.fromLong(4294967295L)) {
+			try (Int128 c = a.divide(b)) {
+				assertEquals("39614081266355540835774234624", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void modWideByUnsignedIntFastPath() {
+		try (Int128 a = Int128.fromString("170141183460469231731687303715884105727", 10);
+			Int128 b = Int128.fromLong(4294967295L)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("2147483647", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void modWideByUnsignedLongValue() {
+		try (Int128 a = Int128.fromString("170141183460469231731687303715884105727", 10);
+			Int128 b = Int128.fromString("18446744073709551615", 10)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("9223372036854775807", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void modMagnitudeSmallerThanWideDivisorReturnsDividend() {
+		try (Int128 a = Int128.fromLong(123456789);
+			Int128 b = Int128.fromString("18446744073709551616", 10)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("123456789", c.toString());
+				assertSame(a, c);
+			}
+		}
+	}
+
+	@Test
+	void modNegativeMagnitudeSmallerThanWideDivisorKeepsDividendSign() {
+		try (Int128 a = Int128.fromLong(-123456789);
+			Int128 b = Int128.fromString("18446744073709551616", 10)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("-123456789", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void modLongMinByMinNegativeInt128ReturnsDividend() {
+		try (Int128 a = Int128.fromLong(Long.MIN_VALUE);
+			Int128 b = Int128.fromString("-170141183460469231731687303715884105728", 10)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("-9223372036854775808", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void modMagnitudeEqualToMinNegativeInt128ReturnsZero() {
+		try (Int128 a = Int128.fromString("-170141183460469231731687303715884105728", 10);
+			Int128 b = Int128.fromString("-170141183460469231731687303715884105728", 10)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("0", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void modWideBySignedRangeUnsignedLongValue() {
+		try (Int128 a = Int128.fromString("170141183460469231731687303715884105727", 10);
+			Int128 b = Int128.fromString("9223372036854775807", 10)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("1", c.toString());
+			}
+		}
+	}
+
+	@Test
 	void modWideNegativeValueKeepsDividendSign() {
 		try (Int128 a = Int128.fromString("-123456789012345678901234567891", 10);
 			Int128 b = Int128.fromLong(123456789)) {
 			try (Int128 c = a.mod(b)) {
 				assertEquals("-1", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void modWidePositiveValueIgnoresDivisorSign() {
+		try (Int128 a = Int128.fromString("12345678901234567890", 10);
+			Int128 b = Int128.fromLong(-987654321)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("339506163", c.toString());
+			}
+		}
+	}
+
+	@Test
+	void modMinNegativeInt128ByNegativeOneIsZero() {
+		try (Int128 a = Int128.fromString("-170141183460469231731687303715884105728", 10);
+			Int128 b = Int128.fromLong(-1)) {
+			try (Int128 c = a.mod(b)) {
+				assertEquals("0", c.toString());
 			}
 		}
 	}
@@ -190,6 +381,14 @@ class Int128Test {
 	}
 
 	@Test
+	void unsignedLongDecimalStringFastPath() {
+		try (Int128 i = Int128.fromString("12345678901234567890", 10)) {
+			assertEquals(0, i.hi());
+			assertEquals("12345678901234567890", i.toString());
+		}
+	}
+
+	@Test
 	void hexString() {
 		try (Int128 i = Int128.fromString("ff", 16)) {
 			assertEquals("255", i.toString());
@@ -229,6 +428,13 @@ class Int128Test {
 	}
 
 	@Test
+	void wideDecimalFormattingWithCustomGrouping() {
+		try (Int128 i = Int128.fromString("170141183460469231731687303715884105727", 10)) {
+			assertEquals("1701_41183_46046_92317_31687_30371_58841_05727", i.toFormattedString(5, "_"));
+		}
+	}
+
+	@Test
 	void largeMultiplication() {
 		try (Int128 a = Int128.fromLong(1000000); Int128 b = Int128.fromLong(1000000)) {
 			try (Int128 c = a.multiply(b)) {
@@ -264,6 +470,14 @@ class Int128Test {
 	}
 
 	@Test
+	void formatUnsignedLongValue() {
+		try (Int128 i = Int128.fromString("12345678901234567890", 10)) {
+			assertEquals("12,345,678,901,234,567,890", i.toFormattedString());
+			assertEquals("1234_5678_9012_3456_7890", i.toFormattedString(4, "_"));
+		}
+	}
+
+	@Test
 	void equalsAndHashCode() {
 		try (Int128 a = Int128.fromLong(42); Int128 b = Int128.fromLong(42); Int128 c = Int128.fromLong(43)) {
 			assertEquals(a, b);
@@ -276,7 +490,6 @@ class Int128Test {
 	void loHi() {
 		try (Int128 i = Int128.fromLong(0x1234567890abcdefL)) {
 			assertEquals(0x1234567890abcdefL, i.lo());
-			// hi should be 0 for positive numbers that fit in 64 bits
 			assertEquals(0, i.hi());
 		}
 	}

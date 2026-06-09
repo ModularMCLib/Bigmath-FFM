@@ -59,6 +59,10 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 			"bigdecimal_pow",
 			FunctionDescriptors.BIGDECIMAL_BINARY
 	);
+	private static final MethodHandle BIGDECIMAL_POW_LONG_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigdecimal_pow_long",
+			FunctionDescriptors.BIGDECIMAL_POW_LONG
+	);
 	private static final MethodHandle BIGDECIMAL_LOG_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_log",
 			FunctionDescriptors.BIGDECIMAL_UNARY
@@ -98,6 +102,10 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	private static final MethodHandle BIGDECIMAL_FROM_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_from_string",
 			FunctionDescriptors.BIGDECIMAL_FROM_STRING
+	);
+	private static final MethodHandle BIGDECIMAL_FROM_BIGINT_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigdecimal_from_bigint",
+			FunctionDescriptors.BIGDECIMAL_FROM_BIGINT
 	);
 	private static final MethodHandle BIGDECIMAL_SET_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_set",
@@ -213,7 +221,10 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	 * @return a new {@code BigDeci}
 	 */
 	public static BigDeci fromBigInt(BigInt value, int precision) {
-		return fromString(value.toString(), precision);
+		Arena arena = Arena.ofConfined();
+		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
+		invokeOutAddressInt(BIGDECIMAL_FROM_BIGINT_HANDLE, ptr, value.nativePtr(), precision);
+		return new BigDeci(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
 	/**
@@ -383,6 +394,18 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		Arena arena = Arena.ofConfined();
 		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
 		invokeBinaryOut(BIGDECIMAL_POW_HANDLE, result, nativePtr, exponent.nativePtr);
+		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+	}
+
+	/**
+	 * Returns {@code this}<sup>{@code exponent}</sup>.
+	 *
+	 * @param exponent the integer exponent
+	 */
+	public BigDeci pow(long exponent) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		invokeOutAddressLong(BIGDECIMAL_POW_LONG_HANDLE, result, nativePtr, exponent);
 		return new BigDeci(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
@@ -668,9 +691,29 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
+	private static void invokeOutAddressInt(MethodHandle handle, MemorySegment out, MemorySegment value, int precision) {
+		try {
+			handle.invokeExact(out, value, precision);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
 	private static double invokeDoubleUnary(MemorySegment value) {
 		try {
 			return (double) BIGDECIMAL_TO_DOUBLE_HANDLE.invokeExact(value);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	private static void invokeOutAddressLong(MethodHandle handle, MemorySegment out, MemorySegment value, long argument) {
+		try {
+			handle.invokeExact(out, value, argument);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {

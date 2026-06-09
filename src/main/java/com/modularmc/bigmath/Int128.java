@@ -14,7 +14,12 @@ import java.lang.invoke.MethodHandle;
 public final class Int128 extends Number implements AutoCloseable, Comparable<Int128> {
 
 	private static final long STRUCT_SIZE = 16L;
+	private static final long UNSIGNED_INT_MASK = 0xffff_ffffL;
+	private static final long UNSIGNED_INT_BASE = 1L << 32;
+	private static final long DECIMAL_CHUNK_BASE = 1_000_000_000L;
+	private static final int DECIMAL_CHUNK_DIGITS = 9;
 	private static final char[] DIGITS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
+	private static final char[] PADDED_THREE_DIGIT_TABLE = createPaddedThreeDigitTable();
 	private static final MethodHandle INT128_FROM_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"int128_from_string",
 			FunctionDescriptors.INT128_FROM_STRING
@@ -28,6 +33,8 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 
 	private final long lo;
 	private final long hi;
+	private String cachedDecimalString;
+	private String cachedFormattedDecimalString;
 
 	private Int128(long lo, long hi) {
 		this.lo = lo;
@@ -90,10 +97,29 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		if (other.isZero()) {
 			throw new ArithmeticException("/ by zero");
 		}
+		if (hi == 0 && other.hi == 0) {
+			return fromWords(Long.divideUnsigned(lo, other.lo), 0);
+		}
 		if (fitsInLong() && other.fitsInLong() && !(lo == Long.MIN_VALUE && other.lo == -1L)) {
 			return fromLong(lo / other.lo);
 		}
-		Int128 quotient = unsignedDivMod(absLo(), absHi(), other.absLo(), other.absHi(), false);
+		long dividendLo = absLo();
+		long dividendHi = absHi();
+		long divisorLo = other.absLo();
+		long divisorHi = other.absHi();
+		if (compareUnsigned(dividendLo, dividendHi, divisorLo, divisorHi) < 0) {
+			return ZERO;
+		}
+		Int128 quotient;
+		if (dividendHi == 0 && divisorHi == 0) {
+			quotient = fromWords(Long.divideUnsigned(dividendLo, divisorLo), 0);
+		} else if (divisorHi == 0 && Long.compareUnsigned(divisorLo, UNSIGNED_INT_MASK) <= 0) {
+			quotient = unsignedDivideByUnsignedInt(dividendLo, dividendHi, divisorLo);
+		} else if (divisorHi == 0) {
+			quotient = unsignedDivideByUnsignedLong(dividendLo, dividendHi, divisorLo);
+		} else {
+			quotient = unsignedDivMod(dividendLo, dividendHi, divisorLo, divisorHi, false);
+		}
 		return (hi < 0) != (other.hi < 0) ? quotient.negate() : quotient;
 	}
 
@@ -101,10 +127,29 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		if (other.isZero()) {
 			throw new ArithmeticException("/ by zero");
 		}
+		if (hi == 0 && other.hi == 0) {
+			return fromLong(Long.remainderUnsigned(lo, other.lo));
+		}
 		if (fitsInLong() && other.fitsInLong()) {
 			return fromLong(lo % other.lo);
 		}
-		Int128 remainder = unsignedDivMod(absLo(), absHi(), other.absLo(), other.absHi(), true);
+		long dividendLo = absLo();
+		long dividendHi = absHi();
+		long divisorLo = other.absLo();
+		long divisorHi = other.absHi();
+		if (compareUnsigned(dividendLo, dividendHi, divisorLo, divisorHi) < 0) {
+			return this;
+		}
+		Int128 remainder;
+		if (dividendHi == 0 && divisorHi == 0) {
+			remainder = fromLong(Long.remainderUnsigned(dividendLo, divisorLo));
+		} else if (divisorHi == 0 && Long.compareUnsigned(divisorLo, UNSIGNED_INT_MASK) <= 0) {
+			remainder = fromLong(unsignedRemainderByUnsignedInt(dividendLo, dividendHi, divisorLo));
+		} else if (divisorHi == 0) {
+			remainder = fromLong(unsignedRemainderByUnsignedLong(dividendLo, dividendHi, divisorLo));
+		} else {
+			remainder = unsignedDivMod(dividendLo, dividendHi, divisorLo, divisorHi, true);
+		}
 		return hi < 0 ? remainder.negate() : remainder;
 	}
 
@@ -154,6 +199,22 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		if (radix < 2 || radix > DIGITS.length) {
 			throw new IllegalArgumentException("radix must be between 2 and 62");
 		}
+		if (radix == 10) {
+			String cached = cachedDecimalString;
+			if (cached != null) {
+				return cached;
+			}
+			String value;
+			if (fitsInLong()) {
+				value = Long.toString(lo);
+			} else if (hi == 0) {
+				value = Long.toUnsignedString(lo);
+			} else {
+				value = toDecimalString();
+			}
+			cachedDecimalString = value;
+			return value;
+		}
 		if (fitsInLong() && radix <= Character.MAX_RADIX) {
 			return Long.toString(lo, radix);
 		}
@@ -161,25 +222,52 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	}
 
 	public String toFormattedString() {
-		if (fitsInLong()) {
-			return formatGroupedDecimal(Long.toString(lo), 3, ",");
+		String cached = cachedFormattedDecimalString;
+		if (cached != null) {
+			return cached;
 		}
-		return toFormattedStringJava(3, ",");
+		String value;
+		if (fitsInLong() || hi == 0) {
+			value = formatGroupedDecimalDefault(toString());
+		} else {
+			value = toFormattedDecimalStringDefault();
+		}
+		cachedFormattedDecimalString = value;
+		return value;
 	}
 
 	public String toFormattedString(int groupSize, String groupSep) {
 		if (groupSize <= 0 || groupSep == null || groupSep.isEmpty()) {
 			return toString();
 		}
+		if (groupSize == 3 && groupSep.equals(",")) {
+			return toFormattedString();
+		}
 		if (fitsInLong()) {
 			return formatGroupedDecimal(Long.toString(lo), groupSize, groupSep);
+		}
+		if (hi == 0) {
+			return formatGroupedDecimal(Long.toUnsignedString(lo), groupSize, groupSep);
 		}
 		return toFormattedStringJava(groupSize, groupSep);
 	}
 
 	@Override
 	public String toString() {
-		return toString(10);
+		String cached = cachedDecimalString;
+		if (cached != null) {
+			return cached;
+		}
+		String value;
+		if (fitsInLong()) {
+			value = Long.toString(lo);
+		} else if (hi == 0) {
+			value = Long.toUnsignedString(lo);
+		} else {
+			value = toDecimalString();
+		}
+		cachedDecimalString = value;
+		return value;
 	}
 
 	@Override
@@ -211,6 +299,133 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		char[] buffer = new char[130];
 		int pos = writeDigits(buffer, radix);
 		return new String(buffer, pos, buffer.length - pos);
+	}
+
+	private String toDecimalString() {
+		long magnitudeLo = lo;
+		long magnitudeHi = hi;
+		boolean negative = magnitudeHi < 0;
+		if (negative) {
+			magnitudeLo = ~magnitudeLo + 1L;
+			magnitudeHi = ~magnitudeHi + (magnitudeLo == 0 ? 1L : 0L);
+		}
+
+		int[] chunks = new int[5];
+		int chunkCount = 0;
+		while (magnitudeHi != 0 || magnitudeLo != 0) {
+			long remainder = 0;
+
+			long part = magnitudeHi >>> 32;
+			long qHiHigh = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qHiHigh * DECIMAL_CHUNK_BASE;
+
+			part = (remainder << 32) | (magnitudeHi & UNSIGNED_INT_MASK);
+			long qHiLow = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qHiLow * DECIMAL_CHUNK_BASE;
+
+			part = (remainder << 32) | (magnitudeLo >>> 32);
+			long qLoHigh = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qLoHigh * DECIMAL_CHUNK_BASE;
+
+			part = (remainder << 32) | (magnitudeLo & UNSIGNED_INT_MASK);
+			long qLoLow = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qLoLow * DECIMAL_CHUNK_BASE;
+
+			chunks[chunkCount++] = (int) remainder;
+			magnitudeHi = (qHiHigh << 32) | qHiLow;
+			magnitudeLo = (qLoHigh << 32) | qLoLow;
+		}
+
+		int length = negative ? 1 : 0;
+		int firstChunk = chunks[chunkCount - 1];
+		length += decimalDigits(firstChunk) + (chunkCount - 1) * DECIMAL_CHUNK_DIGITS;
+		char[] buffer = new char[length];
+		int pos = 0;
+		if (negative) {
+			buffer[pos++] = '-';
+		}
+		pos = writeUnsignedInt(firstChunk, buffer, pos);
+		for (int index = chunkCount - 2; index >= 0; index--) {
+			writePaddedNineDigits(chunks[index], buffer, pos);
+			pos += DECIMAL_CHUNK_DIGITS;
+		}
+		return new String(buffer);
+	}
+
+	private String toFormattedDecimalStringDefault() {
+		long magnitudeLo = lo;
+		long magnitudeHi = hi;
+		boolean negative = magnitudeHi < 0;
+		if (negative) {
+			magnitudeLo = ~magnitudeLo + 1L;
+			magnitudeHi = ~magnitudeHi + (magnitudeLo == 0 ? 1L : 0L);
+		}
+
+		int[] chunks = new int[5];
+		int chunkCount = 0;
+		while (magnitudeHi != 0 || magnitudeLo != 0) {
+			long remainder = 0;
+
+			long part = magnitudeHi >>> 32;
+			long qHiHigh = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qHiHigh * DECIMAL_CHUNK_BASE;
+
+			part = (remainder << 32) | (magnitudeHi & UNSIGNED_INT_MASK);
+			long qHiLow = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qHiLow * DECIMAL_CHUNK_BASE;
+
+			part = (remainder << 32) | (magnitudeLo >>> 32);
+			long qLoHigh = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qLoHigh * DECIMAL_CHUNK_BASE;
+
+			part = (remainder << 32) | (magnitudeLo & UNSIGNED_INT_MASK);
+			long qLoLow = part / DECIMAL_CHUNK_BASE;
+			remainder = part - qLoLow * DECIMAL_CHUNK_BASE;
+
+			chunks[chunkCount++] = (int) remainder;
+			magnitudeHi = (qHiHigh << 32) | qHiLow;
+			magnitudeLo = (qLoHigh << 32) | qLoLow;
+		}
+
+		int firstChunk = chunks[chunkCount - 1];
+		int firstDigits = decimalDigits(firstChunk);
+		int plainDigits = firstDigits + (chunkCount - 1) * DECIMAL_CHUNK_DIGITS;
+		int length = (negative ? 1 : 0) + plainDigits;
+		int sepCount = (plainDigits - 1) / 3;
+		char[] plain = new char[length];
+		char[] formatted = new char[length + sepCount];
+		int plainPos = 0;
+		int formattedPos = 0;
+		if (negative) {
+			plain[plainPos++] = '-';
+			formatted[formattedPos++] = '-';
+		}
+
+		plainPos = writeUnsignedInt(firstChunk, plain, plainPos);
+		for (int index = chunkCount - 2; index >= 0; index--) {
+			writePaddedNineDigits(chunks[index], plain, plainPos);
+			plainPos += DECIMAL_CHUNK_DIGITS;
+		}
+
+		String plainValue = new String(plain);
+		cachedDecimalString = plainValue;
+		int signOffset = negative ? 1 : 0;
+		int firstGroup = plainDigits % 3;
+		if (firstGroup == 0) {
+			firstGroup = 3;
+		}
+		int in = signOffset;
+		System.arraycopy(plain, in, formatted, formattedPos, firstGroup);
+		formattedPos += firstGroup;
+		in += firstGroup;
+		int end = plain.length;
+		while (in < end) {
+			formatted[formattedPos++] = ',';
+			System.arraycopy(plain, in, formatted, formattedPos, 3);
+			formattedPos += 3;
+			in += 3;
+		}
+		return new String(formatted);
 	}
 
 	private String toFormattedStringJava(int groupSize, String groupSep) {
@@ -315,6 +530,179 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return sb.toString();
 	}
 
+	private static String formatGroupedDecimalDefault(String value) {
+		int signOffset = value.startsWith("-") ? 1 : 0;
+		int digits = value.length() - signOffset;
+		if (digits <= 3) {
+			return value;
+		}
+		int sepCount = (digits - 1) / 3;
+		char[] formatted = new char[value.length() + sepCount];
+		int out = 0;
+		if (signOffset != 0) {
+			formatted[out++] = '-';
+		}
+		int firstGroup = digits % 3;
+		if (firstGroup == 0) {
+			firstGroup = 3;
+		}
+		value.getChars(signOffset, signOffset + firstGroup, formatted, out);
+		out += firstGroup;
+		int in = signOffset + firstGroup;
+		while (in < value.length()) {
+			formatted[out++] = ',';
+			value.getChars(in, in + 3, formatted, out);
+			out += 3;
+			in += 3;
+		}
+		return new String(formatted);
+	}
+
+	private static Int128 unsignedDivideByUnsignedInt(long dividendLo, long dividendHi, long divisor) {
+		long remainder = 0;
+
+		long part = dividendHi >>> 32;
+		long qHiHigh = Long.divideUnsigned(part, divisor);
+		remainder = part - qHiHigh * divisor;
+
+		part = (remainder << 32) | (dividendHi & UNSIGNED_INT_MASK);
+		long qHiLow = Long.divideUnsigned(part, divisor);
+		remainder = part - qHiLow * divisor;
+
+		part = (remainder << 32) | (dividendLo >>> 32);
+		long qLoHigh = Long.divideUnsigned(part, divisor);
+		remainder = part - qLoHigh * divisor;
+
+		part = (remainder << 32) | (dividendLo & UNSIGNED_INT_MASK);
+		long qLoLow = Long.divideUnsigned(part, divisor);
+
+		return new Int128((qLoHigh << 32) | qLoLow, (qHiHigh << 32) | qHiLow);
+	}
+
+	private static Int128 unsignedDivideByUnsignedLong(long dividendLo, long dividendHi, long divisor) {
+		if (Long.compareUnsigned(dividendHi, divisor) < 0) {
+			return new Int128(unsignedDivideByUnsignedLongLow(dividendLo, dividendHi, divisor), 0);
+		}
+		long quotientHi = Long.divideUnsigned(dividendHi, divisor);
+		long remainderHi = dividendHi - quotientHi * divisor;
+		long quotientLo = unsignedDivideByUnsignedLongLow(dividendLo, remainderHi, divisor);
+		return new Int128(quotientLo, quotientHi);
+	}
+
+	private static long unsignedDivideByUnsignedLongLow(long dividendLo, long dividendHi, long divisor) {
+		return unsignedDivideAndRemainderByUnsignedLongLow(dividendLo, dividendHi, divisor, false);
+	}
+
+	private static long unsignedRemainderByUnsignedInt(long dividendLo, long dividendHi, long divisor) {
+		long remainder = 0;
+
+		long part = dividendHi >>> 32;
+		remainder = Long.remainderUnsigned(part, divisor);
+
+		part = (remainder << 32) | (dividendHi & UNSIGNED_INT_MASK);
+		remainder = Long.remainderUnsigned(part, divisor);
+
+		part = (remainder << 32) | (dividendLo >>> 32);
+		remainder = Long.remainderUnsigned(part, divisor);
+
+		part = (remainder << 32) | (dividendLo & UNSIGNED_INT_MASK);
+		return Long.remainderUnsigned(part, divisor);
+	}
+
+	private static long unsignedRemainderByUnsignedLong(long dividendLo, long dividendHi, long divisor) {
+		if (Long.compareUnsigned(dividendHi, divisor) < 0) {
+			return unsignedRemainderByUnsignedLongLow(dividendLo, dividendHi, divisor);
+		}
+		long remainderHi = Long.remainderUnsigned(dividendHi, divisor);
+		return unsignedRemainderByUnsignedLongLow(dividendLo, remainderHi, divisor);
+	}
+
+	private static long unsignedRemainderByUnsignedLongLow(long dividendLo, long dividendHi, long divisor) {
+		return unsignedDivideAndRemainderByUnsignedLongLow(dividendLo, dividendHi, divisor, true);
+	}
+
+	private static long unsignedDivideAndRemainderByUnsignedLongLow(
+			long dividendLo,
+			long dividendHi,
+			long divisor,
+			boolean returnRemainder
+	) {
+		int shift = Long.numberOfLeadingZeros(divisor);
+		long normalizedDivisor = divisor << shift;
+		long divisorHigh = normalizedDivisor >>> 32;
+		long divisorLow = normalizedDivisor & UNSIGNED_INT_MASK;
+		long carry = shift == 0 ? 0 : dividendLo >>> (64 - shift);
+		long numeratorHigh = (dividendHi << shift) | carry;
+		long numeratorLow = dividendLo << shift;
+		long numeratorMid = numeratorLow >>> 32;
+		long numeratorLowWord = numeratorLow & UNSIGNED_INT_MASK;
+
+		long quotientHigh = Long.divideUnsigned(numeratorHigh, divisorHigh);
+		long remainderHat = numeratorHigh - quotientHigh * divisorHigh;
+		while (Long.compareUnsigned(quotientHigh, UNSIGNED_INT_BASE) >= 0
+				|| Long.compareUnsigned(quotientHigh * divisorLow, (remainderHat << 32) | numeratorMid) > 0) {
+			quotientHigh--;
+			remainderHat += divisorHigh;
+			if (Long.compareUnsigned(remainderHat, UNSIGNED_INT_BASE) >= 0) {
+				break;
+			}
+		}
+
+		long numeratorCombined = (numeratorHigh << 32) + numeratorMid - quotientHigh * normalizedDivisor;
+		long quotientLow = Long.divideUnsigned(numeratorCombined, divisorHigh);
+		remainderHat = numeratorCombined - quotientLow * divisorHigh;
+		while (Long.compareUnsigned(quotientLow, UNSIGNED_INT_BASE) >= 0
+				|| Long.compareUnsigned(quotientLow * divisorLow, (remainderHat << 32) | numeratorLowWord) > 0) {
+			quotientLow--;
+			remainderHat += divisorHigh;
+			if (Long.compareUnsigned(remainderHat, UNSIGNED_INT_BASE) >= 0) {
+				break;
+			}
+		}
+
+		if (!returnRemainder) {
+			return (quotientHigh << 32) | (quotientLow & UNSIGNED_INT_MASK);
+		}
+
+		long normalizedRemainder = (numeratorCombined << 32) + numeratorLowWord - quotientLow * normalizedDivisor;
+		return shift == 0 ? normalizedRemainder : normalizedRemainder >>> shift;
+	}
+
+	private static int decimalDigits(int value) {
+		if (value >= 100_000_000) return 9;
+		if (value >= 10_000_000) return 8;
+		if (value >= 1_000_000) return 7;
+		if (value >= 100_000) return 6;
+		if (value >= 10_000) return 5;
+		if (value >= 1_000) return 4;
+		if (value >= 100) return 3;
+		if (value >= 10) return 2;
+		return 1;
+	}
+
+	private static int writeUnsignedInt(int value, char[] buffer, int pos) {
+		int digits = decimalDigits(value);
+		int end = pos + digits;
+		int cursor = end;
+		int current = value;
+		do {
+			int quotient = current / 10;
+			buffer[--cursor] = (char) ('0' + (current - quotient * 10));
+			current = quotient;
+		} while (current != 0);
+		return end;
+	}
+
+	private static void writePaddedNineDigits(int value, char[] buffer, int pos) {
+		int high = value / 1_000_000;
+		int remainder = value - high * 1_000_000;
+		int middle = remainder / 1_000;
+		int low = remainder - middle * 1_000;
+		copyPaddedThreeDigits(high, buffer, pos);
+		copyPaddedThreeDigits(middle, buffer, pos + 3);
+		copyPaddedThreeDigits(low, buffer, pos + 6);
+	}
+
 	private static Int128 unsignedDivMod(
 			long dividendLo,
 			long dividendHi,
@@ -354,6 +742,24 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	private static int compareUnsigned(long leftLo, long leftHi, long rightLo, long rightHi) {
 		int high = Long.compareUnsigned(leftHi, rightHi);
 		return high != 0 ? high : Long.compareUnsigned(leftLo, rightLo);
+	}
+
+	private static void copyPaddedThreeDigits(int value, char[] buffer, int pos) {
+		int source = value * 3;
+		buffer[pos] = PADDED_THREE_DIGIT_TABLE[source];
+		buffer[pos + 1] = PADDED_THREE_DIGIT_TABLE[source + 1];
+		buffer[pos + 2] = PADDED_THREE_DIGIT_TABLE[source + 2];
+	}
+
+	private static char[] createPaddedThreeDigitTable() {
+		char[] table = new char[1_000 * 3];
+		for (int value = 0; value < 1_000; value++) {
+			int pos = value * 3;
+			table[pos] = (char) ('0' + value / 100);
+			table[pos + 1] = (char) ('0' + (value / 10) % 10);
+			table[pos + 2] = (char) ('0' + value % 10);
+		}
+		return table;
 	}
 
 	private static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int radix) {
