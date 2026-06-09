@@ -222,7 +222,7 @@ char *bigint_format(mpz_ptr a, int group_size, const char *group_sep) {
 	out[write--] = '\0';
 	if (group_size == 3 && sep_len == 1) {
 		char sep = group_sep[0];
-		while (read - sign_offset > 3) {
+		for (size_t group = 0; group < sep_count; group++) {
 			out[write--] = out[--read];
 			out[write--] = out[--read];
 			out[write--] = out[--read];
