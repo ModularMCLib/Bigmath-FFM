@@ -218,12 +218,8 @@ char *bigdecimal_format(mpfr_ptr a, int scale, int group_size, const char *group
 	size_t next_group = first_group;
 	for (size_t i = 0; i < int_len; i++) {
 		if (sep_len > 0 && i == next_group) {
-			if (sep_len == 1) {
-				out[pos++] = group_sep[0];
-			} else {
-				memcpy(out + pos, group_sep, sep_len);
-				pos += sep_len;
-			}
+			memcpy(out + pos, group_sep, sep_len);
+			pos += sep_len;
 			next_group += (size_t)group_size;
 		}
 		out[pos++] = (exp > 0 && i < digit_len) ? p[i] : '0';
