@@ -190,6 +190,13 @@ public class BigIntBenchmark {
 	}
 
 	@Benchmark
+	public void sqrtLarge(LargeState state, Blackhole blackhole) {
+		try (BigInt result = state.left.sqrt()) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
 	public void factorial(FactorialState state, Blackhole blackhole) {
 		try (BigInt result = BigInt.factorial(state.n)) {
 			blackhole.consume(result);
