@@ -284,13 +284,7 @@ void bigint_gcd(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 void bigint_lcm(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	const auto max_bits = std::numeric_limits<mp_bitcnt_t>::max();
-	mp_bitcnt_t abits = static_cast<mp_bitcnt_t>(mpz_sizeinbase(a, 2));
-	mp_bitcnt_t bbits = static_cast<mp_bitcnt_t>(mpz_sizeinbase(b, 2));
-	mp_bitcnt_t bits = max_bits - abits > bbits
-		? abits + bbits + 1
-		: max_bits;
-	mpz_init2(*out, bits);
+	mpz_init(*out);
 	mpz_lcm(*out, a, b);
 }
 
