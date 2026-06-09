@@ -1,5 +1,6 @@
 #include "bigmath_ffm.h"
 #include "algos.h"
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -298,7 +299,16 @@ void bigint_sqrt(mpz_ptr *out, mpz_ptr a) {
 void bigint_and(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mpz_init(*out);
+	if (mpz_sgn(a) >= 0 && mpz_sgn(b) >= 0) {
+		mp_size_t limbs = std::min(mpz_size(a), mpz_size(b));
+		if (limbs > 0) {
+			mpz_init2(*out, static_cast<mp_bitcnt_t>(limbs) * GMP_NUMB_BITS);
+		} else {
+			mpz_init(*out);
+		}
+	} else {
+		mpz_init(*out);
+	}
 	mpz_and(*out, a, b);
 }
 
