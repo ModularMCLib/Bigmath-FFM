@@ -257,6 +257,10 @@ void bigdecimal_pow(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
 	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
 	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
+	if (mpfr_cmp_ui(b, 2) == 0) {
+		mpfr_sqr(*out, a, MPFR_RNDN);
+		return;
+	}
 	if (mpfr_integer_p(b) && mpfr_fits_slong_p(b, MPFR_RNDN)) {
 		bigdecimal_pow_si(*out, a, mpfr_get_si(b, MPFR_RNDN));
 		return;
