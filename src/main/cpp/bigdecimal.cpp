@@ -261,9 +261,15 @@ void bigdecimal_pow(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
 		mpfr_sqr(*out, a, MPFR_RNDN);
 		return;
 	}
-	if (mpfr_integer_p(b) && mpfr_fits_slong_p(b, MPFR_RNDN)) {
-		bigdecimal_pow_si(*out, a, mpfr_get_si(b, MPFR_RNDN));
-		return;
+	if (mpfr_integer_p(b)) {
+		if (mpfr_fits_ulong_p(b, MPFR_RNDN)) {
+			mpfr_pow_ui(*out, a, mpfr_get_ui(b, MPFR_RNDN), MPFR_RNDN);
+			return;
+		}
+		if (mpfr_fits_slong_p(b, MPFR_RNDN)) {
+			bigdecimal_pow_si(*out, a, mpfr_get_si(b, MPFR_RNDN));
+			return;
+		}
 	}
 	mpfr_pow(*out, a, b, MPFR_RNDN);
 }
