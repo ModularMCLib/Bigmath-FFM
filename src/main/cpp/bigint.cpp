@@ -328,6 +328,23 @@ void bigint_sqrt(mpz_ptr *out, mpz_ptr a) {
 void bigint_and(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
+	const mp_size_t asize = a->_mp_size;
+	const mp_size_t bsize = b->_mp_size;
+	if (asize >= 0 && bsize >= 0) {
+		const mp_size_t size = asize < bsize ? asize : bsize;
+		if (size == 0) {
+			mpz_init(*out);
+			return;
+		}
+		mpz_init2(*out, static_cast<mp_bitcnt_t>(size) * GMP_NUMB_BITS);
+		mpn_and_n((*out)->_mp_d, a->_mp_d, b->_mp_d, size);
+		mp_size_t normalized = size;
+		while (normalized > 0 && (*out)->_mp_d[normalized - 1] == 0) {
+			--normalized;
+		}
+		(*out)->_mp_size = normalized;
+		return;
+	}
 	mpz_init(*out);
 	mpz_and(*out, a, b);
 }
