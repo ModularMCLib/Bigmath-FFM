@@ -107,6 +107,15 @@ static bool mpz_xor_nonnegative_fast(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	return true;
 }
 
+static bool should_use_gmp_pow_ui(mpz_ptr base, uint64_t exp) {
+	if (exp > static_cast<uint64_t>(std::numeric_limits<unsigned long>::max())) {
+		return false;
+	}
+	static constexpr mp_bitcnt_t GMP_POW_BIT_THRESHOLD = 131072;
+	const mp_bitcnt_t base_bits = mpz_sizeinbase(base, 2);
+	return base_bits <= GMP_POW_BIT_THRESHOLD / static_cast<mp_bitcnt_t>(exp);
+}
+
 void bigint_from_long(mpz_ptr *out, int64_t val) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
@@ -237,6 +246,10 @@ void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
 			return;
 		default:
 			break;
+	}
+	if (should_use_gmp_pow_ui(a, exp)) {
+		mpz_pow_ui(*out, a, static_cast<unsigned long>(exp));
+		return;
 	}
 	bigmath::fast_pow(*out, a, exp);
 }

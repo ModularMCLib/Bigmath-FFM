@@ -146,6 +146,17 @@ class BigIntTest {
 	}
 
 	@Test
+	void powLargeNegativeMatchesBigInteger() {
+		BigInteger baseValue = new BigInteger("-12345678901234567890");
+		int exponent = 17;
+		BigInteger expected = baseValue.pow(exponent);
+		try (BigInt a = BigInt.fromBigInteger(baseValue);
+			BigInt c = a.pow(exponent)) {
+			assertEquals(expected, c.toBigInteger());
+		}
+	}
+
+	@Test
 	void negate() {
 		try (BigInt a = BigInt.fromLong(42)) {
 			try (BigInt b = a.negate()) {
