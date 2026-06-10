@@ -131,7 +131,9 @@ struct CudaConvolutionWorkspace {
 	int spectrum_cache_capacity = 0;
 	std::vector<double> host_a;
 	std::vector<double> host_b;
-	std::vector<double> host_result;
+	double *host_result = nullptr;
+	size_t host_result_capacity = 0;
+	std::vector<double> pageable_host_result;
 	CachedSpectrum cache_a;
 	CachedSpectrum cache_b;
 
@@ -179,7 +181,10 @@ struct CudaConvolutionWorkspace {
 		capacity = 0;
 		host_a.clear();
 		host_b.clear();
-		host_result.clear();
+		cudaFreeHost(host_result);
+		host_result = nullptr;
+		host_result_capacity = 0;
+		pageable_host_result.clear();
 	}
 
 	bool ensure_capacity(int n) {
@@ -253,8 +258,20 @@ struct CudaConvolutionWorkspace {
 		return true;
 	}
 
-	void prepare_host_result(size_t result_size) {
-		host_result.resize(result_size);
+	double *prepare_host_result(size_t result_size) {
+		if (host_result_capacity >= result_size) {
+			return host_result;
+		}
+		cudaFreeHost(host_result);
+		host_result = nullptr;
+		host_result_capacity = 0;
+		if (cudaHostAlloc(&host_result, sizeof(double) * result_size, cudaHostAllocDefault) == cudaSuccess) {
+			host_result_capacity = result_size;
+			pageable_host_result.clear();
+			return host_result;
+		}
+		pageable_host_result.resize(result_size);
+		return pageable_host_result.data();
 	}
 
 	void prepare_host_inputs(size_t a_size, size_t b_size) {
@@ -346,8 +363,8 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 	if (cufftExecZ2D(workspace.inverse_plan, workspace.fa, workspace.da) != CUFFT_SUCCESS) {
 		return false;
 	}
-	workspace.prepare_host_result(result_size);
-	if (cudaMemcpy(workspace.host_result.data(), workspace.da, sizeof(double) * result_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
+	double *host_result = workspace.prepare_host_result(result_size);
+	if (cudaMemcpy(host_result, workspace.da, sizeof(double) * result_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
 		return false;
 	}
 
@@ -358,7 +375,7 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
 	for (size_t i = 0; i < result_size; i++) {
 		uint64_t rounded = 0;
-		if (!round_nonnegative_to_u64(workspace.host_result[i] * scale, rounded)) {
+		if (!round_nonnegative_to_u64(host_result[i] * scale, rounded)) {
 			return false;
 		}
 		const uint64_t value = rounded + carry;
@@ -427,8 +444,8 @@ bool convolve_digits(const std::vector<uint64_t> &a,
 	if (cufftExecZ2D(workspace.inverse_plan, workspace.fa, workspace.da) != CUFFT_SUCCESS) {
 		return false;
 	}
-	workspace.prepare_host_result(result_size);
-	if (cudaMemcpy(workspace.host_result.data(), workspace.da, sizeof(double) * result_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
+	double *host_result = workspace.prepare_host_result(result_size);
+	if (cudaMemcpy(host_result, workspace.da, sizeof(double) * result_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
 		return false;
 	}
 
@@ -436,7 +453,7 @@ bool convolve_digits(const std::vector<uint64_t> &a,
 	const double scale = 1.0 / static_cast<double>(n);
 	for (size_t i = 0; i < result_size; i++) {
 		uint64_t rounded = 0;
-		if (!round_nonnegative_to_u64(workspace.host_result[i] * scale, rounded)) {
+		if (!round_nonnegative_to_u64(host_result[i] * scale, rounded)) {
 			return false;
 		}
 		out[i] = rounded;
