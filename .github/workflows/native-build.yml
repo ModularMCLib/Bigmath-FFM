@@ -126,14 +126,6 @@ jobs:
           echo "CMAKE_PREFIX_PATH=${{ github.workspace }}\vcpkg_installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
           echo "BIGMATH_VCPKG_TRIPLET=${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
 
-      - name: Restore Linux CUDA toolkit cache
-        id: cuda-cache-linux
-        if: matrix.label == 'linux-x86-64'
-        uses: actions/cache/restore@v4
-        with:
-          path: /usr/local/cuda-13.2
-          key: cuda-toolkit-${{ matrix.label }}-13.2.0-jimver-v0.2.35-v1
-
       - name: Restore Windows CUDA toolkit cache
         id: cuda-cache-windows
         if: matrix.label == 'windows-x86-64'
@@ -144,14 +136,10 @@ jobs:
 
       - name: Check CUDA toolkit cache
         id: cuda-cache-check
-        if: matrix.label == 'linux-x86-64' || matrix.label == 'windows-x86-64'
+        if: matrix.label == 'windows-x86-64'
         shell: pwsh
         run: |
-          if ('${{ matrix.label }}' -eq 'windows-x86-64') {
-            $nvcc = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2\bin\nvcc.exe'
-          } else {
-            $nvcc = '/usr/local/cuda-13.2/bin/nvcc'
-          }
+          $nvcc = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2\bin\nvcc.exe'
           if (Test-Path -LiteralPath $nvcc) {
             "available=true" >> $env:GITHUB_OUTPUT
           } else {
@@ -161,8 +149,8 @@ jobs:
       - name: Setup CUDA toolkit
         id: cuda-toolkit
         if: |
-          (matrix.label == 'linux-x86-64' || matrix.label == 'windows-x86-64') &&
-          steps.cuda-cache-check.outputs.available != 'true'
+          matrix.label == 'linux-x86-64' ||
+          (matrix.label == 'windows-x86-64' && steps.cuda-cache-check.outputs.available != 'true')
         uses: Jimver/cuda-toolkit@v0.2.35
         with:
           cuda: '13.2.0'
@@ -217,13 +205,6 @@ jobs:
         with:
           path: .vcpkg-cache
           key: ${{ steps.vcpkg-cache-restore.outputs.cache-primary-key }}
-
-      - name: Save Linux CUDA toolkit cache
-        if: matrix.label == 'linux-x86-64' && steps.cuda-cache-check.outputs.available != 'true' && !cancelled()
-        uses: actions/cache/save@v4
-        with:
-          path: /usr/local/cuda-13.2
-          key: ${{ steps.cuda-cache-linux.outputs.cache-primary-key }}
 
       - name: Save Windows CUDA toolkit cache
         if: matrix.label == 'windows-x86-64' && steps.cuda-cache-check.outputs.available != 'true' && !cancelled()
