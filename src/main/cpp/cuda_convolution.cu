@@ -10,20 +10,7 @@
 
 namespace bigmath::cuda {
 
-__global__ static void pointwise_multiply_in_place(cufftDoubleComplex *__restrict__ left,
-		const cufftDoubleComplex *__restrict__ right,
-		int n) {
-	const int i = blockIdx.x * blockDim.x + threadIdx.x;
-	if (i >= n) {
-		return;
-	}
-	const double real = left[i].x * right[i].x - left[i].y * right[i].y;
-	const double imag = left[i].x * right[i].y + left[i].y * right[i].x;
-	left[i].x = real;
-	left[i].y = imag;
-}
-
-__global__ static void pointwise_multiply_to(const cufftDoubleComplex *__restrict__ left,
+__global__ static void pointwise_multiply(const cufftDoubleComplex *__restrict__ left,
 		const cufftDoubleComplex *__restrict__ right,
 		cufftDoubleComplex *__restrict__ out,
 		int n) {
@@ -33,19 +20,6 @@ __global__ static void pointwise_multiply_to(const cufftDoubleComplex *__restric
 	}
 	const double real = left[i].x * right[i].x - left[i].y * right[i].y;
 	const double imag = left[i].x * right[i].y + left[i].y * right[i].x;
-	out[i].x = real;
-	out[i].y = imag;
-}
-
-__global__ static void pointwise_square_to(const cufftDoubleComplex *value,
-		cufftDoubleComplex *out,
-		int n) {
-	const int i = blockIdx.x * blockDim.x + threadIdx.x;
-	if (i >= n) {
-		return;
-	}
-	const double real = value[i].x * value[i].x - value[i].y * value[i].y;
-	const double imag = 2.0 * value[i].x * value[i].y;
 	out[i].x = real;
 	out[i].y = imag;
 }
@@ -376,13 +350,7 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 	}
 
 	const int grid_size = (spectrum_size + block_size - 1) / block_size;
-	if (&a == &b) {
-		pointwise_square_to<<<grid_size, block_size>>>(spectrum_a, workspace.fa, spectrum_size);
-	} else if (spectrum_a == workspace.fa) {
-		pointwise_multiply_in_place<<<grid_size, block_size>>>(workspace.fa, spectrum_b, spectrum_size);
-	} else {
-		pointwise_multiply_to<<<grid_size, block_size>>>(spectrum_a, spectrum_b, workspace.fa, spectrum_size);
-	}
+	pointwise_multiply<<<grid_size, block_size>>>(spectrum_a, spectrum_b, workspace.fa, spectrum_size);
 	if (cudaGetLastError() != cudaSuccess) {
 		return false;
 	}
@@ -463,7 +431,7 @@ bool convolve_digits(const std::vector<uint64_t> &a,
 	const int block_size = 256;
 	const int spectrum_size = n / 2 + 1;
 	const int grid_size = (spectrum_size + block_size - 1) / block_size;
-	pointwise_multiply_in_place<<<grid_size, block_size>>>(workspace.fa, workspace.fb, spectrum_size);
+	pointwise_multiply<<<grid_size, block_size>>>(workspace.fa, workspace.fb, workspace.fa, spectrum_size);
 	if (cudaGetLastError() != cudaSuccess) {
 		return false;
 	}
