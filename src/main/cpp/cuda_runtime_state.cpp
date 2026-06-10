@@ -197,6 +197,9 @@ static void ensure_initialized() {
 }
 
 bool is_available() {
+	if (probe_phase.load(std::memory_order_acquire) == static_cast<int>(ProbePhase::finished)) {
+		return state.available;
+	}
 	ensure_initialized();
 	return state.available;
 }
