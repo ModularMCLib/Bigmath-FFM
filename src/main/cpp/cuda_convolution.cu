@@ -55,14 +55,74 @@ static bool coefficients_fit_double(size_t result_size, unsigned bits_per_digit)
 	return max_coefficient < static_cast<long double>(uint64_t{1} << 50);
 }
 
-static bool cleanup(cufftHandle plan, cufftDoubleComplex *fa, cufftDoubleComplex *fb) {
-	if (plan != 0) {
-		cufftDestroy(plan);
+struct CudaConvolutionWorkspace {
+	cufftDoubleComplex *fa = nullptr;
+	cufftDoubleComplex *fb = nullptr;
+	cufftHandle plan = 0;
+	int plan_size = 0;
+	int capacity = 0;
+	std::vector<cufftDoubleComplex> host_a;
+	std::vector<cufftDoubleComplex> host_b;
+
+	~CudaConvolutionWorkspace() {
+		release();
 	}
-	cudaFree(fa);
-	cudaFree(fb);
-	return false;
-}
+
+	void release_plan() {
+		if (plan != 0) {
+			cufftDestroy(plan);
+			plan = 0;
+			plan_size = 0;
+		}
+	}
+
+	void release() {
+		release_plan();
+		cudaFree(fa);
+		cudaFree(fb);
+		fa = nullptr;
+		fb = nullptr;
+		capacity = 0;
+		host_a.clear();
+		host_b.clear();
+	}
+
+	bool ensure_capacity(int n) {
+		if (capacity >= n) {
+			return true;
+		}
+		release();
+		if (cudaMalloc(&fa, sizeof(cufftDoubleComplex) * n) != cudaSuccess) {
+			release();
+			return false;
+		}
+		if (cudaMalloc(&fb, sizeof(cufftDoubleComplex) * n) != cudaSuccess) {
+			release();
+			return false;
+		}
+		capacity = n;
+		return true;
+	}
+
+	bool ensure_plan(int n) {
+		if (plan_size == n && plan != 0) {
+			return true;
+		}
+		release_plan();
+		if (cufftPlan1d(&plan, n, CUFFT_Z2Z, 1) != CUFFT_SUCCESS) {
+			plan = 0;
+			plan_size = 0;
+			return false;
+		}
+		plan_size = n;
+		return true;
+	}
+
+	void prepare_host_buffers(int n) {
+		host_a.assign(static_cast<size_t>(n), cufftDoubleComplex{0.0, 0.0});
+		host_b.assign(static_cast<size_t>(n), cufftDoubleComplex{0.0, 0.0});
+	}
+};
 
 bool convolve_digits(const std::vector<uint64_t> &a,
 		const std::vector<uint64_t> &b,
@@ -80,66 +140,50 @@ bool convolve_digits(const std::vector<uint64_t> &a,
 			!has_enough_device_memory(static_cast<size_t>(n))) {
 		return false;
 	}
-	cufftDoubleComplex *fa = nullptr;
-	cufftDoubleComplex *fb = nullptr;
-	cufftHandle plan = 0;
-
-	if (cudaMalloc(&fa, sizeof(cufftDoubleComplex) * n) != cudaSuccess) {
+	thread_local CudaConvolutionWorkspace workspace;
+	if (!workspace.ensure_capacity(n) || !workspace.ensure_plan(n)) {
 		return false;
 	}
-	if (cudaMalloc(&fb, sizeof(cufftDoubleComplex) * n) != cudaSuccess) {
-		return cleanup(plan, fa, fb);
-	}
 
-	std::vector<cufftDoubleComplex> host_a(n);
-	std::vector<cufftDoubleComplex> host_b(n);
+	workspace.prepare_host_buffers(n);
 	for (size_t i = 0; i < a.size(); i++) {
-		host_a[i].x = static_cast<double>(a[i]);
-		host_a[i].y = 0.0;
+		workspace.host_a[i].x = static_cast<double>(a[i]);
 	}
 	for (size_t i = 0; i < b.size(); i++) {
-		host_b[i].x = static_cast<double>(b[i]);
-		host_b[i].y = 0.0;
+		workspace.host_b[i].x = static_cast<double>(b[i]);
 	}
 
-	if (cudaMemcpy(fa, host_a.data(), sizeof(cufftDoubleComplex) * n, cudaMemcpyHostToDevice) != cudaSuccess ||
-			cudaMemcpy(fb, host_b.data(), sizeof(cufftDoubleComplex) * n, cudaMemcpyHostToDevice) != cudaSuccess) {
-		return cleanup(plan, fa, fb);
+	if (cudaMemcpy(workspace.fa, workspace.host_a.data(), sizeof(cufftDoubleComplex) * n, cudaMemcpyHostToDevice) != cudaSuccess ||
+			cudaMemcpy(workspace.fb, workspace.host_b.data(), sizeof(cufftDoubleComplex) * n, cudaMemcpyHostToDevice) != cudaSuccess) {
+		return false;
 	}
-	if (cufftPlan1d(&plan, n, CUFFT_Z2Z, 1) != CUFFT_SUCCESS) {
-		return cleanup(plan, fa, fb);
-	}
-	if (cufftExecZ2Z(plan, fa, fa, CUFFT_FORWARD) != CUFFT_SUCCESS ||
-			cufftExecZ2Z(plan, fb, fb, CUFFT_FORWARD) != CUFFT_SUCCESS) {
-		return cleanup(plan, fa, fb);
+	if (cufftExecZ2Z(workspace.plan, workspace.fa, workspace.fa, CUFFT_FORWARD) != CUFFT_SUCCESS ||
+			cufftExecZ2Z(workspace.plan, workspace.fb, workspace.fb, CUFFT_FORWARD) != CUFFT_SUCCESS) {
+		return false;
 	}
 
 	const int block_size = 256;
 	const int grid_size = (n + block_size - 1) / block_size;
-	pointwise_multiply<<<grid_size, block_size>>>(fa, fb, n);
+	pointwise_multiply<<<grid_size, block_size>>>(workspace.fa, workspace.fb, n);
 	if (cudaGetLastError() != cudaSuccess || cudaDeviceSynchronize() != cudaSuccess) {
-		return cleanup(plan, fa, fb);
+		return false;
 	}
-	if (cufftExecZ2Z(plan, fa, fa, CUFFT_INVERSE) != CUFFT_SUCCESS) {
-		return cleanup(plan, fa, fb);
+	if (cufftExecZ2Z(workspace.plan, workspace.fa, workspace.fa, CUFFT_INVERSE) != CUFFT_SUCCESS) {
+		return false;
 	}
-	if (cudaMemcpy(host_a.data(), fa, sizeof(cufftDoubleComplex) * n, cudaMemcpyDeviceToHost) != cudaSuccess) {
-		return cleanup(plan, fa, fb);
+	if (cudaMemcpy(workspace.host_a.data(), workspace.fa, sizeof(cufftDoubleComplex) * n, cudaMemcpyDeviceToHost) != cudaSuccess) {
+		return false;
 	}
 
 	out.resize(result_size);
 	const double scale = 1.0 / static_cast<double>(n);
 	for (size_t i = 0; i < result_size; i++) {
-		double rounded = std::round(host_a[i].x * scale);
+		double rounded = std::round(workspace.host_a[i].x * scale);
 		if (rounded < 0.0) {
-			return cleanup(plan, fa, fb);
+			return false;
 		}
 		out[i] = static_cast<uint64_t>(rounded);
 	}
-
-	cufftDestroy(plan);
-	cudaFree(fa);
-	cudaFree(fb);
 	return true;
 }
 
