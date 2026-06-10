@@ -31,6 +31,7 @@ BIGMATH_EXPORT void  bigint_set_string(mpz_ptr out, const char *str, int radix);
 BIGMATH_EXPORT void  bigint_add(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_sub(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
+BIGMATH_EXPORT void  bigint_mul_cpu(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_div(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_mod(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_add_into(mpz_ptr out, mpz_ptr a, mpz_ptr b);
@@ -60,6 +61,14 @@ BIGMATH_EXPORT void  bigint_next_prime(mpz_ptr *out, mpz_ptr a);
 BIGMATH_EXPORT int   bigint_sign(mpz_ptr a);
 BIGMATH_EXPORT int64_t bigint_to_long(mpz_ptr a);
 BIGMATH_EXPORT double bigint_to_double(mpz_ptr a);
+
+/* CUDA diagnostics */
+BIGMATH_EXPORT int         bigmath_cuda_available();
+BIGMATH_EXPORT int         bigmath_cuda_device_count();
+BIGMATH_EXPORT int         bigmath_cuda_probe_count();
+BIGMATH_EXPORT int         bigmath_cuda_multiply_count();
+BIGMATH_EXPORT const char *bigmath_cuda_device_name();
+BIGMATH_EXPORT const char *bigmath_cuda_status_message();
 
 /* BigDecimal */
 BIGMATH_EXPORT void   bigdecimal_from_double(mpfr_ptr *out, double val, int precision);

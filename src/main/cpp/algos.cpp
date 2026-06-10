@@ -1,4 +1,6 @@
 #include "algos.h"
+#include "cuda_convolution.h"
+#include "cuda_runtime_state.h"
 #include "ntt.h"
 #include <cstring>
 #include <vector>
@@ -191,9 +193,9 @@ void fast_pow(mpz_ptr out, mpz_ptr base, uint64_t exp) {
 	mpz_init_set(b, base);
 	uint64_t e = exp;
 	while (e > 0) {
-		if (e & 1) mpz_mul(out, out, b);
+		if (e & 1) accelerated_mul(out, out, b);
 		e >>= 1;
-		if (e > 0) mpz_mul(b, b, b);
+		if (e > 0) accelerated_mul(b, b, b);
 	}
 	mpz_clear(b);
 }
@@ -229,8 +231,79 @@ void product_tree_factorial(mpz_ptr out, uint64_t n) {
 	product_tree(out, 2, n);
 }
 
+static std::vector<uint64_t> digits_from_abs_mpz(mpz_ptr value, unsigned bits_per_digit) {
+	std::vector<uint64_t> digits;
+	digits.reserve((mpz_sizeinbase(value, 2) + bits_per_digit - 1) / bits_per_digit);
+	mpz_t tmp, digit;
+	mpz_init(tmp);
+	mpz_init(digit);
+	mpz_set(tmp, value);
+	while (mpz_sgn(tmp) > 0) {
+		mpz_tdiv_r_2exp(digit, tmp, bits_per_digit);
+		digits.push_back(mpz_get_ui(digit));
+		mpz_tdiv_q_2exp(tmp, tmp, bits_per_digit);
+	}
+	if (digits.empty()) {
+		digits.push_back(0);
+	}
+	mpz_clear(tmp);
+	mpz_clear(digit);
+	return digits;
+}
+
+static void write_digits_to_mpz(mpz_ptr out, std::vector<uint64_t> &digits, unsigned bits_per_digit) {
+	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
+	uint64_t carry = 0;
+	for (size_t i = 0; i < digits.size(); i++) {
+		uint64_t val = digits[i] + carry;
+		digits[i] = val & base_mask;
+		carry = val >> bits_per_digit;
+	}
+	while (carry != 0) {
+		digits.push_back(carry & base_mask);
+		carry >>= bits_per_digit;
+	}
+	while (digits.size() > 1 && digits.back() == 0) {
+		digits.pop_back();
+	}
+
+	mpz_set_ui(out, 0);
+	for (int i = static_cast<int>(digits.size()) - 1; i >= 0; i--) {
+		mpz_mul_2exp(out, out, bits_per_digit);
+		mpz_add_ui(out, out, digits[static_cast<size_t>(i)]);
+	}
+}
+
+static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
+#ifndef BIGMATH_HAS_CUDA
+	(void)out;
+	(void)abs_a;
+	(void)abs_b;
+	return false;
+#else
+	static constexpr unsigned CUDA_BITS_PER_DIGIT = 8;
+	static constexpr mp_bitcnt_t CUDA_BIT_THRESHOLD = 262144;
+	if (!cuda::is_available()) {
+		return false;
+	}
+	if (mpz_sizeinbase(abs_a, 2) < CUDA_BIT_THRESHOLD && mpz_sizeinbase(abs_b, 2) < CUDA_BIT_THRESHOLD) {
+		return false;
+	}
+
+	auto ad = digits_from_abs_mpz(abs_a, CUDA_BITS_PER_DIGIT);
+	auto bd = digits_from_abs_mpz(abs_b, CUDA_BITS_PER_DIGIT);
+	std::vector<uint64_t> conv;
+	if (!cuda::convolve_base256(ad, bd, conv)) {
+		return false;
+	}
+	write_digits_to_mpz(out, conv, CUDA_BITS_PER_DIGIT);
+	cuda::record_multiply();
+	return true;
+#endif
+}
+
 // ---- FFT/NTT-based multiplication ----
-void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+void cpu_ntt_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	int alen = mpz_size(a);
 	int blen = mpz_size(b);
 	if (alen == 0 || blen == 0) { mpz_set_ui(out, 0); return; }
@@ -243,33 +316,9 @@ void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	mpz_init(abs_b); mpz_abs(abs_b, b);
 
 	static constexpr uint64_t BASE = 1ULL << 16;
-	static constexpr uint64_t BASE_MASK = BASE - 1;
 
-	// Convert to base-2^16 digits
-	std::vector<uint64_t> ad, bd;
-	ad.reserve((mpz_sizeinbase(abs_a, 2) + 15) / 16);
-	bd.reserve((mpz_sizeinbase(abs_b, 2) + 15) / 16);
-	mpz_t tmp, digit;
-	mpz_init(tmp);
-	mpz_init(digit);
-	mpz_set(tmp, abs_a);
-	while (mpz_sgn(tmp) > 0) {
-		mpz_tdiv_r_2exp(digit, tmp, 16);
-		ad.push_back(mpz_get_ui(digit));
-		mpz_tdiv_q_2exp(tmp, tmp, 16);
-	}
-	if (ad.empty()) ad.push_back(0);
-
-	mpz_set(tmp, abs_b);
-	while (mpz_sgn(tmp) > 0) {
-		mpz_tdiv_r_2exp(digit, tmp, 16);
-		bd.push_back(mpz_get_ui(digit));
-		mpz_tdiv_q_2exp(tmp, tmp, 16);
-	}
-	if (bd.empty()) bd.push_back(0);
-
-	mpz_clear(tmp);
-	mpz_clear(digit);
+	auto ad = digits_from_abs_mpz(abs_a, 16);
+	auto bd = digits_from_abs_mpz(abs_b, 16);
 	mpz_clear(abs_a);
 	mpz_clear(abs_b);
 
@@ -280,24 +329,51 @@ void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 		return;
 	}
 
-	// Carry propagation
-	uint64_t carry = 0;
-	for (size_t i = 0; i < conv.size(); i++) {
-		uint64_t val = conv[i] + carry;
-		conv[i] = val & BASE_MASK;
-		carry = val >> 16;
-	}
-	if (carry != 0) conv.push_back(carry);
-	while (conv.size() > 1 && conv.back() == 0) conv.pop_back();
-
-	// Build result: most significant digit first
-	mpz_set_ui(out, 0);
-	for (int i = (int)conv.size() - 1; i >= 0; i--) {
-		mpz_mul_2exp(out, out, 16);
-		mpz_add_ui(out, out, conv[i]);
-	}
+	write_digits_to_mpz(out, conv, 16);
 
 	if (a_neg != b_neg) mpz_neg(out, out);
+}
+
+void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+	int alen = mpz_size(a);
+	int blen = mpz_size(b);
+	if (alen == 0 || blen == 0) { mpz_set_ui(out, 0); return; }
+
+	bool a_neg = (mpz_sgn(a) < 0);
+	bool b_neg = (mpz_sgn(b) < 0);
+
+	mpz_t abs_a, abs_b;
+	mpz_init(abs_a); mpz_abs(abs_a, a);
+	mpz_init(abs_b); mpz_abs(abs_b, b);
+
+	if (cuda_multiply(out, abs_a, abs_b)) {
+		mpz_clear(abs_a);
+		mpz_clear(abs_b);
+		if (a_neg != b_neg) mpz_neg(out, out);
+		return;
+	}
+
+	mpz_clear(abs_a);
+	mpz_clear(abs_b);
+	cpu_ntt_multiply(out, a, b);
+}
+
+void accelerated_mul(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+	int alen = mpz_size(a);
+	int blen = mpz_size(b);
+	if (alen + blen >= NTT_THRESHOLD) {
+		if (out == a || out == b) {
+			mpz_t tmp;
+			mpz_init(tmp);
+			fft_multiply(tmp, a, b);
+			mpz_set(out, tmp);
+			mpz_clear(tmp);
+			return;
+		}
+		fft_multiply(out, a, b);
+	} else {
+		mpz_mul(out, a, b);
+	}
 }
 
 #else
@@ -305,7 +381,9 @@ void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 void binary_gcd(mpz_ptr, mpz_ptr, mpz_ptr) {}
 void fast_pow(mpz_ptr, mpz_ptr, uint64_t) {}
 void product_tree_factorial(mpz_ptr, uint64_t) {}
+void cpu_ntt_multiply(mpz_ptr, mpz_ptr, mpz_ptr) {}
 void fft_multiply(mpz_ptr, mpz_ptr, mpz_ptr) {}
+void accelerated_mul(mpz_ptr, mpz_ptr, mpz_ptr) {}
 #endif // BIGMATH_NO_GMP
 
 }

@@ -119,8 +119,21 @@ void bigint_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	} else {
 		mpz_init2(*out, static_cast<mp_bitcnt_t>(alen + blen + 1) * GMP_NUMB_BITS);
 	}
+	bigmath::accelerated_mul(*out, a, b);
+}
+
+void bigint_mul_cpu(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
+	int alen = mpz_size(a);
+	int blen = mpz_size(b);
+	if (alen == 0 || blen == 0) {
+		mpz_init(*out);
+	} else {
+		mpz_init2(*out, static_cast<mp_bitcnt_t>(alen + blen + 1) * GMP_NUMB_BITS);
+	}
 	if (alen + blen >= bigmath::NTT_THRESHOLD) {
-		bigmath::fft_multiply(*out, a, b);
+		bigmath::cpu_ntt_multiply(*out, a, b);
 	} else {
 		mpz_mul(*out, a, b);
 	}
@@ -145,13 +158,7 @@ void bigint_add_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 }
 
 void bigint_mul_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
-	int alen = mpz_size(a);
-	int blen = mpz_size(b);
-	if (out != a && out != b && alen + blen >= bigmath::NTT_THRESHOLD) {
-		bigmath::fft_multiply(out, a, b);
-	} else {
-		mpz_mul(out, a, b);
-	}
+	bigmath::accelerated_mul(out, a, b);
 }
 
 void bigint_div_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
@@ -174,16 +181,12 @@ void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
 			mpz_set(*out, a);
 			return;
 		case 2:
-			mpz_mul(*out, a, a);
+			bigmath::accelerated_mul(*out, a, a);
 			return;
 		default:
 			break;
 	}
-	if (exp <= static_cast<uint64_t>(std::numeric_limits<unsigned long>::max())) {
-		mpz_pow_ui(*out, a, static_cast<unsigned long>(exp));
-	} else {
-		bigmath::fast_pow(*out, a, exp);
-	}
+	bigmath::fast_pow(*out, a, exp);
 }
 
 void bigint_neg(mpz_ptr *out, mpz_ptr a) {
@@ -392,6 +395,7 @@ void bigint_set_string(mpz_ptr, const char *, int) { }
 void bigint_add(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_sub(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_mul(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_mul_cpu(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_div(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_mod(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_add_into(mpz_ptr, mpz_ptr, mpz_ptr) { }

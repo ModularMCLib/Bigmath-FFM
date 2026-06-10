@@ -21,6 +21,59 @@ def nativePatterns = System.getProperty("os.name").toLowerCase().contains("win")
 		: System.getProperty("os.name").toLowerCase().contains("mac")
 				? ["*.dylib"]
 				: ["*.so", "*.so.*"]
+def isWindowsHost = System.getProperty("os.name").toLowerCase().contains("win")
+def isX64Host = {
+	def arch = System.getProperty("os.arch").toLowerCase()
+	arch.contains("amd64") || arch.contains("x86_64")
+}()
+def cudaArch = (project.findProperty("bigmathCudaArch") ?: System.getenv("BIGMATH_CUDA_ARCH"))?.toString()
+def resolveExecutable = { String explicitProperty, String envName, List<String> candidates, String executableName ->
+	def explicit = project.findProperty(explicitProperty)?.toString() ?: System.getenv(envName)
+	if (explicit && new File(explicit).exists()) {
+		return new File(explicit)
+	}
+	def pathMatch = System.getenv("PATH")?.split(File.pathSeparator)?.collect { new File(it, executableName) }?.find { it.exists() }
+	if (pathMatch) {
+		return pathMatch
+	}
+	return candidates.collect { new File(it) }.find { it.exists() }
+}
+def resolveCudaRoot = {
+	def nvccName = isWindowsHost ? "nvcc.exe" : "nvcc"
+	def explicit = project.findProperty("cudaToolkitRoot")?.toString()
+			?: System.getenv("CUDAToolkit_ROOT")
+			?: System.getenv("CUDA_PATH")
+	if (explicit && new File(explicit, "bin/${nvccName}").exists()) {
+		return new File(explicit)
+	}
+	def defaultRoot = isWindowsHost
+			? new File("C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA")
+			: new File("/usr/local")
+	def versions = defaultRoot.exists()
+			? defaultRoot.listFiles()?.findAll { new File(it, "bin/${nvccName}").exists() }?.sort { a, b -> b.name <=> a.name }
+			: []
+	return versions ? versions[0] : null
+}
+def cudaRoot = resolveCudaRoot()
+def cudaNvcc = cudaRoot ? new File(cudaRoot, isWindowsHost ? "bin/nvcc.exe" : "bin/nvcc") : null
+def cmakeExecutable = resolveExecutable(
+		"cmakeExecutable",
+		"BIGMATH_CMAKE",
+		isWindowsHost ? ["D:/JetBrains/CLion/bin/cmake/win/x64/bin/cmake.exe"] : [],
+		isWindowsHost ? "cmake.exe" : "cmake"
+)
+def ninjaExecutable = resolveExecutable(
+		"ninjaExecutable",
+		"BIGMATH_NINJA",
+		isWindowsHost ? ["D:/JetBrains/CLion/bin/ninja/win/x64/ninja.exe"] : [],
+		isWindowsHost ? "ninja.exe" : "ninja"
+)
+def msvcCompiler = resolveExecutable(
+		"msvcCompiler",
+		"CXX",
+		[],
+		"cl.exe"
+)
 
 def resolveCmakePrefixPath = {
 	def explicitPrefix = project.findProperty("cmakePrefixPath")?.toString()
@@ -33,7 +86,8 @@ def resolveCmakePrefixPath = {
 
 	def tripletHint = (project.findProperty("vcpkgTriplet")
 			?: System.getenv("BIGMATH_VCPKG_TRIPLET")
-			?: System.getenv("VCPKG_TARGET_TRIPLET"))?.toString()
+			?: System.getenv("VCPKG_TARGET_TRIPLET")
+			?: (isWindowsHost && isX64Host ? "x64-windows" : null))?.toString()
 	def arch = System.getProperty("os.arch").toLowerCase()
 	def archPrefix = arch.contains("aarch64") || arch.contains("arm64") ? "arm64-" : "x64-"
 	def isWindows = System.getProperty("os.name").toLowerCase().contains("win")
@@ -44,7 +98,8 @@ def resolveCmakePrefixPath = {
 
 	def windowsCompilerFamily = {
 		def explicitCompiler = (project.findProperty("windowsCompilerFamily")
-				?: System.getenv("BIGMATH_WINDOWS_COMPILER"))?.toString()?.toLowerCase()
+				?: System.getenv("BIGMATH_WINDOWS_COMPILER")
+				?: "msvc")?.toString()?.toLowerCase()
 		if (explicitCompiler in ["mingw", "msvc"]) {
 			return explicitCompiler
 		}
@@ -83,21 +138,9 @@ def resolveCmakePrefixPath = {
 		}
 
 		if (isWindows) {
-			def mingwTriplets = sameArch.findAll { it.name.contains("mingw") }
 			def msvcTriplets = sameArch.findAll { !it.name.contains("mingw") }
 			def compilerFamily = windowsCompilerFamily()
-			if (compilerFamily == null && !mingwTriplets.isEmpty() && !msvcTriplets.isEmpty()) {
-				throw new GradleException(
-						"Ambiguous Windows vcpkg triplets for ${archPrefix}: found ${sameArch*.name}. " +
-						"Set -PvcpkgTriplet=..., BIGMATH_VCPKG_TRIPLET, or BIGMATH_WINDOWS_COMPILER=mingw|msvc."
-				)
-			}
-
-			def compatible = switch (compilerFamily) {
-				case "mingw" -> mingwTriplets
-				case "msvc" -> msvcTriplets
-				default -> sameArch
-			}
+			def compatible = compilerFamily == "msvc" ? msvcTriplets : []
 			if (compatible.isEmpty()) {
 				throw new GradleException(
 						"No Windows vcpkg triplets compatible with compiler family '${compilerFamily}' " +
@@ -105,17 +148,8 @@ def resolveCmakePrefixPath = {
 				)
 			}
 
-			if (compilerFamily == "mingw") {
-				def preferred = compatible.find { it.name.endsWith("-mingw-dynamic") }
-				return preferred ?: compatible[0]
-			}
-
-			if (compilerFamily == "msvc") {
-				def preferred = compatible.find { it.name == "${archPrefix}windows" }
-				return preferred ?: compatible[0]
-			}
-
-			return compatible[0]
+			def preferred = compatible.find { it.name == "${archPrefix}windows" }
+			return preferred ?: compatible[0]
 		}
 
 		def preferred = sameArch.find { it.name.contains("dynamic") }
@@ -126,33 +160,65 @@ def resolveCmakePrefixPath = {
 	return selected?.absolutePath?.replace('\\', '/')
 }
 
-def cmakePrefixPath = resolveCmakePrefixPath()
-
 def cmakeConfigure = tasks.register('cmakeConfigure', Exec) {
 	description = 'Configure CMake for native library'
 	workingDir = cmakeBuildDir
 	inputs.dir("src/main/cpp").withPathSensitivity(PathSensitivity.RELATIVE)
 	outputs.file("${cmakeBuildDir}/CMakeCache.txt")
 	doFirst {
+		def cmakePrefixPath = resolveCmakePrefixPath()
 		cmakeBuildDir.mkdirs()
+		if (cmakeExecutable == null) {
+			throw new GradleException("CMake executable was not found. Set -PcmakeExecutable=... or BIGMATH_CMAKE.")
+		}
+		if (ninjaExecutable == null) {
+			throw new GradleException("Ninja executable was not found. Set -PninjaExecutable=... or BIGMATH_NINJA.")
+		}
+		if ((isWindowsHost || System.getProperty("os.name").toLowerCase().contains("linux")) && isX64Host && cudaRoot == null) {
+			throw new GradleException("CUDA Toolkit was not found. Set -PcudaToolkitRoot=... or CUDAToolkit_ROOT/CUDA_PATH.")
+		}
+		if (isWindowsHost && isX64Host && msvcCompiler == null) {
+			throw new GradleException("MSVC cl.exe was not found. Run from a VS Developer shell or install Visual Studio C++ build tools.")
+		}
+		if (isWindowsHost && isX64Host && !cmakePrefixPath) {
+			throw new GradleException("Windows CUDA builds require GMP/MPFR from the vcpkg x64-windows triplet. Install it or set -PcmakePrefixPath=...")
+		}
 		if (cmakePrefixPath) {
 			logger.lifecycle("Using CMake prefix path: ${cmakePrefixPath}")
 		} else if (System.getProperty("os.name").toLowerCase().contains("win")) {
 			logger.lifecycle("No CMake prefix path detected on Windows; native build may fall back to stubs")
 		}
+		def command = [
+				cmakeExecutable.absolutePath,
+				'-S', file("src/main/cpp").absolutePath,
+				'-B', cmakeBuildDir.absolutePath,
+				'-G', 'Ninja',
+				"-DCMAKE_MAKE_PROGRAM=${ninjaExecutable.absolutePath.replace('\\', '/')}",
+				"-DCMAKE_BUILD_TYPE=${project.findProperty('buildType') ?: 'Release'}",
+				"-DCMAKE_INSTALL_PREFIX=${cmakeBuildDir}"
+		]
+		if (cmakePrefixPath) {
+			command << "-DCMAKE_PREFIX_PATH=${cmakePrefixPath}"
+		}
+		if (isWindowsHost && isX64Host) {
+			command << "-DVCPKG_TARGET_TRIPLET=x64-windows"
+		}
+		if (cudaArch) {
+			command << "-DCMAKE_CUDA_ARCHITECTURES=${cudaArch}"
+		}
+		if (cudaRoot) {
+			command << "-DCUDAToolkit_ROOT=${cudaRoot.absolutePath.replace('\\', '/')}"
+		}
+		if (cudaNvcc && cudaNvcc.exists()) {
+			command << "-DCMAKE_CUDA_COMPILER=${cudaNvcc.absolutePath.replace('\\', '/')}"
+		}
+		commandLine command
 	}
-	def command = [
-			'cmake',
-			'-S', file("src/main/cpp").absolutePath,
-			'-B', cmakeBuildDir.absolutePath,
-			'-G', 'Ninja',
-			"-DCMAKE_BUILD_TYPE=${project.findProperty('buildType') ?: 'Release'}",
-			"-DCMAKE_INSTALL_PREFIX=${cmakeBuildDir}"
-	]
-	if (cmakePrefixPath) {
-		command << "-DCMAKE_PREFIX_PATH=${cmakePrefixPath}"
+	if (cudaRoot) {
+		environment "CUDA_PATH", cudaRoot.absolutePath
+		environment "CUDAToolkit_ROOT", cudaRoot.absolutePath
+		environment "PATH", "${new File(cudaRoot, "bin").absolutePath}${File.pathSeparator}${System.getenv("PATH") ?: ""}"
 	}
-	commandLine command
 }
 
 tasks.register('buildNative', Exec) {
@@ -161,7 +227,12 @@ tasks.register('buildNative', Exec) {
 	workingDir = cmakeBuildDir
 	inputs.file("${cmakeBuildDir}/CMakeCache.txt")
 	outputs.file("${cmakeBuildDir}/lib/${nativeLibName}")
-	commandLine 'cmake', '--build', '.', '--target', 'install'
+	if (cudaRoot) {
+		environment "CUDA_PATH", cudaRoot.absolutePath
+		environment "CUDAToolkit_ROOT", cudaRoot.absolutePath
+		environment "PATH", "${new File(cudaRoot, "bin").absolutePath}${File.pathSeparator}${System.getenv("PATH") ?: ""}"
+	}
+	commandLine cmakeExecutable?.absolutePath ?: 'cmake', '--build', '.', '--target', 'install'
 }
 
 tasks.register('copyNativeLib', Sync) {
@@ -174,7 +245,7 @@ tasks.register('copyNativeLib', Sync) {
 }
 
 tasks.named('processResources') {
-	dependsOn copyNativeLib
+	mustRunAfter copyNativeLib
 	from(layout.projectDirectory.dir('native')) {
 		into('native')
 		includeEmptyDirs = false
@@ -196,4 +267,8 @@ tasks.named('processResources') {
 	from(rootProject.file('THIRD_PARTY_NOTICES.md')) {
 		into 'META-INF'
 	}
+}
+
+tasks.named('jar') {
+	dependsOn copyNativeLib
 }

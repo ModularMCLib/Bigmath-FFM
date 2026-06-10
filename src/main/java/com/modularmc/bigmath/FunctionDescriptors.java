@@ -118,6 +118,18 @@ final class FunctionDescriptors {
 			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
 	);
 
+	// --- CUDA diagnostics ---
+
+	/** {@code int bigmath_cuda_value(void)} */
+	static final FunctionDescriptor CUDA_INT = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT
+	);
+
+	/** {@code const char* bigmath_cuda_string(void)} */
+	static final FunctionDescriptor CUDA_STRING = FunctionDescriptor.of(
+			ValueLayout.ADDRESS
+	);
+
 	// --- BigDeci ---
 
 	/** {@code void bigdecimal_from_double(void** out, double value, int precision)} */

@@ -41,6 +41,7 @@ BigDecimal area = pi.multiply(pi);
 - Java 23+
 - CMake 3.20+
 - GMP 6.x + MPFR 4.x (optional; stubs built otherwise)
+- CUDA Toolkit with `nvcc` for experimental CUDA builds on Linux x86-64 or Windows x86-64
 
 ### Gradle
 
@@ -49,6 +50,42 @@ BigDecimal area = pi.multiply(pi);
 ```
 
 Native libraries are built automatically via CMake. Set `-DUSE_GMP=OFF` to skip GMP/MPFR.
+
+### Experimental CUDA
+
+This branch contains experimental CUDA acceleration for the BigInt multiplication path.
+On Linux x86-64 and Windows x86-64, native configuration requires the CUDA toolkit and
+links against CUDA runtime and cuFFT. Windows builds use MSVC and the `x64-windows`
+vcpkg triplet.
+
+```bash
+cmake --preset cuda-linux-release
+cmake --build build/native --target install
+```
+
+```powershell
+cmake --preset cuda-windows-msvc-release
+cmake --build build/native --target install
+```
+
+Set `BIGMATH_CUDA_ARCH` or pass `-PbigmathCudaArch=<arch>` to override the default
+`native` CUDA architecture detection. At runtime the native library probes CUDA once
+when it is loaded, caches the device status, and automatically falls back to the CPU
+path when no usable CUDA device is available.
+
+Gradle can also discover common local tool paths when they are not on `PATH`, including
+CLion's bundled CMake/Ninja and the default Windows CUDA Toolkit install directory.
+Use explicit properties when needed:
+
+```powershell
+.\gradlew.bat buildNative `
+  -PcudaToolkitRoot="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3" `
+  -PcmakeExecutable="D:\JetBrains\CLion\bin\cmake\win\x64\bin\cmake.exe" `
+  -PninjaExecutable="D:\JetBrains\CLion\bin\ninja\win\x64\ninja.exe"
+```
+
+Windows CUDA builds must run with MSVC `cl.exe` available and GMP/MPFR installed via
+the vcpkg `x64-windows` triplet.
 
 ### CMake directly
 

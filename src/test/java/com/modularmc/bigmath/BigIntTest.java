@@ -1,7 +1,13 @@
 package com.modularmc.bigmath;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+
+import java.math.BigInteger;
+import java.util.Random;
+
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class BigIntTest {
 
@@ -363,7 +369,7 @@ class BigIntTest {
 	void veryLargeMultiplicationMatchesBigInteger() {
 		String left = repeatDigits("1234567890", 5000);
 		String right = repeatDigits("9876543210", 5000);
-		java.math.BigInteger expected = new java.math.BigInteger(left).multiply(new java.math.BigInteger(right));
+		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
 		try (BigInt a = BigInt.fromString(left, 10);
 			BigInt b = BigInt.fromString(right, 10)) {
 			try (BigInt c = a.multiply(b)) {
@@ -374,6 +380,74 @@ class BigIntTest {
 				assertEquals(expected.toString(), c.toString());
 			}
 		}
+	}
+
+	@Test
+	void randomVeryLargeMultiplicationMatchesBigInteger() {
+		Random random = new Random(0xB16B00B5L);
+		BigInteger leftValue = new BigInteger(160000, random).setBit(159999);
+		BigInteger rightValue = new BigInteger(160000, random).setBit(159999);
+		BigInteger expected = leftValue.multiply(rightValue);
+		try (BigInt a = BigInt.fromBigInteger(leftValue);
+			BigInt b = BigInt.fromBigInteger(rightValue)) {
+			try (BigInt c = a.multiply(b)) {
+				assertEquals(expected, c.toBigInteger());
+			}
+			try (BigInt c = BigInt.fromLong(0)) {
+				c.multiplyInto(a, b);
+				assertEquals(expected, c.toBigInteger());
+			}
+		}
+	}
+
+	@Test
+	void cudaStatusIsCachedAndQueryable() {
+		int firstProbeCount = BigmathFFM.cudaProbeCount();
+		String firstStatus = BigmathFFM.cudaStatusMessage();
+		String secondStatus = BigmathFFM.cudaStatusMessage();
+		int secondProbeCount = BigmathFFM.cudaProbeCount();
+		assertNotNull(firstStatus);
+		assertEquals(firstStatus, secondStatus);
+		assertEquals(1, firstProbeCount);
+		assertEquals(firstProbeCount, secondProbeCount);
+		assertEquals(BigmathFFM.cudaDeviceCount(), BigmathFFM.cudaDeviceCount());
+		if (BigmathFFM.cudaAvailable()) {
+			assertTrue(BigmathFFM.cudaDeviceCount() > 0);
+			assertFalse(BigmathFFM.cudaDeviceName().isBlank());
+		} else {
+			assertFalse(firstStatus.isBlank());
+		}
+	}
+
+	@Test
+	void cudaUnavailableFallsBackToCpuMultiplication() {
+		assumeTrue(!BigmathFFM.cudaAvailable(), BigmathFFM.cudaStatusMessage());
+		String left = repeatDigits("3141592653", 40000);
+		String right = repeatDigits("2718281828", 40000);
+		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
+		int before = BigmathFFM.cudaMultiplyCount();
+		try (BigInt a = BigInt.fromString(left, 10);
+			BigInt b = BigInt.fromString(right, 10);
+			BigInt c = a.multiply(b)) {
+			assertEquals(expected.toString(), c.toString());
+		}
+		assertEquals(before, BigmathFFM.cudaMultiplyCount());
+	}
+
+	@Test
+	@EnabledIfSystemProperty(named = "bigmath.cuda.tests", matches = "true")
+	void cudaLargeMultiplicationMatchesBigIntegerWhenEnabled() {
+		assumeTrue(BigmathFFM.cudaAvailable(), BigmathFFM.cudaStatusMessage());
+		String left = repeatDigits("1234567890", 80000);
+		String right = repeatDigits("9876543210", 80000);
+		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
+		int before = BigmathFFM.cudaMultiplyCount();
+		try (BigInt a = BigInt.fromString(left, 10);
+			BigInt b = BigInt.fromString(right, 10);
+			BigInt c = a.multiply(b)) {
+			assertEquals(expected.toString(), c.toString());
+		}
+		assertTrue(BigmathFFM.cudaMultiplyCount() > before, BigmathFFM.cudaStatusMessage());
 	}
 
 	@Test

@@ -53,9 +53,21 @@ public final class BigmathFFM {
 	private final Linker linker = Linker.nativeLinker();
 	private final SymbolLookup lookup;
 	private final Map<DowncallKey, MethodHandle> downcallCache = new ConcurrentHashMap<>();
+	private final MethodHandle cudaAvailableHandle;
+	private final MethodHandle cudaDeviceCountHandle;
+	private final MethodHandle cudaProbeCountHandle;
+	private final MethodHandle cudaMultiplyCountHandle;
+	private final MethodHandle cudaDeviceNameHandle;
+	private final MethodHandle cudaStatusMessageHandle;
 
 	private BigmathFFM() {
 		this.lookup = loadLibrary();
+		this.cudaAvailableHandle = optionalDowncall("bigmath_cuda_available", FunctionDescriptors.CUDA_INT);
+		this.cudaDeviceCountHandle = optionalDowncall("bigmath_cuda_device_count", FunctionDescriptors.CUDA_INT);
+		this.cudaProbeCountHandle = optionalDowncall("bigmath_cuda_probe_count", FunctionDescriptors.CUDA_INT);
+		this.cudaMultiplyCountHandle = optionalDowncall("bigmath_cuda_multiply_count", FunctionDescriptors.CUDA_INT);
+		this.cudaDeviceNameHandle = optionalDowncall("bigmath_cuda_device_name", FunctionDescriptors.CUDA_STRING);
+		this.cudaStatusMessageHandle = optionalDowncall("bigmath_cuda_status_message", FunctionDescriptors.CUDA_STRING);
 	}
 
 	private record DowncallKey(String name, FunctionDescriptor descriptor) {}
@@ -269,5 +281,77 @@ public final class BigmathFFM {
 				.map(addr -> linker.downcallHandle(addr, key.descriptor()))
 				.orElseThrow(() -> new UnsatisfiedLinkError("Symbol not found: " + key.name()))
 		);
+	}
+
+	static boolean cudaAvailable() {
+		if (getInstance().cudaAvailableHandle == null) {
+			return false;
+		}
+		return getInstance().invokeCudaInt(getInstance().cudaAvailableHandle) != 0;
+	}
+
+	static int cudaDeviceCount() {
+		if (getInstance().cudaDeviceCountHandle == null) {
+			return 0;
+		}
+		return getInstance().invokeCudaInt(getInstance().cudaDeviceCountHandle);
+	}
+
+	static int cudaProbeCount() {
+		if (getInstance().cudaProbeCountHandle == null) {
+			return 1;
+		}
+		return getInstance().invokeCudaInt(getInstance().cudaProbeCountHandle);
+	}
+
+	static int cudaMultiplyCount() {
+		if (getInstance().cudaMultiplyCountHandle == null) {
+			return 0;
+		}
+		return getInstance().invokeCudaInt(getInstance().cudaMultiplyCountHandle);
+	}
+
+	static String cudaDeviceName() {
+		if (getInstance().cudaDeviceNameHandle == null) {
+			return "";
+		}
+		return getInstance().invokeCudaString(getInstance().cudaDeviceNameHandle);
+	}
+
+	static String cudaStatusMessage() {
+		if (getInstance().cudaStatusMessageHandle == null) {
+			return "CUDA diagnostics are not available in this native library";
+		}
+		return getInstance().invokeCudaString(getInstance().cudaStatusMessageHandle);
+	}
+
+	private MethodHandle optionalDowncall(String name, FunctionDescriptor descriptor) {
+		return lookup.find(name)
+			.map(symbol -> linker.downcallHandle(symbol, descriptor))
+			.orElse(null);
+	}
+
+	private int invokeCudaInt(MethodHandle handle) {
+		try {
+			return (int) handle.invokeExact();
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	private String invokeCudaString(MethodHandle handle) {
+		try {
+			MemorySegment value = (MemorySegment) handle.invokeExact();
+			if (value.equals(MemorySegment.NULL)) {
+				return "";
+			}
+			return value.reinterpret(Long.MAX_VALUE).getString(0);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
 	}
 }

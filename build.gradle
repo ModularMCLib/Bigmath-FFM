@@ -80,6 +80,43 @@ tasks.named('test') {
 	finalizedBy tasks.named('jacocoTestReport')
 }
 
+tasks.register('cpuTest', Test) {
+	group = 'verification'
+	description = 'Run ordinary native-backed tests without requiring a CUDA build'
+	useJUnitPlatform()
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	jvmArgs += '--enable-native-access=ALL-UNNAMED'
+	doFirst {
+		def builtNative = bigmathBuiltNativePath.get().asFile
+		if (builtNative.exists()) {
+			systemProperty 'bigmath.native.path', builtNative.absolutePath
+		}
+	}
+	def nativeDir = layout.projectDirectory.dir('native').asFile
+	onlyIf { project.hasProperty('runTests') || nativeDir.exists() || bigmathBuiltNativePath.get().asFile.exists() }
+	testLogging {
+		showStandardStreams = true
+	}
+}
+
+tasks.register('cudaTest', Test) {
+	group = 'verification'
+	description = 'Run CUDA-specific native tests when a CUDA device is available'
+	dependsOn tasks.named('copyNativeLib')
+	useJUnitPlatform()
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	systemProperty 'bigmath.cuda.tests', 'true'
+	jvmArgs += '--enable-native-access=ALL-UNNAMED'
+	doFirst {
+		def builtNative = bigmathBuiltNativePath.get().asFile
+		if (builtNative.exists()) {
+			systemProperty 'bigmath.native.path', builtNative.absolutePath
+		}
+	}
+}
+
 tasks.register('jmh', JavaExec) {
 	group = 'verification'
 	description = 'Run JMH benchmarks'

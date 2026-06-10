@@ -43,36 +43,7 @@ function Find-FirstFile {
 	return $null
 }
 
-if ($Label -eq "windows-x86-64") {
-	$compilerDir = if ($env:CXX) { Split-Path -Parent $env:CXX } else { $null }
-	$licenseRoots = @()
-	if ($compilerDir) {
-		$licenseRoots += Join-Path $compilerDir "..\share\licenses"
-		$licenseRoots += Join-Path $compilerDir "..\..\share\licenses"
-	}
-	$licenseRoots += @(
-		"C:\mingw64\share\licenses",
-		"C:\msys64\mingw64\share\licenses",
-		"C:\Program Files\Git\mingw64\share\licenses"
-	)
-
-	$gccRuntimeNotice = Find-FirstFile -Roots $licenseRoots -Names @("COPYING.RUNTIME")
-	if ($gccRuntimeNotice) {
-		Copy-Item -Path $gccRuntimeNotice -Destination (Join-Path $licensesDir "COPYING.RUNTIME.txt") -Force
-	}
-
-	$winpthreadNotice = Get-ChildItem -Path $licenseRoots -Recurse -File -ErrorAction SilentlyContinue |
-		Where-Object {
-			$_.FullName -match "winpthread|winpthreads" -and
-			($_.Name -eq "COPYING.winpthreads" -or $_.Name -eq "COPYING")
-		} |
-		Select-Object -First 1
-	if ($winpthreadNotice) {
-		Copy-Item -Path $winpthreadNotice.FullName -Destination (Join-Path $licensesDir "COPYING.winpthreads.txt") -Force
-	}
-}
-
-if ($Label -eq "windows-aarch64") {
+if ($Label -eq "windows-x86-64" -or $Label -eq "windows-aarch64") {
 	$redistRoots = @()
 	if ($env:VCToolsRedistDir) {
 		$redistRoots += $env:VCToolsRedistDir
@@ -86,9 +57,10 @@ if ($Label -eq "windows-aarch64") {
 		"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Redist\MSVC",
 		"C:\Program Files (x86)\Microsoft Visual Studio\Installer\Feedback\arm64"
 	)
+	$archHint = if ($Label -eq "windows-aarch64") { "arm64" } else { "x64" }
 
 	foreach ($dllName in @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll", "concrt140.dll")) {
-		$dllPath = Find-FirstFile -Roots $redistRoots -Names @($dllName) -ArchHint "arm64"
+		$dllPath = Find-FirstFile -Roots $redistRoots -Names @($dllName) -ArchHint $archHint
 		if (-not $dllPath) {
 			$dllPath = Find-FirstFile -Roots $redistRoots -Names @($dllName)
 		}

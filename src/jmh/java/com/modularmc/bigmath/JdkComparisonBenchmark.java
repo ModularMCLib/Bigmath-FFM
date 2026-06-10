@@ -81,7 +81,7 @@ public class JdkComparisonBenchmark {
 
 	@State(Scope.Thread)
 	public static class LargeIntState {
-		@Param({"128", "512", "2048"})
+		@Param({"128", "512", "2048", "80000"})
 		public int digits;
 
 		BigInt nativeLeft;
@@ -103,6 +103,18 @@ public class JdkComparisonBenchmark {
 		public void tearDown() {
 			nativeLeft.close();
 			nativeRight.close();
+		}
+	}
+
+	@State(Scope.Benchmark)
+	public static class CudaState {
+		String status;
+		boolean available;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			status = BigmathFFM.cudaStatusMessage();
+			available = BigmathFFM.cudaAvailable();
 		}
 	}
 
@@ -248,8 +260,18 @@ public class JdkComparisonBenchmark {
 	}
 
 	@Benchmark
-	public void nativeBigIntMultiplyLarge(LargeIntState state, Blackhole blackhole) {
+	public void nativeBigIntMultiplyLargeCpuNtt(LargeIntState state, Blackhole blackhole) {
+		try (BigInt result = BigInt.multiplyCpu(state.nativeLeft, state.nativeRight)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void nativeBigIntMultiplyLargeAutoBackend(LargeIntState state, CudaState cudaState, Blackhole blackhole) {
+		blackhole.consume(cudaState.status);
+		blackhole.consume(cudaState.available);
 		try (BigInt result = state.nativeLeft.multiply(state.nativeRight)) {
+			blackhole.consume(BigmathFFM.cudaMultiplyCount());
 			blackhole.consume(result);
 		}
 	}

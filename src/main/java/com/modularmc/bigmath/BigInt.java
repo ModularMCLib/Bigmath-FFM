@@ -367,6 +367,22 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
+	static BigInt multiplyCpu(BigInt left, BigInt right) {
+		MethodHandle cpuMultiplyHandle;
+		try {
+			cpuMultiplyHandle = BigmathFFM.getInstance().downcall(
+					"bigint_mul_cpu",
+					FunctionDescriptors.BIGINT_BINARY
+			);
+		} catch (UnsatisfiedLinkError e) {
+			return left.multiply(right);
+		}
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		invokeBinaryOut(cpuMultiplyHandle, result, left.nativePtr, right.nativePtr);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+	}
+
 	/**
 	 * Returns {@code this / other} (integer division, truncating toward zero).
 	 *
