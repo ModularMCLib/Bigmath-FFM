@@ -2,18 +2,17 @@
 #include "bigmath_ffm.h"
 
 #include <atomic>
-#include <chrono>
-#include <condition_variable>
-#include <mutex>
-#include <string>
-#include <utility>
+#include <cstdio>
 
-#ifdef BIGMATH_HAS_CUDA
-#include <cuda_runtime.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#else
+#include <unistd.h>
 #endif
+
+#ifdef BIGMATH_HAS_CUDA
+#include <cuda_runtime.h>
 #endif
 
 namespace bigmath::cuda {
@@ -24,39 +23,61 @@ struct RuntimeState {
 	int count = 0;
 	int selected_device = -1;
 	int probe_count = 0;
-	std::string name = "";
-	std::string message = "CUDA runtime has not been probed";
+	char name[256] = "";
+	char message[512] = "CUDA runtime has not been probed";
 };
 
 enum class ProbePhase : int {
 	not_started = 0,
 	running = 1,
-	finished = 2
+	finishing = 2,
+	finished = 3
 };
 
 static RuntimeState state;
-static std::mutex state_mutex;
-static std::condition_variable state_cv;
 static std::atomic<int> probe_phase{static_cast<int>(ProbePhase::not_started)};
 static std::atomic<int> successful_multiply_count{0};
 
-static RuntimeState unavailable_state(std::string message) {
+static void copy_text(char *target, size_t target_size, const char *value) {
+	if (target_size == 0) {
+		return;
+	}
+	std::snprintf(target, target_size, "%s", value == nullptr ? "" : value);
+}
+
+static void sleep_one_millisecond() {
+#ifdef _WIN32
+	Sleep(1);
+#else
+	usleep(1000);
+#endif
+}
+
+static RuntimeState unavailable_state(const char *message) {
 	RuntimeState result;
 	result.initialized = true;
 	result.available = false;
 	result.count = 0;
 	result.selected_device = -1;
 	result.probe_count = 1;
-	result.name.clear();
-	result.message = std::move(message);
+	copy_text(result.name, sizeof(result.name), "");
+	copy_text(result.message, sizeof(result.message), message);
 	return result;
 }
 
-static RuntimeState unavailable_state(std::string message, int device_count) {
-	RuntimeState result = unavailable_state(std::move(message));
+static RuntimeState unavailable_state(const char *message, int device_count) {
+	RuntimeState result = unavailable_state(message);
 	result.count = device_count;
 	return result;
 }
+
+#ifdef BIGMATH_HAS_CUDA
+static RuntimeState cuda_error_state(const char *operation, cudaError_t err, int device_count = 0) {
+	RuntimeState result = unavailable_state("", device_count);
+	std::snprintf(result.message, sizeof(result.message), "%s failed: %s", operation, cudaGetErrorString(err));
+	return result;
+}
+#endif
 
 static RuntimeState probe_runtime() {
 #ifndef BIGMATH_HAS_CUDA
@@ -69,7 +90,7 @@ static RuntimeState probe_runtime() {
 	int count = 0;
 	cudaError_t err = cudaGetDeviceCount(&count);
 	if (err != cudaSuccess) {
-		return unavailable_state(std::string("cudaGetDeviceCount failed: ") + cudaGetErrorString(err));
+		return cuda_error_state("cudaGetDeviceCount", err);
 	}
 
 	result.count = count;
@@ -80,18 +101,18 @@ static RuntimeState probe_runtime() {
 	cudaDeviceProp prop{};
 	err = cudaGetDeviceProperties(&prop, 0);
 	if (err != cudaSuccess) {
-		return unavailable_state(std::string("cudaGetDeviceProperties failed: ") + cudaGetErrorString(err), count);
+		return cuda_error_state("cudaGetDeviceProperties", err, count);
 	}
 
 	err = cudaSetDevice(0);
 	if (err != cudaSuccess) {
-		return unavailable_state(std::string("cudaSetDevice failed: ") + cudaGetErrorString(err), count);
+		return cuda_error_state("cudaSetDevice", err, count);
 	}
 
 	result.available = true;
 	result.selected_device = 0;
-	result.name = prop.name;
-	result.message = "CUDA device 0 is available: " + result.name;
+	copy_text(result.name, sizeof(result.name), prop.name);
+	std::snprintf(result.message, sizeof(result.message), "CUDA device 0 is available: %s", result.name);
 	return result;
 #endif
 }
@@ -103,13 +124,13 @@ static bool begin_probe() {
 }
 
 static bool finish_probe(RuntimeState result) {
-	std::lock_guard<std::mutex> lock(state_mutex);
-	if (probe_phase.load(std::memory_order_acquire) != static_cast<int>(ProbePhase::running)) {
+	int expected = static_cast<int>(ProbePhase::running);
+	if (!probe_phase.compare_exchange_strong(expected, static_cast<int>(ProbePhase::finishing),
+			std::memory_order_acq_rel)) {
 		return false;
 	}
-	state = std::move(result);
+	state = result;
 	probe_phase.store(static_cast<int>(ProbePhase::finished), std::memory_order_release);
-	state_cv.notify_all();
 	return true;
 }
 
@@ -121,16 +142,22 @@ static void wait_for_probe() {
 	if (probe_phase.load(std::memory_order_acquire) == static_cast<int>(ProbePhase::finished)) {
 		return;
 	}
-	std::unique_lock<std::mutex> lock(state_mutex);
-	if (state_cv.wait_for(lock, std::chrono::seconds(10), [] {
-		return probe_phase.load(std::memory_order_acquire) == static_cast<int>(ProbePhase::finished);
-	})) {
-		return;
+	for (int i = 0; i < 10000; i++) {
+		if (probe_phase.load(std::memory_order_acquire) == static_cast<int>(ProbePhase::finished)) {
+			return;
+		}
+		sleep_one_millisecond();
 	}
-	if (probe_phase.load(std::memory_order_acquire) == static_cast<int>(ProbePhase::running)) {
+
+	int expected = static_cast<int>(ProbePhase::running);
+	if (probe_phase.compare_exchange_strong(expected, static_cast<int>(ProbePhase::finishing),
+			std::memory_order_acq_rel)) {
 		state = unavailable_state("CUDA runtime probe timed out");
 		probe_phase.store(static_cast<int>(ProbePhase::finished), std::memory_order_release);
-		state_cv.notify_all();
+		return;
+	}
+	while (probe_phase.load(std::memory_order_acquire) != static_cast<int>(ProbePhase::finished)) {
+		sleep_one_millisecond();
 	}
 }
 
@@ -199,12 +226,12 @@ int multiply_count() {
 
 const char *device_name() {
 	ensure_initialized();
-	return state.name.c_str();
+	return state.name;
 }
 
 const char *status_message() {
 	ensure_initialized();
-	return state.message.c_str();
+	return state.message;
 }
 
 }
