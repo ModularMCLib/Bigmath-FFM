@@ -281,6 +281,7 @@ static void export_abs_mpz_to_u16_digits(mpz_ptr value, mp_bitcnt_t bits, std::v
 struct CachedCudaU16Digits {
 	mpz_ptr source = nullptr;
 	size_t limb_count = 0;
+	uint64_t version = 0;
 	std::vector<mp_limb_t> limbs;
 	std::vector<uint16_t> digits;
 
@@ -298,6 +299,7 @@ struct CachedCudaU16Digits {
 		export_abs_mpz_to_u16_digits(value, bits, digits);
 		source = value;
 		limb_count = current_limb_count;
+		bump_version();
 		limbs.resize(current_limb_count);
 		if (current_limb_count > 0) {
 			std::memcpy(limbs.data(), value->_mp_d, sizeof(mp_limb_t) * current_limb_count);
@@ -307,6 +309,22 @@ struct CachedCudaU16Digits {
 		export_abs_mpz_to_u16_digits(value, bits, digits);
 		return digits;
 #endif
+	}
+
+	cuda::U16DigitsCacheToken cache_token() const {
+#if GMP_NUMB_BITS % 16 == 0
+		return {this, version};
+#else
+		return {};
+#endif
+	}
+
+private:
+	void bump_version() {
+		version++;
+		if (version == 0) {
+			version = 1;
+		}
 	}
 };
 
@@ -430,8 +448,11 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 
 	thread_local CudaMultiplyHostWorkspace workspace;
 	const std::vector<uint16_t> &ad = workspace.ad.load(abs_a, bits_a);
-	const std::vector<uint16_t> &bd = abs_a == abs_b ? ad : workspace.bd.load(abs_b, bits_b);
-	if (!cuda::convolve_u16_digits(ad, bd, workspace.conv, CUDA_BITS_PER_DIGIT)) {
+	const cuda::U16DigitsCacheToken a_token = workspace.ad.cache_token();
+	const bool same_operands = abs_a == abs_b;
+	const std::vector<uint16_t> &bd = same_operands ? ad : workspace.bd.load(abs_b, bits_b);
+	const cuda::U16DigitsCacheToken b_token = same_operands ? a_token : workspace.bd.cache_token();
+	if (!cuda::convolve_u16_digits(ad, bd, workspace.conv, CUDA_BITS_PER_DIGIT, a_token, b_token)) {
 		return false;
 	}
 	write_u16_digits_to_mpz(out, workspace.conv);

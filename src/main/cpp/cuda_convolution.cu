@@ -91,27 +91,49 @@ struct CudaConvolutionWorkspace {
 		int n = 0;
 		unsigned bits_per_digit = 0;
 		bool ready = false;
+		const void *token_owner = nullptr;
+		uint64_t token_version = 0;
 		std::vector<uint16_t> digits;
 
 		void clear() {
 			n = 0;
 			bits_per_digit = 0;
 			ready = false;
+			token_owner = nullptr;
+			token_version = 0;
 			digits.clear();
 		}
 
-		bool matches(const std::vector<uint16_t> &value, int candidate_n, unsigned candidate_bits_per_digit) const {
-			return ready &&
-					n == candidate_n &&
-					bits_per_digit == candidate_bits_per_digit &&
+		bool matches(const std::vector<uint16_t> &value,
+				U16DigitsCacheToken token,
+				int candidate_n,
+				unsigned candidate_bits_per_digit) const {
+			if (!ready || n != candidate_n || bits_per_digit != candidate_bits_per_digit) {
+				return false;
+			}
+			if (token.valid()) {
+				return token_owner == token.owner && token_version == token.version;
+			}
+			return token_owner == nullptr &&
 					digits.size() == value.size() &&
 					std::memcmp(digits.data(), value.data(), sizeof(uint16_t) * value.size()) == 0;
 		}
 
-		void store(const std::vector<uint16_t> &value, int candidate_n, unsigned candidate_bits_per_digit) {
-			digits = value;
+		void store(const std::vector<uint16_t> &value,
+				U16DigitsCacheToken token,
+				int candidate_n,
+				unsigned candidate_bits_per_digit) {
 			n = candidate_n;
 			bits_per_digit = candidate_bits_per_digit;
+			if (token.valid()) {
+				token_owner = token.owner;
+				token_version = token.version;
+				digits.clear();
+			} else {
+				token_owner = nullptr;
+				token_version = 0;
+				digits = value;
+			}
 			ready = true;
 		}
 	};
@@ -264,6 +286,7 @@ struct CudaConvolutionWorkspace {
 };
 
 static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
+		U16DigitsCacheToken token,
 		uint16_t *device_digits,
 		double *device_values,
 		cufftDoubleComplex *spectrum,
@@ -275,7 +298,7 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 		int block_size) {
 	const int spectrum_size = n / 2 + 1;
 	const size_t spectrum_bytes = sizeof(cufftDoubleComplex) * static_cast<size_t>(spectrum_size);
-	if (cached_spectrum != nullptr && cache.matches(digits, n, bits_per_digit)) {
+	if (cached_spectrum != nullptr && cache.matches(digits, token, n, bits_per_digit)) {
 		return cudaMemcpy(spectrum, cached_spectrum, spectrum_bytes, cudaMemcpyDeviceToDevice) == cudaSuccess;
 	}
 	if (cudaMemcpy(device_digits, digits.data(), sizeof(uint16_t) * digits.size(), cudaMemcpyHostToDevice) != cudaSuccess) {
@@ -295,14 +318,16 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 	if (cudaMemcpy(cached_spectrum, spectrum, spectrum_bytes, cudaMemcpyDeviceToDevice) != cudaSuccess) {
 		return false;
 	}
-	cache.store(digits, n, bits_per_digit);
+	cache.store(digits, token, n, bits_per_digit);
 	return true;
 }
 
 bool convolve_u16_digits(const std::vector<uint16_t> &a,
 		const std::vector<uint16_t> &b,
 		std::vector<uint16_t> &out,
-		unsigned bits_per_digit) {
+		unsigned bits_per_digit,
+		U16DigitsCacheToken a_token,
+		U16DigitsCacheToken b_token) {
 	if (a.empty() || b.empty()) {
 		out.clear();
 		return true;
@@ -328,7 +353,7 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 	}
 
 	const int block_size = 256;
-	if (!prepare_u16_spectrum(a, workspace.digits_a, workspace.da, workspace.fa,
+	if (!prepare_u16_spectrum(a, a_token, workspace.digits_a, workspace.da, workspace.fa,
 				use_spectrum_cache ? workspace.cached_fa : nullptr,
 				workspace.cache_a, workspace.forward_plan, n, bits_per_digit, block_size)) {
 		return false;
@@ -340,7 +365,7 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 		if (cudaMemcpy(workspace.fb, workspace.fa, spectrum_bytes, cudaMemcpyDeviceToDevice) != cudaSuccess) {
 			return false;
 		}
-	} else if (!prepare_u16_spectrum(b, workspace.digits_b, workspace.db, workspace.fb,
+	} else if (!prepare_u16_spectrum(b, b_token, workspace.digits_b, workspace.db, workspace.fb,
 			use_spectrum_cache ? workspace.cached_fb : nullptr,
 			workspace.cache_b, workspace.forward_plan, n, bits_per_digit, block_size)) {
 		return false;
