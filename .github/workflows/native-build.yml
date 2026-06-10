@@ -109,7 +109,8 @@ jobs:
       - name: Install Linux deps
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update -o Acquire::Retries=3
           sudo apt-get install -y libgmp-dev libmpfr-dev cmake ninja-build
 
       - name: Install macOS deps
