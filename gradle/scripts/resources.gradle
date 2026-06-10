@@ -28,9 +28,12 @@ def isX64Host = {
 }()
 def isLinuxHost = System.getProperty("os.name").toLowerCase().contains("linux")
 def isCudaSupportedHost = (isWindowsHost || isLinuxHost) && isX64Host
+def cudaTestRequested = gradle.startParameter.taskNames.any { taskName ->
+	taskName == "cudaTest" || taskName.endsWith(":cudaTest")
+}
 def cudaEnabled = {
 	def raw = (project.findProperty("bigmathEnableCuda") ?: System.getenv("BIGMATH_ENABLE_CUDA"))?.toString()
-	raw != null && raw.toLowerCase() in ["1", "true", "yes", "on"]
+	cudaTestRequested || (raw != null && raw.toLowerCase() in ["1", "true", "yes", "on"])
 }()
 def cudaArch = (project.findProperty("bigmathCudaArch") ?: System.getenv("BIGMATH_CUDA_ARCH"))?.toString()
 def resolveExecutable = { String explicitProperty, String envName, List<String> candidates, String executableName ->
@@ -104,23 +107,14 @@ def resolveCmakePrefixPath = {
 
 	def windowsCompilerFamily = {
 		def explicitCompiler = (project.findProperty("windowsCompilerFamily")
-				?: System.getenv("BIGMATH_WINDOWS_COMPILER")
-				?: "msvc")?.toString()?.toLowerCase()
-		if (explicitCompiler in ["mingw", "msvc"]) {
-			return explicitCompiler
+				?: System.getenv("BIGMATH_WINDOWS_COMPILER"))?.toString()?.toLowerCase()
+		if (explicitCompiler && explicitCompiler != "msvc") {
+			throw new GradleException(
+					"Windows native builds on this experimental CUDA branch require MSVC; " +
+					"'${explicitCompiler}' is not supported."
+			)
 		}
-
-		def compilerHints = [System.getenv("CXX"), System.getenv("CC")]
-				.findAll { it != null && !it.isBlank() }
-				.collect { it.toLowerCase() }
-
-		if (compilerHints.any { it == "cl" || it.endsWith("\\cl.exe") || it.endsWith("/cl.exe") }) {
-			return "msvc"
-		}
-		if (compilerHints.any { it.contains("gcc") || it.contains("g++") || it.contains("mingw") }) {
-			return "mingw"
-		}
-		return null
+		return "msvc"
 	}
 
 	def pickCandidate = { File installedRoot ->
