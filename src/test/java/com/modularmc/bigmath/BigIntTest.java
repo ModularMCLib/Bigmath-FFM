@@ -276,6 +276,52 @@ class BigIntTest {
 	}
 
 	@Test
+	void largePositiveBitwiseOperationsMatchBigInteger() {
+		String leftHex = repeatDigits("fedcba9876543210", 4096);
+		String rightHex = repeatDigits("aaaaaaaa55555555", 4096);
+		BigInteger leftValue = new BigInteger(leftHex, 16);
+		BigInteger rightValue = new BigInteger(rightHex, 16);
+		try (BigInt a = BigInt.fromString(leftHex, 16);
+			BigInt b = BigInt.fromString(rightHex, 16)) {
+			try (BigInt c = a.and(b)) {
+				assertEquals(leftValue.and(rightValue).toString(16), c.toString(16));
+			}
+			try (BigInt c = a.xor(b)) {
+				assertEquals(leftValue.xor(rightValue).toString(16), c.toString(16));
+			}
+		}
+	}
+
+	@Test
+	void bitwiseFastPathNormalizesZeroResults() {
+		try (BigInt a = BigInt.fromString("10000000000000000", 16);
+			BigInt b = BigInt.fromString("ffffffffffffffff", 16)) {
+			try (BigInt c = a.and(b)) {
+				assertEquals("0", c.toString());
+				assertEquals(0, c.signum());
+			}
+			try (BigInt c = a.xor(a)) {
+				assertEquals("0", c.toString());
+				assertEquals(0, c.signum());
+			}
+		}
+	}
+
+	@Test
+	void negativeBitwiseOperationsUseBigIntegerSemantics() {
+		BigInteger leftValue = BigInteger.valueOf(-42);
+		BigInteger rightValue = BigInteger.valueOf(15);
+		try (BigInt a = BigInt.fromLong(-42); BigInt b = BigInt.fromLong(15)) {
+			try (BigInt c = a.and(b)) {
+				assertEquals(leftValue.and(rightValue).toString(), c.toString());
+			}
+			try (BigInt c = a.xor(b)) {
+				assertEquals(leftValue.xor(rightValue).toString(), c.toString());
+			}
+		}
+	}
+
+	@Test
 	void shiftLeft() {
 		try (BigInt a = BigInt.fromLong(1)) {
 			try (BigInt c = a.shiftLeft(10)) {

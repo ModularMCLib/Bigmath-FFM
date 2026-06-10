@@ -1,5 +1,6 @@
 #include "bigmath_ffm.h"
 #include "algos.h"
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -52,6 +53,57 @@ static bool mpz_ior_nonnegative_fast(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	mpn_ior_n(out->_mp_d, a->_mp_d, b->_mp_d, asize);
 	mpn_copyi(out->_mp_d + asize, b->_mp_d + asize, bsize - asize);
 	out->_mp_size = bsize;
+	return true;
+}
+
+static void mpz_normalize_nonnegative(mpz_ptr value, mp_size_t size) {
+	while (size > 0 && value->_mp_d[size - 1] == 0) {
+		size--;
+	}
+	value->_mp_size = size;
+}
+
+static bool mpz_and_nonnegative_fast(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+	const mp_size_t asize = a->_mp_size;
+	const mp_size_t bsize = b->_mp_size;
+	if (asize < 0 || bsize < 0) {
+		return false;
+	}
+	const mp_size_t rsize = std::min(asize, bsize);
+	if (rsize == 0) {
+		mpz_init(out);
+		return true;
+	}
+	mpz_init2(out, static_cast<mp_bitcnt_t>(rsize) * GMP_NUMB_BITS);
+	mpn_and_n(out->_mp_d, a->_mp_d, b->_mp_d, rsize);
+	mpz_normalize_nonnegative(out, rsize);
+	return true;
+}
+
+static bool mpz_xor_nonnegative_fast(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+	const mp_size_t asize = a->_mp_size;
+	const mp_size_t bsize = b->_mp_size;
+	if (asize < 0 || bsize < 0) {
+		return false;
+	}
+	if (asize == 0) {
+		mpz_init_set(out, b);
+		return true;
+	}
+	if (bsize == 0) {
+		mpz_init_set(out, a);
+		return true;
+	}
+	const mp_size_t min_size = std::min(asize, bsize);
+	const mp_size_t max_size = std::max(asize, bsize);
+	mpz_init2(out, static_cast<mp_bitcnt_t>(max_size) * GMP_NUMB_BITS);
+	mpn_xor_n(out->_mp_d, a->_mp_d, b->_mp_d, min_size);
+	if (asize > bsize) {
+		mpn_copyi(out->_mp_d + min_size, a->_mp_d + min_size, asize - min_size);
+	} else if (bsize > asize) {
+		mpn_copyi(out->_mp_d + min_size, b->_mp_d + min_size, bsize - min_size);
+	}
+	mpz_normalize_nonnegative(out, max_size);
 	return true;
 }
 
@@ -331,8 +383,10 @@ void bigint_sqrt(mpz_ptr *out, mpz_ptr a) {
 void bigint_and(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mpz_init(*out);
-	mpz_and(*out, a, b);
+	if (!mpz_and_nonnegative_fast(*out, a, b)) {
+		mpz_init(*out);
+		mpz_and(*out, a, b);
+	}
 }
 
 void bigint_or(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
@@ -347,8 +401,10 @@ void bigint_or(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 void bigint_xor(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mpz_init(*out);
-	mpz_xor(*out, a, b);
+	if (!mpz_xor_nonnegative_fast(*out, a, b)) {
+		mpz_init(*out);
+		mpz_xor(*out, a, b);
+	}
 }
 
 void bigint_shl(mpz_ptr *out, mpz_ptr a, uint64_t bits) {
