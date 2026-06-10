@@ -251,8 +251,8 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 		return false;
 	}
 
-	out.clear();
 	out.reserve(result_size + 1);
+	out.resize(result_size);
 	const double scale = 1.0 / static_cast<double>(n);
 	uint64_t carry = 0;
 	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
@@ -262,7 +262,7 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 			return false;
 		}
 		const uint64_t value = rounded + carry;
-		out.push_back(static_cast<uint16_t>(value & base_mask));
+		out[i] = static_cast<uint16_t>(value & base_mask);
 		carry = value >> bits_per_digit;
 	}
 	while (carry != 0) {
