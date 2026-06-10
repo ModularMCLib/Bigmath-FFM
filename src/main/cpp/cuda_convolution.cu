@@ -10,6 +10,8 @@
 
 namespace bigmath::cuda {
 
+static constexpr int SPECTRUM_CACHE_WAYS = 4;
+
 __global__ static void pointwise_multiply(cufftDoubleComplex *__restrict__ left,
 		const cufftDoubleComplex *__restrict__ right,
 		int n) {
@@ -53,7 +55,7 @@ static bool has_enough_device_memory(size_t element_count, bool cache_spectra) {
 		return false;
 	}
 	const size_t spectrum_size = element_count / 2 + 1;
-	const size_t spectrum_buffers = cache_spectra ? 4 : 2;
+	const size_t spectrum_buffers = cache_spectra ? 2 + 2 * SPECTRUM_CACHE_WAYS : 2;
 	const size_t required = sizeof(double) * element_count * 2 +
 			sizeof(cufftDoubleComplex) * spectrum_size * spectrum_buffers +
 			sizeof(uint16_t) * element_count * 2;
@@ -91,12 +93,14 @@ struct CudaConvolutionWorkspace {
 		int n = 0;
 		unsigned bits_per_digit = 0;
 		bool ready = false;
+		uint64_t last_used = 0;
 		std::vector<uint16_t> digits;
 
 		void clear() {
 			n = 0;
 			bits_per_digit = 0;
 			ready = false;
+			last_used = 0;
 			digits.clear();
 		}
 
@@ -108,10 +112,14 @@ struct CudaConvolutionWorkspace {
 					std::memcmp(digits.data(), value.data(), sizeof(uint16_t) * value.size()) == 0;
 		}
 
-		void store(const std::vector<uint16_t> &value, int candidate_n, unsigned candidate_bits_per_digit) {
+		void store(const std::vector<uint16_t> &value,
+				int candidate_n,
+				unsigned candidate_bits_per_digit,
+				uint64_t use_tick) {
 			digits = value;
 			n = candidate_n;
 			bits_per_digit = candidate_bits_per_digit;
+			last_used = use_tick;
 			ready = true;
 		}
 	};
@@ -122,18 +130,19 @@ struct CudaConvolutionWorkspace {
 	uint16_t *digits_b = nullptr;
 	cufftDoubleComplex *fa = nullptr;
 	cufftDoubleComplex *fb = nullptr;
-	cufftDoubleComplex *cached_fa = nullptr;
-	cufftDoubleComplex *cached_fb = nullptr;
+	cufftDoubleComplex *cached_fa[SPECTRUM_CACHE_WAYS] = {};
+	cufftDoubleComplex *cached_fb[SPECTRUM_CACHE_WAYS] = {};
 	cufftHandle forward_plan = 0;
 	cufftHandle inverse_plan = 0;
 	int plan_size = 0;
 	int capacity = 0;
 	int spectrum_cache_capacity = 0;
+	uint64_t spectrum_cache_tick = 0;
 	std::vector<double> host_a;
 	std::vector<double> host_b;
 	std::vector<double> host_result;
-	CachedSpectrum cache_a;
-	CachedSpectrum cache_b;
+	CachedSpectrum cache_a[SPECTRUM_CACHE_WAYS];
+	CachedSpectrum cache_b[SPECTRUM_CACHE_WAYS];
 
 	~CudaConvolutionWorkspace() {
 		release();
@@ -152,13 +161,16 @@ struct CudaConvolutionWorkspace {
 	}
 
 	void release_spectrum_cache() {
-		cudaFree(cached_fa);
-		cudaFree(cached_fb);
-		cached_fa = nullptr;
-		cached_fb = nullptr;
+		for (int i = 0; i < SPECTRUM_CACHE_WAYS; i++) {
+			cudaFree(cached_fa[i]);
+			cudaFree(cached_fb[i]);
+			cached_fa[i] = nullptr;
+			cached_fb[i] = nullptr;
+			cache_a[i].clear();
+			cache_b[i].clear();
+		}
 		spectrum_cache_capacity = 0;
-		cache_a.clear();
-		cache_b.clear();
+		spectrum_cache_tick = 0;
 	}
 
 	void release() {
@@ -222,13 +234,15 @@ struct CudaConvolutionWorkspace {
 		}
 		release_spectrum_cache();
 		const int spectrum_size = n / 2 + 1;
-		if (cudaMalloc(&cached_fa, sizeof(cufftDoubleComplex) * spectrum_size) != cudaSuccess) {
-			release_spectrum_cache();
-			return false;
-		}
-		if (cudaMalloc(&cached_fb, sizeof(cufftDoubleComplex) * spectrum_size) != cudaSuccess) {
-			release_spectrum_cache();
-			return false;
+		for (int i = 0; i < SPECTRUM_CACHE_WAYS; i++) {
+			if (cudaMalloc(&cached_fa[i], sizeof(cufftDoubleComplex) * spectrum_size) != cudaSuccess) {
+				release_spectrum_cache();
+				return false;
+			}
+			if (cudaMalloc(&cached_fb[i], sizeof(cufftDoubleComplex) * spectrum_size) != cudaSuccess) {
+				release_spectrum_cache();
+				return false;
+			}
 		}
 		spectrum_cache_capacity = n;
 		return true;
@@ -267,16 +281,28 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 		uint16_t *device_digits,
 		double *device_values,
 		cufftDoubleComplex *spectrum,
-		cufftDoubleComplex *cached_spectrum,
-		CudaConvolutionWorkspace::CachedSpectrum &cache,
+		cufftDoubleComplex *const *cached_spectra,
+		CudaConvolutionWorkspace::CachedSpectrum *caches,
+		uint64_t &cache_tick,
 		cufftHandle forward_plan,
 		int n,
 		unsigned bits_per_digit,
 		int block_size) {
 	const int spectrum_size = n / 2 + 1;
 	const size_t spectrum_bytes = sizeof(cufftDoubleComplex) * static_cast<size_t>(spectrum_size);
-	if (cached_spectrum != nullptr && cache.matches(digits, n, bits_per_digit)) {
-		return cudaMemcpy(spectrum, cached_spectrum, spectrum_bytes, cudaMemcpyDeviceToDevice) == cudaSuccess;
+	uint64_t use_tick = 0;
+	if (cached_spectra != nullptr && caches != nullptr) {
+		cache_tick++;
+		if (cache_tick == 0) {
+			cache_tick = 1;
+		}
+		use_tick = cache_tick;
+		for (int i = 0; i < SPECTRUM_CACHE_WAYS; i++) {
+			if (cached_spectra[i] != nullptr && caches[i].matches(digits, n, bits_per_digit)) {
+				caches[i].last_used = use_tick;
+				return cudaMemcpy(spectrum, cached_spectra[i], spectrum_bytes, cudaMemcpyDeviceToDevice) == cudaSuccess;
+			}
+		}
 	}
 	if (cudaMemcpy(device_digits, digits.data(), sizeof(uint16_t) * digits.size(), cudaMemcpyHostToDevice) != cudaSuccess) {
 		return false;
@@ -289,13 +315,23 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 	if (cufftExecD2Z(forward_plan, device_values, spectrum) != CUFFT_SUCCESS) {
 		return false;
 	}
-	if (cached_spectrum == nullptr) {
+	if (cached_spectra == nullptr || caches == nullptr) {
 		return true;
 	}
-	if (cudaMemcpy(cached_spectrum, spectrum, spectrum_bytes, cudaMemcpyDeviceToDevice) != cudaSuccess) {
+	int target = 0;
+	for (int i = 0; i < SPECTRUM_CACHE_WAYS; i++) {
+		if (!caches[i].ready) {
+			target = i;
+			break;
+		}
+		if (caches[i].last_used < caches[target].last_used) {
+			target = i;
+		}
+	}
+	if (cudaMemcpy(cached_spectra[target], spectrum, spectrum_bytes, cudaMemcpyDeviceToDevice) != cudaSuccess) {
 		return false;
 	}
-	cache.store(digits, n, bits_per_digit);
+	caches[target].store(digits, n, bits_per_digit, use_tick);
 	return true;
 }
 
@@ -417,7 +453,9 @@ static bool convolve_u16_digits_impl(const std::vector<uint16_t> &a,
 	const int block_size = 256;
 	if (!prepare_u16_spectrum(a, workspace.digits_a, workspace.da, workspace.fa,
 				use_spectrum_cache ? workspace.cached_fa : nullptr,
-				workspace.cache_a, workspace.forward_plan, n, bits_per_digit, block_size)) {
+				use_spectrum_cache ? workspace.cache_a : nullptr,
+				workspace.spectrum_cache_tick,
+				workspace.forward_plan, n, bits_per_digit, block_size)) {
 		return false;
 	}
 
@@ -429,7 +467,9 @@ static bool convolve_u16_digits_impl(const std::vector<uint16_t> &a,
 		}
 	} else if (!prepare_u16_spectrum(b, workspace.digits_b, workspace.db, workspace.fb,
 			use_spectrum_cache ? workspace.cached_fb : nullptr,
-			workspace.cache_b, workspace.forward_plan, n, bits_per_digit, block_size)) {
+			use_spectrum_cache ? workspace.cache_b : nullptr,
+			workspace.spectrum_cache_tick,
+			workspace.forward_plan, n, bits_per_digit, block_size)) {
 		return false;
 	}
 
