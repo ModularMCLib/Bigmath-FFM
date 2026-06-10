@@ -2,6 +2,7 @@
 #include "cuda_convolution.h"
 #include "cuda_runtime_state.h"
 #include "ntt.h"
+#include <cstdint>
 #include <cstring>
 #include <vector>
 
@@ -275,6 +276,19 @@ static std::vector<uint64_t> digits_from_abs_mpz(mpz_ptr value, unsigned bits_pe
 	return digits;
 }
 
+static std::vector<uint16_t> u16_digits_from_abs_mpz(mpz_ptr value) {
+	if (mpz_sgn(value) == 0) {
+		return {0};
+	}
+
+	size_t count = 0;
+	const size_t max_count = (mpz_sizeinbase(value, 2) + 15) / 16;
+	std::vector<uint16_t> exported(max_count);
+	mpz_export(exported.data(), &count, -1, sizeof(uint16_t), 0, 0, value);
+	exported.resize(count == 0 ? 1 : count);
+	return exported;
+}
+
 static void write_digits_to_mpz_generic(mpz_ptr out, std::vector<uint64_t> &digits, unsigned bits_per_digit) {
 	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
 	uint64_t carry = 0;
@@ -327,6 +341,10 @@ static void write_digits_to_mpz(mpz_ptr out, std::vector<uint64_t> &digits, unsi
 	mpz_import(out, imported.size(), -1, sizeof(uint16_t), 0, 0, imported.data());
 }
 
+static void write_u16_digits_to_mpz(mpz_ptr out, const std::vector<uint16_t> &digits) {
+	mpz_import(out, digits.size(), -1, sizeof(uint16_t), 0, 0, digits.data());
+}
+
 static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 #ifndef BIGMATH_HAS_CUDA
 	(void)out;
@@ -343,13 +361,13 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 		return false;
 	}
 
-	auto ad = digits_from_abs_mpz(abs_a, CUDA_BITS_PER_DIGIT);
-	auto bd = digits_from_abs_mpz(abs_b, CUDA_BITS_PER_DIGIT);
-	std::vector<uint64_t> conv;
-	if (!cuda::convolve_digits(ad, bd, conv, CUDA_BITS_PER_DIGIT)) {
+	auto ad = u16_digits_from_abs_mpz(abs_a);
+	auto bd = u16_digits_from_abs_mpz(abs_b);
+	std::vector<uint16_t> conv;
+	if (!cuda::convolve_u16_digits(ad, bd, conv, CUDA_BITS_PER_DIGIT)) {
 		return false;
 	}
-	write_digits_to_mpz(out, conv, CUDA_BITS_PER_DIGIT);
+	write_u16_digits_to_mpz(out, conv);
 	cuda::record_multiply();
 	return true;
 #endif

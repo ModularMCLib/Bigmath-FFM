@@ -6,9 +6,9 @@
 
 namespace bigmath::cuda {
 
-bool convolve_digits(const std::vector<uint64_t> &a,
-		const std::vector<uint64_t> &b,
-		std::vector<uint64_t> &out,
+bool convolve_u16_digits(const std::vector<uint16_t> &a,
+		const std::vector<uint16_t> &b,
+		std::vector<uint16_t> &out,
 		unsigned bits_per_digit);
 
 }
