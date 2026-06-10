@@ -146,15 +146,20 @@ jobs:
             "available=false" >> $env:GITHUB_OUTPUT
           }
 
-      - name: Setup CUDA toolkit
-        id: cuda-toolkit
-        if: |
-          matrix.label == 'linux-x86-64' ||
-          (matrix.label == 'windows-x86-64' && steps.cuda-cache-check.outputs.available != 'true')
+      - name: Setup Linux CUDA toolkit
+        if: matrix.label == 'linux-x86-64'
         uses: Jimver/cuda-toolkit@v0.2.35
         with:
           cuda: '13.2.0'
-          linux-local-args: '["--toolkit"]'
+          method: network
+          sub-packages: '["compiler", "cudart", "cudart-dev"]'
+          non-cuda-sub-packages: '["libcufft", "libcufft-dev"]'
+
+      - name: Setup Windows CUDA toolkit
+        if: matrix.label == 'windows-x86-64' && steps.cuda-cache-check.outputs.available != 'true'
+        uses: Jimver/cuda-toolkit@v0.2.35
+        with:
+          cuda: '13.2.0'
 
       - name: Configure CUDA toolkit environment
         if: matrix.label == 'linux-x86-64' || matrix.label == 'windows-x86-64'
