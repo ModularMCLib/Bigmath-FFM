@@ -314,6 +314,7 @@ struct CudaMultiplyHostWorkspace {
 	CachedCudaU16Digits ad;
 	CachedCudaU16Digits bd;
 	std::vector<uint16_t> conv;
+	std::vector<uint64_t> packed_limbs;
 };
 
 static void export_abs_mpz_to_u16_digits(mpz_ptr value, mp_bitcnt_t bits, std::vector<uint16_t> &out) {
@@ -434,6 +435,31 @@ static void write_u16_digits_to_mpz(mpz_ptr out, const std::vector<uint16_t> &di
 #endif
 }
 
+static void write_u64_limbs_to_mpz(mpz_ptr out, const std::vector<uint64_t> &limbs) {
+#if GMP_NUMB_BITS <= 64
+	if (limbs.empty()) {
+		mpz_set_ui(out, 0);
+		return;
+	}
+	mpz_realloc2(out, static_cast<mp_bitcnt_t>(limbs.size()) * GMP_NUMB_BITS);
+	mp_limb_t *target = out->_mp_d;
+	for (size_t i = 0; i < limbs.size(); i++) {
+		target[i] = static_cast<mp_limb_t>(limbs[i]);
+	}
+	size_t used_limbs = limbs.size();
+	while (used_limbs > 0 && target[used_limbs - 1] == 0) {
+		used_limbs--;
+	}
+	out->_mp_size = static_cast<int>(used_limbs);
+#else
+	mpz_set_ui(out, 0);
+	for (int i = static_cast<int>(limbs.size()) - 1; i >= 0; i--) {
+		mpz_mul_2exp(out, out, 64);
+		mpz_add_ui(out, out, limbs[static_cast<size_t>(i)]);
+	}
+#endif
+}
+
 static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 #ifndef BIGMATH_HAS_CUDA
 	(void)out;
@@ -455,10 +481,18 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 	thread_local CudaMultiplyHostWorkspace workspace;
 	const std::vector<uint16_t> &ad = workspace.ad.load(abs_a, bits_a);
 	const std::vector<uint16_t> &bd = abs_a == abs_b ? ad : workspace.bd.load(abs_b, bits_b);
+#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
+	if (!cuda::convolve_u16_digits_to_limbs(ad, bd, workspace.packed_limbs,
+				CUDA_BITS_PER_DIGIT, GMP_NUMB_BITS)) {
+		return false;
+	}
+	write_u64_limbs_to_mpz(out, workspace.packed_limbs);
+#else
 	if (!cuda::convolve_u16_digits(ad, bd, workspace.conv, CUDA_BITS_PER_DIGIT)) {
 		return false;
 	}
 	write_u16_digits_to_mpz(out, workspace.conv);
+#endif
 	cuda::record_multiply();
 	return true;
 #endif

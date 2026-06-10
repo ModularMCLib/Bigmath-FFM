@@ -299,12 +299,99 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 	return true;
 }
 
-bool convolve_u16_digits(const std::vector<uint16_t> &a,
-		const std::vector<uint16_t> &b,
+static bool collect_u16_digits_result(const std::vector<double> &host_result,
+		size_t result_size,
+		int n,
 		std::vector<uint16_t> &out,
 		unsigned bits_per_digit) {
+	out.clear();
+	out.reserve(result_size + 1);
+	const double scale = 1.0 / static_cast<double>(n);
+	uint64_t carry = 0;
+	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
+	for (size_t i = 0; i < result_size; i++) {
+		uint64_t rounded = 0;
+		if (!round_nonnegative_to_u64(host_result[i] * scale, rounded)) {
+			return false;
+		}
+		const uint64_t value = rounded + carry;
+		out.push_back(static_cast<uint16_t>(value & base_mask));
+		carry = value >> bits_per_digit;
+	}
+	while (carry != 0) {
+		out.push_back(static_cast<uint16_t>(carry & base_mask));
+		carry >>= bits_per_digit;
+	}
+	while (out.size() > 1 && out.back() == 0) {
+		out.pop_back();
+	}
+	return true;
+}
+
+static bool collect_u16_limb_result(const std::vector<double> &host_result,
+		size_t result_size,
+		int n,
+		std::vector<uint64_t> &out,
+		unsigned bits_per_digit,
+		unsigned limb_bits) {
+	if (bits_per_digit == 0 || bits_per_digit >= 32 ||
+			limb_bits == 0 || limb_bits > 64 ||
+			limb_bits % bits_per_digit != 0) {
+		return false;
+	}
+	out.clear();
+	const int digits_per_limb = static_cast<int>(limb_bits / bits_per_digit);
+	out.reserve((result_size + static_cast<size_t>(digits_per_limb) - 1) /
+			static_cast<size_t>(digits_per_limb) + 1);
+	const double scale = 1.0 / static_cast<double>(n);
+	uint64_t carry = 0;
+	uint64_t limb = 0;
+	int limb_digit = 0;
+	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
+	auto append_digit = [&](uint64_t digit) {
+		limb |= digit << (bits_per_digit * limb_digit);
+		limb_digit++;
+		if (limb_digit == digits_per_limb) {
+			out.push_back(limb);
+			limb = 0;
+			limb_digit = 0;
+		}
+	};
+	for (size_t i = 0; i < result_size; i++) {
+		uint64_t rounded = 0;
+		if (!round_nonnegative_to_u64(host_result[i] * scale, rounded)) {
+			return false;
+		}
+		const uint64_t value = rounded + carry;
+		append_digit(value & base_mask);
+		carry = value >> bits_per_digit;
+	}
+	while (carry != 0) {
+		append_digit(carry & base_mask);
+		carry >>= bits_per_digit;
+	}
+	if (limb_digit != 0) {
+		out.push_back(limb);
+	}
+	while (!out.empty() && out.back() == 0) {
+		out.pop_back();
+	}
+	return true;
+}
+
+static bool convolve_u16_digits_impl(const std::vector<uint16_t> &a,
+		const std::vector<uint16_t> &b,
+		std::vector<uint16_t> *digit_out,
+		std::vector<uint64_t> *limb_out,
+		unsigned bits_per_digit,
+		unsigned limb_bits) {
 	if (a.empty() || b.empty()) {
-		out.clear();
+		if (digit_out != nullptr) {
+			digit_out->clear();
+		}
+		if (limb_out != nullptr) {
+			limb_out->clear();
+		}
 		return true;
 	}
 
@@ -359,28 +446,27 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 		return false;
 	}
 
-	out.clear();
-	out.reserve(result_size + 1);
-	const double scale = 1.0 / static_cast<double>(n);
-	uint64_t carry = 0;
-	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
-	for (size_t i = 0; i < result_size; i++) {
-		uint64_t rounded = 0;
-		if (!round_nonnegative_to_u64(workspace.host_result[i] * scale, rounded)) {
-			return false;
-		}
-		const uint64_t value = rounded + carry;
-		out.push_back(static_cast<uint16_t>(value & base_mask));
-		carry = value >> bits_per_digit;
+	if (limb_out != nullptr) {
+		return collect_u16_limb_result(workspace.host_result, result_size, n, *limb_out,
+				bits_per_digit, limb_bits);
 	}
-	while (carry != 0) {
-		out.push_back(static_cast<uint16_t>(carry & base_mask));
-		carry >>= bits_per_digit;
-	}
-	while (out.size() > 1 && out.back() == 0) {
-		out.pop_back();
-	}
-	return true;
+	return digit_out != nullptr &&
+			collect_u16_digits_result(workspace.host_result, result_size, n, *digit_out, bits_per_digit);
+}
+
+bool convolve_u16_digits(const std::vector<uint16_t> &a,
+		const std::vector<uint16_t> &b,
+		std::vector<uint16_t> &out,
+		unsigned bits_per_digit) {
+	return convolve_u16_digits_impl(a, b, &out, nullptr, bits_per_digit, 0);
+}
+
+bool convolve_u16_digits_to_limbs(const std::vector<uint16_t> &a,
+		const std::vector<uint16_t> &b,
+		std::vector<uint64_t> &out,
+		unsigned bits_per_digit,
+		unsigned limb_bits) {
+	return convolve_u16_digits_impl(a, b, nullptr, &out, bits_per_digit, limb_bits);
 }
 
 bool convolve_digits(const std::vector<uint64_t> &a,
