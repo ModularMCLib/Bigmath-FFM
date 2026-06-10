@@ -407,7 +407,31 @@ static void write_digits_to_mpz(mpz_ptr out, std::vector<uint64_t> &digits, unsi
 }
 
 static void write_u16_digits_to_mpz(mpz_ptr out, const std::vector<uint16_t> &digits) {
+#if GMP_NUMB_BITS % 16 == 0
+	if (digits.empty()) {
+		mpz_set_ui(out, 0);
+		return;
+	}
+	static constexpr int U16_DIGITS_PER_LIMB = GMP_NUMB_BITS / 16;
+	const size_t limb_count = (digits.size() + U16_DIGITS_PER_LIMB - 1) / U16_DIGITS_PER_LIMB;
+	mpz_realloc2(out, static_cast<mp_bitcnt_t>(limb_count) * GMP_NUMB_BITS);
+	mp_limb_t *limbs = out->_mp_d;
+	size_t pos = 0;
+	for (size_t i = 0; i < limb_count; i++) {
+		mp_limb_t limb = 0;
+		for (int j = 0; j < U16_DIGITS_PER_LIMB && pos < digits.size(); j++, pos++) {
+			limb |= static_cast<mp_limb_t>(digits[pos]) << (16 * j);
+		}
+		limbs[i] = limb;
+	}
+	size_t used_limbs = limb_count;
+	while (used_limbs > 0 && limbs[used_limbs - 1] == 0) {
+		used_limbs--;
+	}
+	out->_mp_size = static_cast<int>(used_limbs);
+#else
 	mpz_import(out, digits.size(), -1, sizeof(uint16_t), 0, 0, digits.data());
+#endif
 }
 
 static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
