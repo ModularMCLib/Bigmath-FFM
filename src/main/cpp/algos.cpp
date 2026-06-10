@@ -330,44 +330,21 @@ static void copy_abs_limbs(mpz_ptr value, std::vector<mp_limb_t> &out) {
 }
 
 struct CachedCudaProduct {
-	struct OperandSnapshot {
-		MpzVersionToken token;
-		std::vector<mp_limb_t> limbs;
-
-		bool matches(mpz_ptr value, MpzVersionToken current_token) const {
-			if (token.valid() && current_token.valid()) {
-				return token.id == current_token.id && token.version == current_token.version;
-			}
-			return !token.valid() && limbs_match(limbs, value);
-		}
-
-		void store(mpz_ptr value) {
-			token = tracked_mpz_version(value);
-			if (token.valid()) {
-				limbs.clear();
-			} else {
-				copy_abs_limbs(value, limbs);
-			}
-		}
-	};
-
 	bool ready = false;
-	OperandSnapshot left;
-	OperandSnapshot right;
+	std::vector<mp_limb_t> left;
+	std::vector<mp_limb_t> right;
 
 	bool matches(mpz_ptr a, mpz_ptr b) const {
 		if (!ready) {
 			return false;
 		}
-		const MpzVersionToken a_token = tracked_mpz_version(a);
-		const MpzVersionToken b_token = tracked_mpz_version(b);
-		return (left.matches(a, a_token) && right.matches(b, b_token)) ||
-				(left.matches(b, b_token) && right.matches(a, a_token));
+		return (limbs_match(left, a) && limbs_match(right, b)) ||
+				(limbs_match(left, b) && limbs_match(right, a));
 	}
 
 	void store(mpz_ptr a, mpz_ptr b) {
-		left.store(a);
-		right.store(b);
+		copy_abs_limbs(a, left);
+		copy_abs_limbs(b, right);
 		ready = true;
 	}
 };

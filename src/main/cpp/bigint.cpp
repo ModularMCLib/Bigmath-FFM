@@ -4,76 +4,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
-#include <mutex>
-#include <unordered_map>
-
-namespace {
-
-struct TrackedMpzState {
-	uint64_t id = 0;
-	uint64_t version = 0;
-};
-
-std::mutex tracked_mpz_mutex;
-std::unordered_map<mpz_ptr, TrackedMpzState> tracked_mpz_versions;
-uint64_t next_tracked_mpz_id = 1;
-
-uint64_t next_nonzero_id() {
-	const uint64_t id = next_tracked_mpz_id++;
-	if (next_tracked_mpz_id == 0) {
-		next_tracked_mpz_id = 1;
-	}
-	return id == 0 ? next_nonzero_id() : id;
-}
-
-}
-
-namespace bigmath {
-
-MpzVersionToken tracked_mpz_version(mpz_ptr value) {
-	if (value == nullptr) {
-		return {};
-	}
-	std::lock_guard<std::mutex> lock(tracked_mpz_mutex);
-	const auto it = tracked_mpz_versions.find(value);
-	if (it == tracked_mpz_versions.end()) {
-		return {};
-	}
-	return {it->second.id, it->second.version};
-}
-
-void track_mpz_value(mpz_ptr value) {
-	if (value == nullptr) {
-		return;
-	}
-	std::lock_guard<std::mutex> lock(tracked_mpz_mutex);
-	tracked_mpz_versions[value] = {next_nonzero_id(), 1};
-}
-
-void untrack_mpz_value(mpz_ptr value) {
-	if (value == nullptr) {
-		return;
-	}
-	std::lock_guard<std::mutex> lock(tracked_mpz_mutex);
-	tracked_mpz_versions.erase(value);
-}
-
-void bump_tracked_mpz_version(mpz_ptr value) {
-	if (value == nullptr) {
-		return;
-	}
-	std::lock_guard<std::mutex> lock(tracked_mpz_mutex);
-	const auto it = tracked_mpz_versions.find(value);
-	if (it == tracked_mpz_versions.end()) {
-		return;
-	}
-	it->second.version++;
-	if (it->second.version == 0) {
-		it->second.version = 1;
-	}
-}
-
-}
 
 #ifndef BIGMATH_NO_GMP
 
@@ -189,7 +119,6 @@ static bool should_use_gmp_pow_ui(mpz_ptr base, uint64_t exp) {
 void bigint_from_long(mpz_ptr *out, int64_t val) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	bigmath::track_mpz_value(*out);
 	if (val >= static_cast<int64_t>(std::numeric_limits<long>::min())
 			&& val <= static_cast<int64_t>(std::numeric_limits<long>::max())) {
 		mpz_init_set_si(*out, static_cast<long>(val));
@@ -202,14 +131,12 @@ void bigint_from_long(mpz_ptr *out, int64_t val) {
 void bigint_from_string(mpz_ptr *out, const char *str, int radix) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	bigmath::track_mpz_value(*out);
 	mpz_init_set_str(*out, str, radix);
 }
 
 void bigint_init(mpz_ptr *out) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	bigmath::track_mpz_value(*out);
 	mpz_init(*out);
 }
 
@@ -219,17 +146,14 @@ void bigint_clear(mpz_ptr a) {
 
 void bigint_set(mpz_ptr out, mpz_ptr a) {
 	mpz_set(out, a);
-	bigmath::bump_tracked_mpz_version(out);
 }
 
 void bigint_set_long(mpz_ptr out, int64_t val) {
 	mpz_set_int64(out, val);
-	bigmath::bump_tracked_mpz_version(out);
 }
 
 void bigint_set_string(mpz_ptr out, const char *str, int radix) {
 	mpz_set_str(out, str, radix);
-	bigmath::bump_tracked_mpz_version(out);
 }
 
 void bigint_add(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
@@ -292,22 +216,18 @@ void bigint_mod(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 
 void bigint_add_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	mpz_add(out, a, b);
-	bigmath::bump_tracked_mpz_version(out);
 }
 
 void bigint_mul_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	bigmath::accelerated_mul(out, a, b);
-	bigmath::bump_tracked_mpz_version(out);
 }
 
 void bigint_div_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	mpz_tdiv_q(out, a, b);
-	bigmath::bump_tracked_mpz_version(out);
 }
 
 void bigint_sqrt_into(mpz_ptr out, mpz_ptr a) {
 	mpz_sqrt(out, a);
-	bigmath::bump_tracked_mpz_version(out);
 }
 
 void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
@@ -447,7 +367,6 @@ void bigint_free_string(char *s) {
 
 void bigint_free(mpz_ptr a) {
 	if (a) {
-		bigmath::untrack_mpz_value(a);
 		mpz_clear(a);
 		free(a);
 	}
