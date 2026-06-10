@@ -335,7 +335,7 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 	return false;
 #else
 	static constexpr unsigned CUDA_BITS_PER_DIGIT = 16;
-	static constexpr mp_bitcnt_t CUDA_BIT_THRESHOLD = 262144;
+	static constexpr mp_bitcnt_t CUDA_BIT_THRESHOLD = 131072;
 	if (!cuda::is_available()) {
 		return false;
 	}
