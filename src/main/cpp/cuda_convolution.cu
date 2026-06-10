@@ -11,16 +11,15 @@ namespace bigmath::cuda {
 
 __global__ static void pointwise_multiply(cufftDoubleComplex *left,
 		const cufftDoubleComplex *right,
-		int n,
-		double scale) {
+		int n) {
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i >= n) {
 		return;
 	}
 	const double real = left[i].x * right[i].x - left[i].y * right[i].y;
 	const double imag = left[i].x * right[i].y + left[i].y * right[i].x;
-	left[i].x = real * scale;
-	left[i].y = imag * scale;
+	left[i].x = real;
+	left[i].y = imag;
 }
 
 __global__ static void load_u16_digits(const uint16_t *digits,
@@ -240,8 +239,7 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 
 	const int spectrum_size = n / 2 + 1;
 	const int grid_size = (spectrum_size + block_size - 1) / block_size;
-	const double scale = 1.0 / static_cast<double>(n);
-	pointwise_multiply<<<grid_size, block_size>>>(workspace.fa, workspace.fb, spectrum_size, scale);
+	pointwise_multiply<<<grid_size, block_size>>>(workspace.fa, workspace.fb, spectrum_size);
 	if (cudaGetLastError() != cudaSuccess) {
 		return false;
 	}
@@ -255,11 +253,12 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 
 	out.clear();
 	out.reserve(result_size + 1);
+	const double scale = 1.0 / static_cast<double>(n);
 	uint64_t carry = 0;
 	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
 	for (size_t i = 0; i < result_size; i++) {
 		uint64_t rounded = 0;
-		if (!round_nonnegative_to_u64(workspace.host_result[i], rounded)) {
+		if (!round_nonnegative_to_u64(workspace.host_result[i] * scale, rounded)) {
 			return false;
 		}
 		const uint64_t value = rounded + carry;
@@ -321,8 +320,7 @@ bool convolve_digits(const std::vector<uint64_t> &a,
 	const int block_size = 256;
 	const int spectrum_size = n / 2 + 1;
 	const int grid_size = (spectrum_size + block_size - 1) / block_size;
-	const double scale = 1.0 / static_cast<double>(n);
-	pointwise_multiply<<<grid_size, block_size>>>(workspace.fa, workspace.fb, spectrum_size, scale);
+	pointwise_multiply<<<grid_size, block_size>>>(workspace.fa, workspace.fb, spectrum_size);
 	if (cudaGetLastError() != cudaSuccess) {
 		return false;
 	}
@@ -335,9 +333,10 @@ bool convolve_digits(const std::vector<uint64_t> &a,
 	}
 
 	out.resize(result_size);
+	const double scale = 1.0 / static_cast<double>(n);
 	for (size_t i = 0; i < result_size; i++) {
 		uint64_t rounded = 0;
-		if (!round_nonnegative_to_u64(workspace.host_result[i], rounded)) {
+		if (!round_nonnegative_to_u64(workspace.host_result[i] * scale, rounded)) {
 			return false;
 		}
 		out[i] = rounded;
