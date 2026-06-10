@@ -281,7 +281,7 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 	(void)abs_b;
 	return false;
 #else
-	static constexpr unsigned CUDA_BITS_PER_DIGIT = 8;
+	static constexpr unsigned CUDA_BITS_PER_DIGIT = 16;
 	static constexpr mp_bitcnt_t CUDA_BIT_THRESHOLD = 262144;
 	if (!cuda::is_available()) {
 		return false;
@@ -293,7 +293,7 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 	auto ad = digits_from_abs_mpz(abs_a, CUDA_BITS_PER_DIGIT);
 	auto bd = digits_from_abs_mpz(abs_b, CUDA_BITS_PER_DIGIT);
 	std::vector<uint64_t> conv;
-	if (!cuda::convolve_base256(ad, bd, conv)) {
+	if (!cuda::convolve_digits(ad, bd, conv, CUDA_BITS_PER_DIGIT)) {
 		return false;
 	}
 	write_digits_to_mpz(out, conv, CUDA_BITS_PER_DIGIT);

@@ -46,6 +46,15 @@ static bool has_enough_device_memory(size_t element_count) {
 	return required < free_bytes / 2;
 }
 
+static bool coefficients_fit_double(size_t result_size, unsigned bits_per_digit) {
+	if (bits_per_digit == 0 || bits_per_digit >= 32) {
+		return false;
+	}
+	const long double max_digit = static_cast<long double>((uint64_t{1} << bits_per_digit) - 1);
+	const long double max_coefficient = static_cast<long double>(result_size) * max_digit * max_digit;
+	return max_coefficient < static_cast<long double>(uint64_t{1} << 50);
+}
+
 static bool cleanup(cufftHandle plan, cufftDoubleComplex *fa, cufftDoubleComplex *fb) {
 	if (plan != 0) {
 		cufftDestroy(plan);
@@ -55,9 +64,10 @@ static bool cleanup(cufftHandle plan, cufftDoubleComplex *fa, cufftDoubleComplex
 	return false;
 }
 
-bool convolve_base256(const std::vector<uint64_t> &a,
+bool convolve_digits(const std::vector<uint64_t> &a,
 		const std::vector<uint64_t> &b,
-		std::vector<uint64_t> &out) {
+		std::vector<uint64_t> &out,
+		unsigned bits_per_digit) {
 	if (a.empty() || b.empty()) {
 		out.clear();
 		return true;
@@ -65,7 +75,9 @@ bool convolve_base256(const std::vector<uint64_t> &a,
 
 	const size_t result_size = a.size() + b.size() - 1;
 	int n = 0;
-	if (!next_pow2(result_size, n) || !has_enough_device_memory(static_cast<size_t>(n))) {
+	if (!coefficients_fit_double(result_size, bits_per_digit) ||
+			!next_pow2(result_size, n) ||
+			!has_enough_device_memory(static_cast<size_t>(n))) {
 		return false;
 	}
 	cufftDoubleComplex *fa = nullptr;
