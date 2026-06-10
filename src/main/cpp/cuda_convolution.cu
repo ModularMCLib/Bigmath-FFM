@@ -203,11 +203,13 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 	const size_t result_size = a.size() + b.size() - 1;
 	int n = 0;
 	if (!coefficients_fit_double(result_size, bits_per_digit) ||
-			!next_pow2(result_size, n) ||
-			!has_enough_device_memory(static_cast<size_t>(n))) {
+			!next_pow2(result_size, n)) {
 		return false;
 	}
 	thread_local CudaConvolutionWorkspace workspace;
+	if (workspace.capacity < n && !has_enough_device_memory(static_cast<size_t>(n))) {
+		return false;
+	}
 	if (!workspace.ensure_capacity(n) || !workspace.ensure_plan(n)) {
 		return false;
 	}
@@ -278,11 +280,13 @@ bool convolve_digits(const std::vector<uint64_t> &a,
 	const size_t result_size = a.size() + b.size() - 1;
 	int n = 0;
 	if (!coefficients_fit_double(result_size, bits_per_digit) ||
-			!next_pow2(result_size, n) ||
-			!has_enough_device_memory(static_cast<size_t>(n))) {
+			!next_pow2(result_size, n)) {
 		return false;
 	}
 	thread_local CudaConvolutionWorkspace workspace;
+	if (workspace.capacity < n && !has_enough_device_memory(static_cast<size_t>(n))) {
+		return false;
+	}
 	if (!workspace.ensure_capacity(n) || !workspace.ensure_plan(n)) {
 		return false;
 	}
