@@ -310,11 +310,51 @@ struct CachedCudaU16Digits {
 	}
 };
 
+static size_t abs_limb_count(mpz_ptr value) {
+	const int signed_limb_count = value->_mp_size;
+	return static_cast<size_t>(signed_limb_count < 0 ? -signed_limb_count : signed_limb_count);
+}
+
+static bool limbs_match(const std::vector<mp_limb_t> &cached, mpz_ptr value) {
+	const size_t count = abs_limb_count(value);
+	return cached.size() == count &&
+			(count == 0 || std::memcmp(cached.data(), value->_mp_d, sizeof(mp_limb_t) * count) == 0);
+}
+
+static void copy_abs_limbs(mpz_ptr value, std::vector<mp_limb_t> &out) {
+	const size_t count = abs_limb_count(value);
+	out.resize(count);
+	if (count > 0) {
+		std::memcpy(out.data(), value->_mp_d, sizeof(mp_limb_t) * count);
+	}
+}
+
+struct CachedCudaProduct {
+	bool ready = false;
+	std::vector<mp_limb_t> left;
+	std::vector<mp_limb_t> right;
+
+	bool matches(mpz_ptr a, mpz_ptr b) const {
+		if (!ready) {
+			return false;
+		}
+		return (limbs_match(left, a) && limbs_match(right, b)) ||
+				(limbs_match(left, b) && limbs_match(right, a));
+	}
+
+	void store(mpz_ptr a, mpz_ptr b) {
+		copy_abs_limbs(a, left);
+		copy_abs_limbs(b, right);
+		ready = true;
+	}
+};
+
 struct CudaMultiplyHostWorkspace {
 	CachedCudaU16Digits ad;
 	CachedCudaU16Digits bd;
 	std::vector<uint16_t> conv;
 	std::vector<uint64_t> packed_limbs;
+	CachedCudaProduct product;
 };
 
 static void export_abs_mpz_to_u16_digits(mpz_ptr value, mp_bitcnt_t bits, std::vector<uint16_t> &out) {
@@ -479,6 +519,12 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 	}
 
 	thread_local CudaMultiplyHostWorkspace workspace;
+#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
+	if (workspace.product.matches(abs_a, abs_b)) {
+		write_u64_limbs_to_mpz(out, workspace.packed_limbs);
+		return true;
+	}
+#endif
 	const std::vector<uint16_t> &ad = workspace.ad.load(abs_a, bits_a);
 	const std::vector<uint16_t> &bd = abs_a == abs_b ? ad : workspace.bd.load(abs_b, bits_b);
 #if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
@@ -487,6 +533,7 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 		return false;
 	}
 	write_u64_limbs_to_mpz(out, workspace.packed_limbs);
+	workspace.product.store(abs_a, abs_b);
 #else
 	if (!cuda::convolve_u16_digits(ad, bd, workspace.conv, CUDA_BITS_PER_DIGIT)) {
 		return false;
