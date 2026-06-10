@@ -444,6 +444,18 @@ class BigIntTest {
 				assertEquals(expected, c.toBigInteger());
 			}
 		}
+		BigInteger negativeLeftValue = leftValue.negate();
+		BigInteger negativeExpected = negativeLeftValue.multiply(rightValue);
+		try (BigInt a = BigInt.fromBigInteger(negativeLeftValue);
+			BigInt b = BigInt.fromBigInteger(rightValue)) {
+			try (BigInt c = a.multiply(b)) {
+				assertEquals(negativeExpected, c.toBigInteger());
+			}
+			try (BigInt c = BigInt.fromLong(0)) {
+				c.multiplyInto(a, b);
+				assertEquals(negativeExpected, c.toBigInteger());
+			}
+		}
 	}
 
 	@Test

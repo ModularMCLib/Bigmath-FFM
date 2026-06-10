@@ -357,13 +357,15 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 	if (!cuda::is_available()) {
 		return false;
 	}
-	if (mpz_sizeinbase(abs_a, 2) < CUDA_BIT_THRESHOLD && mpz_sizeinbase(abs_b, 2) < CUDA_BIT_THRESHOLD) {
+	const mp_bitcnt_t bits_a = mpz_sizeinbase(abs_a, 2);
+	const mp_bitcnt_t bits_b = mpz_sizeinbase(abs_b, 2);
+	if (bits_a < CUDA_BIT_THRESHOLD && bits_b < CUDA_BIT_THRESHOLD) {
 		return false;
 	}
 
 	static constexpr size_t CUDA_U16_TRANSFER_DIGIT_LIMIT = 32768;
-	const size_t digit_count_a = (mpz_sizeinbase(abs_a, 2) + CUDA_BITS_PER_DIGIT - 1) / CUDA_BITS_PER_DIGIT;
-	const size_t digit_count_b = (mpz_sizeinbase(abs_b, 2) + CUDA_BITS_PER_DIGIT - 1) / CUDA_BITS_PER_DIGIT;
+	const size_t digit_count_a = (bits_a + CUDA_BITS_PER_DIGIT - 1) / CUDA_BITS_PER_DIGIT;
+	const size_t digit_count_b = (bits_b + CUDA_BITS_PER_DIGIT - 1) / CUDA_BITS_PER_DIGIT;
 	if (digit_count_a + digit_count_b - 1 <= CUDA_U16_TRANSFER_DIGIT_LIMIT) {
 		auto ad = u16_digits_from_abs_mpz(abs_a);
 		auto bd = u16_digits_from_abs_mpz(abs_b);
@@ -426,19 +428,33 @@ void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	bool a_neg = (mpz_sgn(a) < 0);
 	bool b_neg = (mpz_sgn(b) < 0);
 
-	mpz_t abs_a, abs_b;
-	mpz_init(abs_a); mpz_abs(abs_a, a);
-	mpz_init(abs_b); mpz_abs(abs_b, b);
+	mpz_t abs_a_storage, abs_b_storage;
+	mpz_ptr abs_a = a;
+	mpz_ptr abs_b = b;
+	bool clear_abs_a = false;
+	bool clear_abs_b = false;
+	if (a_neg) {
+		mpz_init(abs_a_storage);
+		mpz_abs(abs_a_storage, a);
+		abs_a = abs_a_storage;
+		clear_abs_a = true;
+	}
+	if (b_neg) {
+		mpz_init(abs_b_storage);
+		mpz_abs(abs_b_storage, b);
+		abs_b = abs_b_storage;
+		clear_abs_b = true;
+	}
 
 	if (cuda_multiply(out, abs_a, abs_b)) {
-		mpz_clear(abs_a);
-		mpz_clear(abs_b);
+		if (clear_abs_a) mpz_clear(abs_a_storage);
+		if (clear_abs_b) mpz_clear(abs_b_storage);
 		if (a_neg != b_neg) mpz_neg(out, out);
 		return;
 	}
 
-	mpz_clear(abs_a);
-	mpz_clear(abs_b);
+	if (clear_abs_a) mpz_clear(abs_a_storage);
+	if (clear_abs_b) mpz_clear(abs_b_storage);
 	cpu_ntt_multiply(out, a, b);
 }
 
