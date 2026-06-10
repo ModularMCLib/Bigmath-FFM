@@ -106,6 +106,46 @@ public class JdkComparisonBenchmark {
 		}
 	}
 
+	@State(Scope.Thread)
+	public static class RotatingLargeIntState {
+		@Param({"40000", "80000"})
+		public int digits;
+
+		@Param({"4", "8", "16"})
+		public int pairs;
+
+		BigInt[] nativeValues;
+		int index;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			nativeValues = new BigInt[pairs * 2];
+			for (int i = 0; i < pairs; i++) {
+				String left = repeatDigits("123456789" + i, digits);
+				String right = repeatDigits("987654321" + (pairs - i), digits);
+				nativeValues[i * 2] = BigInt.fromString(left, 10);
+				nativeValues[i * 2 + 1] = BigInt.fromString(right, 10);
+			}
+			index = 0;
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			for (BigInt value : nativeValues) {
+				value.close();
+			}
+		}
+
+		int nextPair() {
+			int pair = index;
+			index++;
+			if (index == pairs) {
+				index = 0;
+			}
+			return pair;
+		}
+	}
+
 	@State(Scope.Benchmark)
 	public static class CudaState {
 		String status;
@@ -271,6 +311,20 @@ public class JdkComparisonBenchmark {
 		blackhole.consume(cudaState.status);
 		blackhole.consume(cudaState.available);
 		try (BigInt result = state.nativeLeft.multiply(state.nativeRight)) {
+			blackhole.consume(BigmathFFM.cudaMultiplyCount());
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void nativeBigIntMultiplyLargeRotatingAutoBackend(
+			RotatingLargeIntState state,
+			CudaState cudaState,
+			Blackhole blackhole) {
+		blackhole.consume(cudaState.status);
+		blackhole.consume(cudaState.available);
+		int pair = state.nextPair();
+		try (BigInt result = state.nativeValues[pair * 2].multiply(state.nativeValues[pair * 2 + 1])) {
 			blackhole.consume(BigmathFFM.cudaMultiplyCount());
 			blackhole.consume(result);
 		}
