@@ -276,17 +276,29 @@ static std::vector<uint64_t> digits_from_abs_mpz(mpz_ptr value, unsigned bits_pe
 	return digits;
 }
 
-static std::vector<uint16_t> u16_digits_from_abs_mpz(mpz_ptr value) {
+struct CudaMultiplyHostWorkspace {
+	std::vector<uint16_t> ad;
+	std::vector<uint16_t> bd;
+	std::vector<uint16_t> conv;
+};
+
+static void export_abs_mpz_to_u16_digits(mpz_ptr value, mp_bitcnt_t bits, std::vector<uint16_t> &out) {
 	if (mpz_sgn(value) == 0) {
-		return {0};
+		out.resize(1);
+		out[0] = 0;
+		return;
 	}
 
 	size_t count = 0;
-	const size_t max_count = (mpz_sizeinbase(value, 2) + 15) / 16;
-	std::vector<uint16_t> exported(max_count);
-	mpz_export(exported.data(), &count, -1, sizeof(uint16_t), 0, 0, value);
-	exported.resize(count == 0 ? 1 : count);
-	return exported;
+	const size_t max_count = static_cast<size_t>((bits + 15) / 16);
+	out.resize(max_count);
+	mpz_export(out.data(), &count, -1, sizeof(uint16_t), 0, 0, value);
+	if (count == 0) {
+		out.resize(1);
+		out[0] = 0;
+		return;
+	}
+	out.resize(count);
 }
 
 static void write_digits_to_mpz_generic(mpz_ptr out, std::vector<uint64_t> &digits, unsigned bits_per_digit) {
@@ -363,13 +375,13 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 		return false;
 	}
 
-	auto ad = u16_digits_from_abs_mpz(abs_a);
-	auto bd = u16_digits_from_abs_mpz(abs_b);
-	std::vector<uint16_t> conv;
-	if (!cuda::convolve_u16_digits(ad, bd, conv, CUDA_BITS_PER_DIGIT)) {
+	thread_local CudaMultiplyHostWorkspace workspace;
+	export_abs_mpz_to_u16_digits(abs_a, bits_a, workspace.ad);
+	export_abs_mpz_to_u16_digits(abs_b, bits_b, workspace.bd);
+	if (!cuda::convolve_u16_digits(workspace.ad, workspace.bd, workspace.conv, CUDA_BITS_PER_DIGIT)) {
 		return false;
 	}
-	write_u16_digits_to_mpz(out, conv);
+	write_u16_digits_to_mpz(out, workspace.conv);
 	cuda::record_multiply();
 	return true;
 #endif
