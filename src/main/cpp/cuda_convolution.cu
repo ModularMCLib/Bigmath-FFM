@@ -23,20 +23,15 @@ __global__ static void pointwise_multiply(cufftDoubleComplex *left,
 	left[i].y = imag;
 }
 
-__global__ static void load_u16_digit_pair(const uint16_t *left,
-		size_t left_count,
-		const uint16_t *right,
-		size_t right_count,
-		double *left_out,
-		double *right_out,
+__global__ static void load_u16_digits(const uint16_t *digits,
+		size_t digit_count,
+		double *out,
 		int n) {
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i >= n) {
 		return;
 	}
-	const size_t index = static_cast<size_t>(i);
-	left_out[i] = index < left_count ? static_cast<double>(left[i]) : 0.0;
-	right_out[i] = index < right_count ? static_cast<double>(right[i]) : 0.0;
+	out[i] = static_cast<size_t>(i) < digit_count ? static_cast<double>(digits[i]) : 0.0;
 }
 
 static bool next_pow2(size_t value, int &out) {
@@ -225,11 +220,8 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 	}
 	const int block_size = 256;
 	const int init_grid_size = (n + block_size - 1) / block_size;
-	load_u16_digit_pair<<<init_grid_size, block_size>>>(
-			workspace.digits_a, a.size(),
-			workspace.digits_b, b.size(),
-			workspace.da, workspace.db,
-			n);
+	load_u16_digits<<<init_grid_size, block_size>>>(workspace.digits_a, a.size(), workspace.da, n);
+	load_u16_digits<<<init_grid_size, block_size>>>(workspace.digits_b, b.size(), workspace.db, n);
 	if (cudaGetLastError() != cudaSuccess) {
 		return false;
 	}
