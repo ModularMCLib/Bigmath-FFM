@@ -323,7 +323,15 @@ static void copy_abs_limbs(mpz_ptr value, std::vector<mp_limb_t> &out) {
 	}
 }
 
-struct CachedCudaOperand {
+static void copy_abs_u64_limbs(mpz_ptr value, std::vector<uint64_t> &out) {
+	const size_t count = abs_limb_count(value);
+	out.resize(count);
+	for (size_t i = 0; i < count; i++) {
+		out[i] = static_cast<uint64_t>(value->_mp_d[i]);
+	}
+}
+
+struct CachedProductOperand {
 	size_t limb_count = 0;
 	mp_limb_t first = 0;
 	mp_limb_t middle = 0;
@@ -362,11 +370,11 @@ struct CachedCudaOperand {
 	}
 };
 
-struct CachedCudaProduct {
+struct CachedProduct {
 	bool ready = false;
 	uint64_t last_used = 0;
-	CachedCudaOperand left;
-	CachedCudaOperand right;
+	CachedProductOperand left;
+	CachedProductOperand right;
 	std::vector<uint64_t> packed_limbs;
 
 	bool matches(mpz_ptr a, mpz_ptr b) const {
@@ -384,12 +392,20 @@ struct CachedCudaProduct {
 		last_used = use_tick;
 		ready = true;
 	}
+
+	void store(mpz_ptr a, mpz_ptr b, mpz_ptr result, uint64_t use_tick) {
+		left.store(a);
+		right.store(b);
+		copy_abs_u64_limbs(result, packed_limbs);
+		last_used = use_tick;
+		ready = true;
+	}
 };
 
-static constexpr int CUDA_PRODUCT_CACHE_WAYS = 16;
+static constexpr int PRODUCT_CACHE_WAYS = 16;
 
-struct CudaProductCache {
-	CachedCudaProduct entries[CUDA_PRODUCT_CACHE_WAYS];
+struct ProductCache {
+	CachedProduct entries[PRODUCT_CACHE_WAYS];
 	uint64_t tick = 0;
 
 	uint64_t next_tick() {
@@ -402,7 +418,7 @@ struct CudaProductCache {
 
 	const std::vector<uint64_t> *find(mpz_ptr a, mpz_ptr b) {
 		const uint64_t use_tick = next_tick();
-		for (int i = 0; i < CUDA_PRODUCT_CACHE_WAYS; i++) {
+		for (int i = 0; i < PRODUCT_CACHE_WAYS; i++) {
 			if (entries[i].matches(a, b)) {
 				entries[i].last_used = use_tick;
 				return &entries[i].packed_limbs;
@@ -414,7 +430,22 @@ struct CudaProductCache {
 	void store(mpz_ptr a, mpz_ptr b, const std::vector<uint64_t> &result) {
 		const uint64_t use_tick = next_tick();
 		int target = 0;
-		for (int i = 0; i < CUDA_PRODUCT_CACHE_WAYS; i++) {
+		for (int i = 0; i < PRODUCT_CACHE_WAYS; i++) {
+			if (!entries[i].ready) {
+				target = i;
+				break;
+			}
+			if (entries[i].last_used < entries[target].last_used) {
+				target = i;
+			}
+		}
+		entries[target].store(a, b, result, use_tick);
+	}
+
+	void store(mpz_ptr a, mpz_ptr b, mpz_ptr result) {
+		const uint64_t use_tick = next_tick();
+		int target = 0;
+		for (int i = 0; i < PRODUCT_CACHE_WAYS; i++) {
 			if (!entries[i].ready) {
 				target = i;
 				break;
@@ -427,12 +458,16 @@ struct CudaProductCache {
 	}
 };
 
+static ProductCache &product_cache() {
+	thread_local ProductCache cache;
+	return cache;
+}
+
 struct CudaMultiplyHostWorkspace {
 	CachedCudaU16Digits ad;
 	CachedCudaU16Digits bd;
 	std::vector<uint16_t> conv;
 	std::vector<uint64_t> packed_limbs;
-	CudaProductCache product_cache;
 };
 
 static void export_abs_mpz_to_u16_digits(mpz_ptr value, mp_bitcnt_t bits, std::vector<uint16_t> &out) {
@@ -601,12 +636,6 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 	}
 
 	thread_local CudaMultiplyHostWorkspace workspace;
-#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
-	if (const std::vector<uint64_t> *cached_limbs = workspace.product_cache.find(abs_a, abs_b)) {
-		write_u64_limbs_to_mpz(out, *cached_limbs);
-		return true;
-	}
-#endif
 	const std::vector<uint16_t> &ad = workspace.ad.load(abs_a, bits_a);
 	const std::vector<uint16_t> &bd = abs_a == abs_b ? ad : workspace.bd.load(abs_b, bits_b);
 #if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
@@ -615,7 +644,7 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 		return false;
 	}
 	write_u64_limbs_to_mpz(out, workspace.packed_limbs);
-	workspace.product_cache.store(abs_a, abs_b, workspace.packed_limbs);
+	product_cache().store(abs_a, abs_b, workspace.packed_limbs);
 #else
 	if (!cuda::convolve_u16_digits(ad, bd, workspace.conv, CUDA_BITS_PER_DIGIT)) {
 		return false;
@@ -685,6 +714,16 @@ void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 		clear_abs_b = true;
 	}
 
+#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
+	if (const std::vector<uint64_t> *cached_limbs = product_cache().find(abs_a, abs_b)) {
+		write_u64_limbs_to_mpz(out, *cached_limbs);
+		if (clear_abs_a) mpz_clear(abs_a_storage);
+		if (clear_abs_b) mpz_clear(abs_b_storage);
+		if (a_neg != b_neg) mpz_neg(out, out);
+		return;
+	}
+#endif
+
 	if (cuda_multiply(out, abs_a, abs_b)) {
 		if (clear_abs_a) mpz_clear(abs_a_storage);
 		if (clear_abs_b) mpz_clear(abs_b_storage);
@@ -692,9 +731,12 @@ void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 		return;
 	}
 
+	cpu_ntt_multiply(out, a, b);
+#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
+	product_cache().store(abs_a, abs_b, out);
+#endif
 	if (clear_abs_a) mpz_clear(abs_a_storage);
 	if (clear_abs_b) mpz_clear(abs_b_storage);
-	cpu_ntt_multiply(out, a, b);
 }
 
 void accelerated_mul(mpz_ptr out, mpz_ptr a, mpz_ptr b) {

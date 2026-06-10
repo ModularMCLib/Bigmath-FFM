@@ -549,6 +549,28 @@ class BigIntTest {
 	}
 
 	@Test
+	void productCacheDoesNotReuseMutatedOperands() {
+		String left = repeatDigits("1234567890", 30000);
+		String changedLeft = repeatDigits("2234567890", 30000);
+		String right = repeatDigits("9876543210", 30000);
+		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
+		BigInteger changedExpected = new BigInteger(changedLeft).multiply(new BigInteger(right));
+		try (BigInt a = BigInt.fromString(left, 10);
+			BigInt b = BigInt.fromString(right, 10)) {
+			try (BigInt first = a.multiply(b)) {
+				assertEquals(expected.toString(), first.toString());
+			}
+			try (BigInt cached = a.multiply(b)) {
+				assertEquals(expected.toString(), cached.toString());
+			}
+			a.set(changedLeft, 10);
+			try (BigInt changed = a.multiply(b)) {
+				assertEquals(changedExpected.toString(), changed.toString());
+			}
+		}
+	}
+
+	@Test
 	void formatting() {
 		try (BigInt bi = BigInt.fromString("1234567", 10)) {
 			assertEquals("1,234,567", bi.toFormattedString());
