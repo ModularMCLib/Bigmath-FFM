@@ -289,6 +289,24 @@ static void export_abs_mpz_to_u16_digits(mpz_ptr value, mp_bitcnt_t bits, std::v
 		return;
 	}
 
+#if GMP_NUMB_BITS % 16 == 0
+	(void)bits;
+	static constexpr int U16_DIGITS_PER_LIMB = GMP_NUMB_BITS / 16;
+	const int signed_limb_count = value->_mp_size;
+	const size_t limb_count = static_cast<size_t>(signed_limb_count < 0 ? -signed_limb_count : signed_limb_count);
+	out.resize(limb_count * U16_DIGITS_PER_LIMB);
+	size_t pos = 0;
+	for (size_t i = 0; i < limb_count; i++) {
+		mp_limb_t limb = value->_mp_d[i];
+		for (int j = 0; j < U16_DIGITS_PER_LIMB; j++) {
+			out[pos++] = static_cast<uint16_t>(limb & 0xffffu);
+			limb >>= 16;
+		}
+	}
+	while (out.size() > 1 && out.back() == 0) {
+		out.pop_back();
+	}
+#else
 	size_t count = 0;
 	const size_t max_count = static_cast<size_t>((bits + 15) / 16);
 	out.resize(max_count);
@@ -299,6 +317,7 @@ static void export_abs_mpz_to_u16_digits(mpz_ptr value, mp_bitcnt_t bits, std::v
 		return;
 	}
 	out.resize(count);
+#endif
 }
 
 static void write_digits_to_mpz_generic(mpz_ptr out, std::vector<uint64_t> &digits, unsigned bits_per_digit) {
