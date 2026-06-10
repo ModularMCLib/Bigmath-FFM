@@ -275,7 +275,7 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 		int block_size) {
 	const int spectrum_size = n / 2 + 1;
 	const size_t spectrum_bytes = sizeof(cufftDoubleComplex) * static_cast<size_t>(spectrum_size);
-	if (cache.matches(digits, n, bits_per_digit)) {
+	if (cached_spectrum != nullptr && cache.matches(digits, n, bits_per_digit)) {
 		return cudaMemcpy(spectrum, cached_spectrum, spectrum_bytes, cudaMemcpyDeviceToDevice) == cudaSuccess;
 	}
 	if (cudaMemcpy(device_digits, digits.data(), sizeof(uint16_t) * digits.size(), cudaMemcpyHostToDevice) != cudaSuccess) {
@@ -288,6 +288,9 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 	}
 	if (cufftExecD2Z(forward_plan, device_values, spectrum) != CUFFT_SUCCESS) {
 		return false;
+	}
+	if (cached_spectrum == nullptr) {
+		return true;
 	}
 	if (cudaMemcpy(cached_spectrum, spectrum, spectrum_bytes, cudaMemcpyDeviceToDevice) != cudaSuccess) {
 		return false;
@@ -311,18 +314,25 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 			!next_pow2(result_size, n)) {
 		return false;
 	}
+	static constexpr int SPECTRUM_CACHE_MIN_SIZE = 32768;
+	const bool use_spectrum_cache = n >= SPECTRUM_CACHE_MIN_SIZE;
 	thread_local CudaConvolutionWorkspace workspace;
-	if (workspace.capacity < n && !has_enough_device_memory(static_cast<size_t>(n), true)) {
+	if (workspace.capacity < n && !has_enough_device_memory(static_cast<size_t>(n), use_spectrum_cache)) {
 		return false;
 	}
-	if (!workspace.ensure_capacity(n) || !workspace.ensure_plan(n) || !workspace.ensure_spectrum_cache_capacity(n)) {
+	if (!workspace.ensure_capacity(n) || !workspace.ensure_plan(n)) {
+		return false;
+	}
+	if (use_spectrum_cache && !workspace.ensure_spectrum_cache_capacity(n)) {
 		return false;
 	}
 
 	const int block_size = 256;
-	if (!prepare_u16_spectrum(a, workspace.digits_a, workspace.da, workspace.fa, workspace.cached_fa,
+	if (!prepare_u16_spectrum(a, workspace.digits_a, workspace.da, workspace.fa,
+				use_spectrum_cache ? workspace.cached_fa : nullptr,
 				workspace.cache_a, workspace.forward_plan, n, bits_per_digit, block_size) ||
-			!prepare_u16_spectrum(b, workspace.digits_b, workspace.db, workspace.fb, workspace.cached_fb,
+			!prepare_u16_spectrum(b, workspace.digits_b, workspace.db, workspace.fb,
+				use_spectrum_cache ? workspace.cached_fb : nullptr,
 				workspace.cache_b, workspace.forward_plan, n, bits_per_digit, block_size)) {
 		return false;
 	}
