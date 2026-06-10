@@ -231,7 +231,7 @@ void product_tree_factorial(mpz_ptr out, uint64_t n) {
 	product_tree(out, 2, n);
 }
 
-static std::vector<uint64_t> digits_from_abs_mpz(mpz_ptr value, unsigned bits_per_digit) {
+static std::vector<uint64_t> digits_from_abs_mpz_generic(mpz_ptr value, unsigned bits_per_digit) {
 	std::vector<uint64_t> digits;
 	digits.reserve((mpz_sizeinbase(value, 2) + bits_per_digit - 1) / bits_per_digit);
 	mpz_t tmp, digit;
@@ -251,7 +251,31 @@ static std::vector<uint64_t> digits_from_abs_mpz(mpz_ptr value, unsigned bits_pe
 	return digits;
 }
 
-static void write_digits_to_mpz(mpz_ptr out, std::vector<uint64_t> &digits, unsigned bits_per_digit) {
+static std::vector<uint64_t> digits_from_abs_mpz(mpz_ptr value, unsigned bits_per_digit) {
+	if (bits_per_digit != 16) {
+		return digits_from_abs_mpz_generic(value, bits_per_digit);
+	}
+	if (mpz_sgn(value) == 0) {
+		return {0};
+	}
+
+	size_t count = 0;
+	const size_t max_count = (mpz_sizeinbase(value, 2) + bits_per_digit - 1) / bits_per_digit;
+	std::vector<uint16_t> exported(max_count);
+	mpz_export(exported.data(), &count, -1, sizeof(uint16_t), 0, 0, value);
+
+	std::vector<uint64_t> digits;
+	digits.reserve(count == 0 ? 1 : count);
+	for (size_t i = 0; i < count; i++) {
+		digits.push_back(exported[i]);
+	}
+	if (digits.empty()) {
+		digits.push_back(0);
+	}
+	return digits;
+}
+
+static void write_digits_to_mpz_generic(mpz_ptr out, std::vector<uint64_t> &digits, unsigned bits_per_digit) {
 	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
 	uint64_t carry = 0;
 	for (size_t i = 0; i < digits.size(); i++) {
@@ -272,6 +296,35 @@ static void write_digits_to_mpz(mpz_ptr out, std::vector<uint64_t> &digits, unsi
 		mpz_mul_2exp(out, out, bits_per_digit);
 		mpz_add_ui(out, out, digits[static_cast<size_t>(i)]);
 	}
+}
+
+static void write_digits_to_mpz(mpz_ptr out, std::vector<uint64_t> &digits, unsigned bits_per_digit) {
+	if (bits_per_digit != 16) {
+		write_digits_to_mpz_generic(out, digits, bits_per_digit);
+		return;
+	}
+
+	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
+	uint64_t carry = 0;
+	for (size_t i = 0; i < digits.size(); i++) {
+		uint64_t val = digits[i] + carry;
+		digits[i] = val & base_mask;
+		carry = val >> bits_per_digit;
+	}
+	while (carry != 0) {
+		digits.push_back(carry & base_mask);
+		carry >>= bits_per_digit;
+	}
+	while (digits.size() > 1 && digits.back() == 0) {
+		digits.pop_back();
+	}
+
+	std::vector<uint16_t> imported;
+	imported.reserve(digits.size());
+	for (uint64_t digit : digits) {
+		imported.push_back(static_cast<uint16_t>(digit));
+	}
+	mpz_import(out, imported.size(), -1, sizeof(uint16_t), 0, 0, imported.data());
 }
 
 static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
