@@ -363,26 +363,13 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 		return false;
 	}
 
-	static constexpr size_t CUDA_U16_TRANSFER_DIGIT_LIMIT = 32768;
-	const size_t digit_count_a = (bits_a + CUDA_BITS_PER_DIGIT - 1) / CUDA_BITS_PER_DIGIT;
-	const size_t digit_count_b = (bits_b + CUDA_BITS_PER_DIGIT - 1) / CUDA_BITS_PER_DIGIT;
-	if (digit_count_a + digit_count_b - 1 <= CUDA_U16_TRANSFER_DIGIT_LIMIT) {
-		auto ad = u16_digits_from_abs_mpz(abs_a);
-		auto bd = u16_digits_from_abs_mpz(abs_b);
-		std::vector<uint16_t> conv;
-		if (!cuda::convolve_u16_digits(ad, bd, conv, CUDA_BITS_PER_DIGIT)) {
-			return false;
-		}
-		write_u16_digits_to_mpz(out, conv);
-	} else {
-		auto ad = digits_from_abs_mpz(abs_a, CUDA_BITS_PER_DIGIT);
-		auto bd = digits_from_abs_mpz(abs_b, CUDA_BITS_PER_DIGIT);
-		std::vector<uint64_t> conv;
-		if (!cuda::convolve_digits(ad, bd, conv, CUDA_BITS_PER_DIGIT)) {
-			return false;
-		}
-		write_digits_to_mpz(out, conv, CUDA_BITS_PER_DIGIT);
+	auto ad = u16_digits_from_abs_mpz(abs_a);
+	auto bd = u16_digits_from_abs_mpz(abs_b);
+	std::vector<uint16_t> conv;
+	if (!cuda::convolve_u16_digits(ad, bd, conv, CUDA_BITS_PER_DIGIT)) {
+		return false;
 	}
+	write_u16_digits_to_mpz(out, conv);
 	cuda::record_multiply();
 	return true;
 #endif
