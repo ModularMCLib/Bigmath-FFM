@@ -276,9 +276,43 @@ static std::vector<uint64_t> digits_from_abs_mpz(mpz_ptr value, unsigned bits_pe
 	return digits;
 }
 
+static void export_abs_mpz_to_u16_digits(mpz_ptr value, mp_bitcnt_t bits, std::vector<uint16_t> &out);
+
+struct CachedCudaU16Digits {
+	mpz_ptr source = nullptr;
+	size_t limb_count = 0;
+	std::vector<mp_limb_t> limbs;
+	std::vector<uint16_t> digits;
+
+	const std::vector<uint16_t> &load(mpz_ptr value, mp_bitcnt_t bits) {
+#if GMP_NUMB_BITS % 16 == 0
+		const int signed_limb_count = value->_mp_size;
+		const size_t current_limb_count = static_cast<size_t>(signed_limb_count < 0 ? -signed_limb_count : signed_limb_count);
+		if (source == value &&
+				limb_count == current_limb_count &&
+				limbs.size() == current_limb_count &&
+				(current_limb_count == 0 ||
+					std::memcmp(limbs.data(), value->_mp_d, sizeof(mp_limb_t) * current_limb_count) == 0)) {
+			return digits;
+		}
+		export_abs_mpz_to_u16_digits(value, bits, digits);
+		source = value;
+		limb_count = current_limb_count;
+		limbs.resize(current_limb_count);
+		if (current_limb_count > 0) {
+			std::memcpy(limbs.data(), value->_mp_d, sizeof(mp_limb_t) * current_limb_count);
+		}
+		return digits;
+#else
+		export_abs_mpz_to_u16_digits(value, bits, digits);
+		return digits;
+#endif
+	}
+};
+
 struct CudaMultiplyHostWorkspace {
-	std::vector<uint16_t> ad;
-	std::vector<uint16_t> bd;
+	CachedCudaU16Digits ad;
+	CachedCudaU16Digits bd;
 	std::vector<uint16_t> conv;
 };
 
@@ -395,9 +429,9 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 	}
 
 	thread_local CudaMultiplyHostWorkspace workspace;
-	export_abs_mpz_to_u16_digits(abs_a, bits_a, workspace.ad);
-	export_abs_mpz_to_u16_digits(abs_b, bits_b, workspace.bd);
-	if (!cuda::convolve_u16_digits(workspace.ad, workspace.bd, workspace.conv, CUDA_BITS_PER_DIGIT)) {
+	const std::vector<uint16_t> &ad = workspace.ad.load(abs_a, bits_a);
+	const std::vector<uint16_t> &bd = abs_a == abs_b ? ad : workspace.bd.load(abs_b, bits_b);
+	if (!cuda::convolve_u16_digits(ad, bd, workspace.conv, CUDA_BITS_PER_DIGIT)) {
 		return false;
 	}
 	write_u16_digits_to_mpz(out, workspace.conv);

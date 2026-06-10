@@ -330,14 +330,22 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 	const int block_size = 256;
 	if (!prepare_u16_spectrum(a, workspace.digits_a, workspace.da, workspace.fa,
 				use_spectrum_cache ? workspace.cached_fa : nullptr,
-				workspace.cache_a, workspace.forward_plan, n, bits_per_digit, block_size) ||
-			!prepare_u16_spectrum(b, workspace.digits_b, workspace.db, workspace.fb,
-				use_spectrum_cache ? workspace.cached_fb : nullptr,
-				workspace.cache_b, workspace.forward_plan, n, bits_per_digit, block_size)) {
+				workspace.cache_a, workspace.forward_plan, n, bits_per_digit, block_size)) {
 		return false;
 	}
 
 	const int spectrum_size = n / 2 + 1;
+	const size_t spectrum_bytes = sizeof(cufftDoubleComplex) * static_cast<size_t>(spectrum_size);
+	if (&a == &b) {
+		if (cudaMemcpy(workspace.fb, workspace.fa, spectrum_bytes, cudaMemcpyDeviceToDevice) != cudaSuccess) {
+			return false;
+		}
+	} else if (!prepare_u16_spectrum(b, workspace.digits_b, workspace.db, workspace.fb,
+			use_spectrum_cache ? workspace.cached_fb : nullptr,
+			workspace.cache_b, workspace.forward_plan, n, bits_per_digit, block_size)) {
+		return false;
+	}
+
 	const int grid_size = (spectrum_size + block_size - 1) / block_size;
 	pointwise_multiply<<<grid_size, block_size>>>(workspace.fa, workspace.fb, spectrum_size);
 	if (cudaGetLastError() != cudaSuccess) {
