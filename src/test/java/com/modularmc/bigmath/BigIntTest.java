@@ -520,6 +520,35 @@ class BigIntTest {
 	}
 
 	@Test
+	@EnabledIfSystemProperty(named = "bigmath.cuda.tests", matches = "true")
+	void cudaProductCacheDoesNotReuseMutatedOperands() {
+		assumeTrue(BigmathFFM.cudaAvailable(), BigmathFFM.cudaStatusMessage());
+		String left = repeatDigits("1234567890", 40000);
+		String changedLeft = repeatDigits("2234567890", 40000);
+		String right = repeatDigits("9876543210", 40000);
+		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
+		BigInteger changedExpected = new BigInteger(changedLeft).multiply(new BigInteger(right));
+		int before = BigmathFFM.cudaMultiplyCount();
+		try (BigInt a = BigInt.fromString(left, 10);
+			BigInt b = BigInt.fromString(right, 10)) {
+			try (BigInt first = a.multiply(b)) {
+				assertEquals(expected.toString(), first.toString());
+			}
+			int afterFirst = BigmathFFM.cudaMultiplyCount();
+			assertTrue(afterFirst > before, BigmathFFM.cudaStatusMessage());
+			try (BigInt cached = a.multiply(b)) {
+				assertEquals(expected.toString(), cached.toString());
+			}
+			assertEquals(afterFirst, BigmathFFM.cudaMultiplyCount());
+			a.set(changedLeft, 10);
+			try (BigInt changed = a.multiply(b)) {
+				assertEquals(changedExpected.toString(), changed.toString());
+			}
+			assertTrue(BigmathFFM.cudaMultiplyCount() > afterFirst, BigmathFFM.cudaStatusMessage());
+		}
+	}
+
+	@Test
 	void formatting() {
 		try (BigInt bi = BigInt.fromString("1234567", 10)) {
 			assertEquals("1,234,567", bi.toFormattedString());
