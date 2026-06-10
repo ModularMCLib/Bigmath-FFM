@@ -111,7 +111,7 @@ static bool should_use_gmp_pow_ui(mpz_ptr base, uint64_t exp) {
 	if (exp > static_cast<uint64_t>(std::numeric_limits<unsigned long>::max())) {
 		return false;
 	}
-	static constexpr mp_bitcnt_t GMP_POW_BIT_THRESHOLD = 131072;
+	static constexpr mp_bitcnt_t GMP_POW_BIT_THRESHOLD = 4096;
 	const mp_bitcnt_t base_bits = mpz_sizeinbase(base, 2);
 	return base_bits <= GMP_POW_BIT_THRESHOLD / static_cast<mp_bitcnt_t>(exp);
 }
