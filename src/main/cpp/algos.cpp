@@ -483,9 +483,13 @@ static void write_u64_limbs_to_mpz(mpz_ptr out, const std::vector<uint64_t> &lim
 	}
 	mpz_realloc2(out, static_cast<mp_bitcnt_t>(limbs.size()) * GMP_NUMB_BITS);
 	mp_limb_t *target = out->_mp_d;
+#if GMP_NUMB_BITS == 64
+	std::memcpy(target, limbs.data(), sizeof(uint64_t) * limbs.size());
+#else
 	for (size_t i = 0; i < limbs.size(); i++) {
 		target[i] = static_cast<mp_limb_t>(limbs[i]);
 	}
+#endif
 	size_t used_limbs = limbs.size();
 	while (used_limbs > 0 && target[used_limbs - 1] == 0) {
 		used_limbs--;
