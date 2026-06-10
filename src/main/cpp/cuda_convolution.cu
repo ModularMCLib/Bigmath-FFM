@@ -1,6 +1,5 @@
 #include "cuda_convolution.h"
 
-#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -67,6 +66,14 @@ static bool coefficients_fit_double(size_t result_size, unsigned bits_per_digit)
 	const long double max_digit = static_cast<long double>((uint64_t{1} << bits_per_digit) - 1);
 	const long double max_coefficient = static_cast<long double>(result_size) * max_digit * max_digit;
 	return max_coefficient < static_cast<long double>(uint64_t{1} << 50);
+}
+
+static bool round_nonnegative_to_u64(double value, uint64_t &out) {
+	if (value <= -0.5) {
+		return false;
+	}
+	out = static_cast<uint64_t>(value + 0.5);
+	return true;
 }
 
 static bool clear_device_tail(double *values, size_t used, int n) {
@@ -250,11 +257,11 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 	uint64_t carry = 0;
 	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
 	for (size_t i = 0; i < result_size; i++) {
-		double rounded = std::round(workspace.host_result[i] * scale);
-		if (rounded < 0.0) {
+		uint64_t rounded = 0;
+		if (!round_nonnegative_to_u64(workspace.host_result[i] * scale, rounded)) {
 			return false;
 		}
-		const uint64_t value = static_cast<uint64_t>(rounded) + carry;
+		const uint64_t value = rounded + carry;
 		out.push_back(static_cast<uint16_t>(value & base_mask));
 		carry = value >> bits_per_digit;
 	}
@@ -328,11 +335,11 @@ bool convolve_digits(const std::vector<uint64_t> &a,
 	out.resize(result_size);
 	const double scale = 1.0 / static_cast<double>(n);
 	for (size_t i = 0; i < result_size; i++) {
-		double rounded = std::round(workspace.host_result[i] * scale);
-		if (rounded < 0.0) {
+		uint64_t rounded = 0;
+		if (!round_nonnegative_to_u64(workspace.host_result[i] * scale, rounded)) {
 			return false;
 		}
-		out[i] = static_cast<uint64_t>(rounded);
+		out[i] = rounded;
 	}
 	return true;
 }
