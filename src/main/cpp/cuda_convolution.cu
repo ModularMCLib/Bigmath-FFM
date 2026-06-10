@@ -10,8 +10,9 @@
 
 namespace bigmath::cuda {
 
-__global__ static void pointwise_multiply(cufftDoubleComplex *__restrict__ left,
+__global__ static void pointwise_multiply(const cufftDoubleComplex *__restrict__ left,
 		const cufftDoubleComplex *__restrict__ right,
+		cufftDoubleComplex *__restrict__ out,
 		int n) {
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i >= n) {
@@ -19,8 +20,8 @@ __global__ static void pointwise_multiply(cufftDoubleComplex *__restrict__ left,
 	}
 	const double real = left[i].x * right[i].x - left[i].y * right[i].y;
 	const double imag = left[i].x * right[i].y + left[i].y * right[i].x;
-	left[i].x = real;
-	left[i].y = imag;
+	out[i].x = real;
+	out[i].y = imag;
 }
 
 __global__ static void load_u16_digits(const uint16_t *__restrict__ digits,
@@ -272,11 +273,11 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 		cufftHandle forward_plan,
 		int n,
 		unsigned bits_per_digit,
-		int block_size) {
-	const int spectrum_size = n / 2 + 1;
-	const size_t spectrum_bytes = sizeof(cufftDoubleComplex) * static_cast<size_t>(spectrum_size);
+		int block_size,
+		const cufftDoubleComplex *&prepared_spectrum) {
 	if (cached_spectrum != nullptr && cache.matches(digits, n, bits_per_digit)) {
-		return cudaMemcpy(spectrum, cached_spectrum, spectrum_bytes, cudaMemcpyDeviceToDevice) == cudaSuccess;
+		prepared_spectrum = cached_spectrum;
+		return true;
 	}
 	if (cudaMemcpy(device_digits, digits.data(), sizeof(uint16_t) * digits.size(), cudaMemcpyHostToDevice) != cudaSuccess) {
 		return false;
@@ -289,9 +290,12 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 	if (cufftExecD2Z(forward_plan, device_values, spectrum) != CUFFT_SUCCESS) {
 		return false;
 	}
+	prepared_spectrum = spectrum;
 	if (cached_spectrum == nullptr) {
 		return true;
 	}
+	const int spectrum_size = n / 2 + 1;
+	const size_t spectrum_bytes = sizeof(cufftDoubleComplex) * static_cast<size_t>(spectrum_size);
 	if (cudaMemcpy(cached_spectrum, spectrum, spectrum_bytes, cudaMemcpyDeviceToDevice) != cudaSuccess) {
 		return false;
 	}
@@ -328,26 +332,25 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 	}
 
 	const int block_size = 256;
+	const cufftDoubleComplex *spectrum_a = nullptr;
 	if (!prepare_u16_spectrum(a, workspace.digits_a, workspace.da, workspace.fa,
 				use_spectrum_cache ? workspace.cached_fa : nullptr,
-				workspace.cache_a, workspace.forward_plan, n, bits_per_digit, block_size)) {
+				workspace.cache_a, workspace.forward_plan, n, bits_per_digit, block_size,
+				spectrum_a)) {
 		return false;
 	}
 
 	const int spectrum_size = n / 2 + 1;
-	const size_t spectrum_bytes = sizeof(cufftDoubleComplex) * static_cast<size_t>(spectrum_size);
-	if (&a == &b) {
-		if (cudaMemcpy(workspace.fb, workspace.fa, spectrum_bytes, cudaMemcpyDeviceToDevice) != cudaSuccess) {
-			return false;
-		}
-	} else if (!prepare_u16_spectrum(b, workspace.digits_b, workspace.db, workspace.fb,
+	const cufftDoubleComplex *spectrum_b = spectrum_a;
+	if (&a != &b && !prepare_u16_spectrum(b, workspace.digits_b, workspace.db, workspace.fb,
 			use_spectrum_cache ? workspace.cached_fb : nullptr,
-			workspace.cache_b, workspace.forward_plan, n, bits_per_digit, block_size)) {
+			workspace.cache_b, workspace.forward_plan, n, bits_per_digit, block_size,
+			spectrum_b)) {
 		return false;
 	}
 
 	const int grid_size = (spectrum_size + block_size - 1) / block_size;
-	pointwise_multiply<<<grid_size, block_size>>>(workspace.fa, workspace.fb, spectrum_size);
+	pointwise_multiply<<<grid_size, block_size>>>(spectrum_a, spectrum_b, workspace.fa, spectrum_size);
 	if (cudaGetLastError() != cudaSuccess) {
 		return false;
 	}
@@ -428,7 +431,7 @@ bool convolve_digits(const std::vector<uint64_t> &a,
 	const int block_size = 256;
 	const int spectrum_size = n / 2 + 1;
 	const int grid_size = (spectrum_size + block_size - 1) / block_size;
-	pointwise_multiply<<<grid_size, block_size>>>(workspace.fa, workspace.fb, spectrum_size);
+	pointwise_multiply<<<grid_size, block_size>>>(workspace.fa, workspace.fb, workspace.fa, spectrum_size);
 	if (cudaGetLastError() != cudaSuccess) {
 		return false;
 	}
