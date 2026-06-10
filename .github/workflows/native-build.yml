@@ -86,6 +86,12 @@ jobs:
           "CC=cl" >> $env:GITHUB_ENV
           "CXX=cl" >> $env:GITHUB_ENV
           "BIGMATH_WINDOWS_COMPILER=msvc" >> $env:GITHUB_ENV
+      - name: Configure CUDA architecture list
+        if: matrix.label == 'linux-x86-64' || matrix.label == 'windows-x86-64'
+        shell: pwsh
+        run: |
+          "BIGMATH_ENABLE_CUDA=true" >> $env:GITHUB_ENV
+          "BIGMATH_CUDA_ARCH=75;80;86;89;90" >> $env:GITHUB_ENV
       - name: Restore vcpkg binary cache
         if: runner.os == 'Windows'
         id: vcpkg-cache-restore
@@ -120,42 +126,20 @@ jobs:
           echo "CMAKE_PREFIX_PATH=${{ github.workspace }}\vcpkg_installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
           echo "BIGMATH_VCPKG_TRIPLET=${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
 
-      - name: Detect CUDA toolkit
-        id: cuda
+      - name: Setup CUDA toolkit
+        id: cuda-toolkit
         if: matrix.label == 'linux-x86-64' || matrix.label == 'windows-x86-64'
-        shell: pwsh
-        run: |
-          $available = $false
-          $nvcc = Get-Command nvcc -ErrorAction SilentlyContinue
-          if ($nvcc) {
-            $available = $true
-          }
-          if (-not $available -and $env:CUDA_PATH) {
-            $windowsNvcc = Join-Path $env:CUDA_PATH 'bin\nvcc.exe'
-            $unixNvcc = Join-Path $env:CUDA_PATH 'bin/nvcc'
-            if ((Test-Path $windowsNvcc) -or (Test-Path $unixNvcc)) {
-              $available = $true
-            }
-          }
-          if (-not $available -and (Test-Path 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA')) {
-            $candidate = Get-ChildItem 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA' -Directory -ErrorAction SilentlyContinue |
-              Where-Object { Test-Path (Join-Path $_.FullName 'bin\nvcc.exe') } |
-              Select-Object -First 1
-            if ($candidate) {
-              $available = $true
-              "CUDA_PATH=$($candidate.FullName)" >> $env:GITHUB_ENV
-            }
-          }
-          if ($available) {
-            "available=true" >> $env:GITHUB_OUTPUT
-          } else {
-            "available=false" >> $env:GITHUB_OUTPUT
-            Write-Host "::notice::CUDA toolkit is not available on this hosted runner; skipping experimental CUDA native build for ${{ matrix.label }}"
-          }
+        uses: Jimver/cuda-toolkit@v0.2.35
+        with:
+          cuda: '13.2.0'
+
+      - name: Print CUDA compiler
+        if: matrix.label == 'linux-x86-64' || matrix.label == 'windows-x86-64'
+        run: nvcc --version
 
       - uses: gradle/actions/setup-gradle@v4
       - name: Build native
-        if: runner.os != 'Windows' && (matrix.label != 'linux-x86-64' || steps.cuda.outputs.available == 'true')
+        if: runner.os != 'Windows'
         run: |
           chmod +x gradlew 2>/dev/null || true
           ./gradlew build -x test -Dbigmath.native.classifier=${{ matrix.label }}
@@ -166,7 +150,7 @@ jobs:
           fi
         shell: bash
       - name: Build native
-        if: runner.os == 'Windows' && (matrix.label != 'windows-x86-64' || steps.cuda.outputs.available == 'true')
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           .\gradlew.bat --% build -x test -Dbigmath.native.classifier=${{ matrix.label }}
@@ -180,7 +164,6 @@ jobs:
           key: ${{ steps.vcpkg-cache-restore.outputs.cache-primary-key }}
 
       - uses: actions/upload-artifact@v4
-        if: (matrix.label != 'linux-x86-64' && matrix.label != 'windows-x86-64') || steps.cuda.outputs.available == 'true'
         with:
           name: native-libs-${{ matrix.label }}
           path: native/${{ matrix.label }}/**

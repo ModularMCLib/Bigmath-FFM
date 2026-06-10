@@ -26,6 +26,12 @@ def isX64Host = {
 	def arch = System.getProperty("os.arch").toLowerCase()
 	arch.contains("amd64") || arch.contains("x86_64")
 }()
+def isLinuxHost = System.getProperty("os.name").toLowerCase().contains("linux")
+def isCudaSupportedHost = (isWindowsHost || isLinuxHost) && isX64Host
+def cudaEnabled = {
+	def raw = (project.findProperty("bigmathEnableCuda") ?: System.getenv("BIGMATH_ENABLE_CUDA"))?.toString()
+	raw != null && raw.toLowerCase() in ["1", "true", "yes", "on"]
+}()
 def cudaArch = (project.findProperty("bigmathCudaArch") ?: System.getenv("BIGMATH_CUDA_ARCH"))?.toString()
 def resolveExecutable = { String explicitProperty, String envName, List<String> candidates, String executableName ->
 	def explicit = project.findProperty(explicitProperty)?.toString() ?: System.getenv(envName)
@@ -174,14 +180,17 @@ def cmakeConfigure = tasks.register('cmakeConfigure', Exec) {
 		if (ninjaExecutable == null) {
 			throw new GradleException("Ninja executable was not found. Set -PninjaExecutable=... or BIGMATH_NINJA.")
 		}
-		if ((isWindowsHost || System.getProperty("os.name").toLowerCase().contains("linux")) && isX64Host && cudaRoot == null) {
+		if (cudaEnabled && !isCudaSupportedHost) {
+			throw new GradleException("CUDA builds are only supported on Linux x86-64 and Windows x86-64.")
+		}
+		if (cudaEnabled && cudaRoot == null) {
 			throw new GradleException("CUDA Toolkit was not found. Set -PcudaToolkitRoot=... or CUDAToolkit_ROOT/CUDA_PATH.")
 		}
 		if (isWindowsHost && isX64Host && msvcCompiler == null) {
 			throw new GradleException("MSVC cl.exe was not found. Run from a VS Developer shell or install Visual Studio C++ build tools.")
 		}
 		if (isWindowsHost && isX64Host && !cmakePrefixPath) {
-			throw new GradleException("Windows CUDA builds require GMP/MPFR from the vcpkg x64-windows triplet. Install it or set -PcmakePrefixPath=...")
+			throw new GradleException("Windows native builds require GMP/MPFR from the vcpkg x64-windows triplet. Install it or set -PcmakePrefixPath=...")
 		}
 		if (cmakePrefixPath) {
 			logger.lifecycle("Using CMake prefix path: ${cmakePrefixPath}")
@@ -203,18 +212,23 @@ def cmakeConfigure = tasks.register('cmakeConfigure', Exec) {
 		if (isWindowsHost && isX64Host) {
 			command << "-DVCPKG_TARGET_TRIPLET=x64-windows"
 		}
-		if (cudaArch) {
+		if (cudaEnabled) {
+			command << "-DBIGMATH_ENABLE_CUDA=ON"
+		} else {
+			command << "-DBIGMATH_ENABLE_CUDA=OFF"
+		}
+		if (cudaEnabled && cudaArch) {
 			command << "-DCMAKE_CUDA_ARCHITECTURES=${cudaArch}"
 		}
-		if (cudaRoot) {
+		if (cudaEnabled && cudaRoot) {
 			command << "-DCUDAToolkit_ROOT=${cudaRoot.absolutePath.replace('\\', '/')}"
 		}
-		if (cudaNvcc && cudaNvcc.exists()) {
+		if (cudaEnabled && cudaNvcc && cudaNvcc.exists()) {
 			command << "-DCMAKE_CUDA_COMPILER=${cudaNvcc.absolutePath.replace('\\', '/')}"
 		}
 		commandLine command
 	}
-	if (cudaRoot) {
+	if (cudaEnabled && cudaRoot) {
 		environment "CUDA_PATH", cudaRoot.absolutePath
 		environment "CUDAToolkit_ROOT", cudaRoot.absolutePath
 		environment "PATH", "${new File(cudaRoot, "bin").absolutePath}${File.pathSeparator}${System.getenv("PATH") ?: ""}"
@@ -227,7 +241,7 @@ tasks.register('buildNative', Exec) {
 	workingDir = cmakeBuildDir
 	inputs.file("${cmakeBuildDir}/CMakeCache.txt")
 	outputs.file("${cmakeBuildDir}/lib/${nativeLibName}")
-	if (cudaRoot) {
+	if (cudaEnabled && cudaRoot) {
 		environment "CUDA_PATH", cudaRoot.absolutePath
 		environment "CUDAToolkit_ROOT", cudaRoot.absolutePath
 		environment "PATH", "${new File(cudaRoot, "bin").absolutePath}${File.pathSeparator}${System.getenv("PATH") ?: ""}"
