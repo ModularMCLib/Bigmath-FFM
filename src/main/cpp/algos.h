@@ -23,6 +23,20 @@ constexpr int NTT_THRESHOLD      = 4096;
 
 using limb_t = uint64_t;
 
+struct MpzVersionToken {
+	uint64_t id = 0;
+	uint64_t version = 0;
+
+	bool valid() const {
+		return id != 0 && version != 0;
+	}
+};
+
+MpzVersionToken tracked_mpz_version(mpz_ptr value);
+void track_mpz_value(mpz_ptr value);
+void untrack_mpz_value(mpz_ptr value);
+void bump_tracked_mpz_version(mpz_ptr value);
+
 void karatsuba_mul(limb_t *out, const limb_t *a, int alen, const limb_t *b, int blen);
 
 void binary_gcd(mpz_ptr out, mpz_ptr a, mpz_ptr b);
