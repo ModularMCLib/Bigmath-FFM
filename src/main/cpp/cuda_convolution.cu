@@ -69,6 +69,14 @@ static bool coefficients_fit_double(size_t result_size, unsigned bits_per_digit)
 	return max_coefficient < static_cast<long double>(uint64_t{1} << 50);
 }
 
+static bool clear_device_tail(double *values, size_t used, int n) {
+	const size_t count = static_cast<size_t>(n);
+	if (used >= count) {
+		return true;
+	}
+	return cudaMemset(values + used, 0, sizeof(double) * (count - used)) == cudaSuccess;
+}
+
 struct CudaConvolutionWorkspace {
 	double *da = nullptr;
 	double *db = nullptr;
@@ -177,9 +185,9 @@ struct CudaConvolutionWorkspace {
 		host_result.resize(result_size);
 	}
 
-	void prepare_host_buffers(int n) {
-		host_a.assign(static_cast<size_t>(n), 0.0);
-		host_b.assign(static_cast<size_t>(n), 0.0);
+	void prepare_host_inputs(size_t a_size, size_t b_size) {
+		host_a.resize(a_size);
+		host_b.resize(b_size);
 	}
 };
 
@@ -279,7 +287,7 @@ bool convolve_digits(const std::vector<uint64_t> &a,
 		return false;
 	}
 
-	workspace.prepare_host_buffers(n);
+	workspace.prepare_host_inputs(a.size(), b.size());
 	for (size_t i = 0; i < a.size(); i++) {
 		workspace.host_a[i] = static_cast<double>(a[i]);
 	}
@@ -287,8 +295,10 @@ bool convolve_digits(const std::vector<uint64_t> &a,
 		workspace.host_b[i] = static_cast<double>(b[i]);
 	}
 
-	if (cudaMemcpy(workspace.da, workspace.host_a.data(), sizeof(double) * n, cudaMemcpyHostToDevice) != cudaSuccess ||
-			cudaMemcpy(workspace.db, workspace.host_b.data(), sizeof(double) * n, cudaMemcpyHostToDevice) != cudaSuccess) {
+	if (cudaMemcpy(workspace.da, workspace.host_a.data(), sizeof(double) * a.size(), cudaMemcpyHostToDevice) != cudaSuccess ||
+			cudaMemcpy(workspace.db, workspace.host_b.data(), sizeof(double) * b.size(), cudaMemcpyHostToDevice) != cudaSuccess ||
+			!clear_device_tail(workspace.da, a.size(), n) ||
+			!clear_device_tail(workspace.db, b.size(), n)) {
 		return false;
 	}
 	if (cufftExecD2Z(workspace.forward_plan, workspace.da, workspace.fa) != CUFFT_SUCCESS ||
@@ -306,14 +316,15 @@ bool convolve_digits(const std::vector<uint64_t> &a,
 	if (cufftExecZ2D(workspace.inverse_plan, workspace.fa, workspace.da) != CUFFT_SUCCESS) {
 		return false;
 	}
-	if (cudaMemcpy(workspace.host_a.data(), workspace.da, sizeof(double) * result_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
+	workspace.prepare_host_result(result_size);
+	if (cudaMemcpy(workspace.host_result.data(), workspace.da, sizeof(double) * result_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
 		return false;
 	}
 
 	out.resize(result_size);
 	const double scale = 1.0 / static_cast<double>(n);
 	for (size_t i = 0; i < result_size; i++) {
-		double rounded = std::round(workspace.host_a[i] * scale);
+		double rounded = std::round(workspace.host_result[i] * scale);
 		if (rounded < 0.0) {
 			return false;
 		}
