@@ -142,11 +142,27 @@ jobs:
           path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2
           key: cuda-toolkit-${{ matrix.label }}-13.2.0-jimver-v0.2.35-v1
 
+      - name: Check CUDA toolkit cache
+        id: cuda-cache-check
+        if: matrix.label == 'linux-x86-64' || matrix.label == 'windows-x86-64'
+        shell: pwsh
+        run: |
+          if ('${{ matrix.label }}' -eq 'windows-x86-64') {
+            $nvcc = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2\bin\nvcc.exe'
+          } else {
+            $nvcc = '/usr/local/cuda-13.2/bin/nvcc'
+          }
+          if (Test-Path -LiteralPath $nvcc) {
+            "available=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "available=false" >> $env:GITHUB_OUTPUT
+          }
+
       - name: Setup CUDA toolkit
         id: cuda-toolkit
         if: |
-          (matrix.label == 'linux-x86-64' && steps.cuda-cache-linux.outputs.cache-hit != 'true') ||
-          (matrix.label == 'windows-x86-64' && steps.cuda-cache-windows.outputs.cache-hit != 'true')
+          (matrix.label == 'linux-x86-64' || matrix.label == 'windows-x86-64') &&
+          steps.cuda-cache-check.outputs.available != 'true'
         uses: Jimver/cuda-toolkit@v0.2.35
         with:
           cuda: '13.2.0'
@@ -203,14 +219,14 @@ jobs:
           key: ${{ steps.vcpkg-cache-restore.outputs.cache-primary-key }}
 
       - name: Save Linux CUDA toolkit cache
-        if: matrix.label == 'linux-x86-64' && steps.cuda-cache-linux.outputs.cache-hit != 'true' && !cancelled()
+        if: matrix.label == 'linux-x86-64' && steps.cuda-cache-check.outputs.available != 'true' && !cancelled()
         uses: actions/cache/save@v4
         with:
           path: /usr/local/cuda-13.2
           key: ${{ steps.cuda-cache-linux.outputs.cache-primary-key }}
 
       - name: Save Windows CUDA toolkit cache
-        if: matrix.label == 'windows-x86-64' && steps.cuda-cache-windows.outputs.cache-hit != 'true' && !cancelled()
+        if: matrix.label == 'windows-x86-64' && steps.cuda-cache-check.outputs.available != 'true' && !cancelled()
         uses: actions/cache/save@v4
         with:
           path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2
