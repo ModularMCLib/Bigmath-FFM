@@ -386,7 +386,7 @@ struct CachedCudaProduct {
 	}
 };
 
-static constexpr int CUDA_PRODUCT_CACHE_WAYS = 4;
+static constexpr int CUDA_PRODUCT_CACHE_WAYS = 8;
 
 struct CudaProductCache {
 	CachedCudaProduct entries[CUDA_PRODUCT_CACHE_WAYS];
