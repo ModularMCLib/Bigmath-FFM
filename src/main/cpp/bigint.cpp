@@ -14,23 +14,16 @@ struct TrackedMpzState {
 	uint64_t version = 0;
 };
 
-struct TrackedMpzRegistry {
-	std::mutex mutex;
-	std::unordered_map<mpz_ptr, TrackedMpzState> versions;
-	uint64_t next_id = 1;
+std::mutex tracked_mpz_mutex;
+std::unordered_map<mpz_ptr, TrackedMpzState> tracked_mpz_versions;
+uint64_t next_tracked_mpz_id = 1;
 
-	uint64_t next_nonzero_id() {
-		const uint64_t id = next_id++;
-		if (next_id == 0) {
-			next_id = 1;
-		}
-		return id == 0 ? next_nonzero_id() : id;
+uint64_t next_nonzero_id() {
+	const uint64_t id = next_tracked_mpz_id++;
+	if (next_tracked_mpz_id == 0) {
+		next_tracked_mpz_id = 1;
 	}
-};
-
-TrackedMpzRegistry &tracked_mpz_registry() {
-	static TrackedMpzRegistry *registry = new TrackedMpzRegistry();
-	return *registry;
+	return id == 0 ? next_nonzero_id() : id;
 }
 
 }
@@ -41,10 +34,9 @@ MpzVersionToken tracked_mpz_version(mpz_ptr value) {
 	if (value == nullptr) {
 		return {};
 	}
-	TrackedMpzRegistry &registry = tracked_mpz_registry();
-	std::lock_guard<std::mutex> lock(registry.mutex);
-	const auto it = registry.versions.find(value);
-	if (it == registry.versions.end()) {
+	std::lock_guard<std::mutex> lock(tracked_mpz_mutex);
+	const auto it = tracked_mpz_versions.find(value);
+	if (it == tracked_mpz_versions.end()) {
 		return {};
 	}
 	return {it->second.id, it->second.version};
@@ -54,28 +46,25 @@ void track_mpz_value(mpz_ptr value) {
 	if (value == nullptr) {
 		return;
 	}
-	TrackedMpzRegistry &registry = tracked_mpz_registry();
-	std::lock_guard<std::mutex> lock(registry.mutex);
-	registry.versions[value] = {registry.next_nonzero_id(), 1};
+	std::lock_guard<std::mutex> lock(tracked_mpz_mutex);
+	tracked_mpz_versions[value] = {next_nonzero_id(), 1};
 }
 
 void untrack_mpz_value(mpz_ptr value) {
 	if (value == nullptr) {
 		return;
 	}
-	TrackedMpzRegistry &registry = tracked_mpz_registry();
-	std::lock_guard<std::mutex> lock(registry.mutex);
-	registry.versions.erase(value);
+	std::lock_guard<std::mutex> lock(tracked_mpz_mutex);
+	tracked_mpz_versions.erase(value);
 }
 
 void bump_tracked_mpz_version(mpz_ptr value) {
 	if (value == nullptr) {
 		return;
 	}
-	TrackedMpzRegistry &registry = tracked_mpz_registry();
-	std::lock_guard<std::mutex> lock(registry.mutex);
-	const auto it = registry.versions.find(value);
-	if (it == registry.versions.end()) {
+	std::lock_guard<std::mutex> lock(tracked_mpz_mutex);
+	const auto it = tracked_mpz_versions.find(value);
+	if (it == tracked_mpz_versions.end()) {
 		return;
 	}
 	it->second.version++;
