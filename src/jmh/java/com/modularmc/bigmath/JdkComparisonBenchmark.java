@@ -38,6 +38,10 @@ public class JdkComparisonBenchmark {
 			"bigint_mul_gmp",
 			FunctionDescriptors.BIGINT_BINARY
 	);
+	private static final MethodHandle BIGINT_FREE_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigint_free",
+			FunctionDescriptors.BIGINT_FREE
+	);
 
 	@State(Scope.Thread)
 	public static class SmallIntState {
@@ -371,8 +375,11 @@ public class JdkComparisonBenchmark {
 
 	@Benchmark
 	public void cpuDispatchNativeMultiplyGmp(CpuNttDispatchState state, Blackhole blackhole) {
-		try (BigInt result = multiplyGmp(state.nativeLeft, state.nativeRight)) {
+		MemorySegment result = multiplyGmp(state.nativeLeft, state.nativeRight);
+		try {
 			blackhole.consume(result);
+		} finally {
+			freeBigInt(result);
 		}
 	}
 
@@ -485,11 +492,35 @@ public class JdkComparisonBenchmark {
 		return sb.toString();
 	}
 
-	private static BigInt multiplyGmp(BigInt left, BigInt right) {
-		Arena arena = Arena.ofConfined();
-		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
-		BigInt.invokeBinaryOut(BIGINT_MUL_GMP_HANDLE, result, left.nativePtr(), right.nativePtr());
-		return BigInt.adoptOwnedResult(arena, result);
+	private static MemorySegment multiplyGmp(BigInt left, BigInt right) {
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+			invokeBinaryOut(BIGINT_MUL_GMP_HANDLE, result, left.nativePtr(), right.nativePtr());
+			return result.get(ValueLayout.ADDRESS, 0);
+		}
+	}
+
+	private static void invokeBinaryOut(MethodHandle handle, MemorySegment out, MemorySegment left, MemorySegment right) {
+		try {
+			handle.invokeExact(out, left, right);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable e) {
+			throw new IllegalStateException("Native BigInt benchmark operation failed", e);
+		}
+	}
+
+	private static void freeBigInt(MemorySegment value) {
+		if (MemorySegment.NULL.equals(value)) {
+			return;
+		}
+		try {
+			BIGINT_FREE_HANDLE.invokeExact(value);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable e) {
+			throw new IllegalStateException("Native BigInt benchmark cleanup failed", e);
+		}
 	}
 
 	private static int bitsToDecimalDigits(int bits) {

@@ -55,7 +55,13 @@ jobs:
       - name: Install native dependencies
         if: needs.check.outputs.native == 'true'
         run: |
-          sudo apt-get update
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources \
+            /etc/apt/sources.list.d/packages-microsoft-prod.list
+          sudo apt-get update -o Acquire::Retries=3
           sudo apt-get install -y libgmp-dev libmpfr-dev cmake
       - name: Setup Build
         uses: ./.github/actions/build_setup
@@ -85,7 +91,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install native dependencies
         run: |
-          sudo apt-get update
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources \
+            /etc/apt/sources.list.d/packages-microsoft-prod.list
+          sudo apt-get update -o Acquire::Retries=3
           sudo apt-get install -y libgmp-dev libmpfr-dev cmake
       - name: Setup Build
         uses: ./.github/actions/build_setup
