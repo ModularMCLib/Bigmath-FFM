@@ -35,6 +35,8 @@ void cpu_ntt_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b);
 
 void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b);
 
+void fft_multiply_into(mpz_ptr out, mpz_ptr a, mpz_ptr b);
+
 void accelerated_mul(mpz_ptr out, mpz_ptr a, mpz_ptr b);
 
 inline limb_t *limb_alloc(int n) {

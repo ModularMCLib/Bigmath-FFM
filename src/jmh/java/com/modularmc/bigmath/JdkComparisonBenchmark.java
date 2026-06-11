@@ -15,6 +15,10 @@ import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.Blackhole;
 
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+import java.lang.invoke.MethodHandle;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
@@ -30,6 +34,10 @@ public class JdkComparisonBenchmark {
 
 	private static final String DECIMAL_LEFT = "1234567890.12345678901234567890";
 	private static final String DECIMAL_RIGHT = "9876543210.98765432109876543210";
+	private static final MethodHandle BIGINT_MUL_GMP_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigint_mul_gmp",
+			FunctionDescriptors.BIGINT_BINARY
+	);
 
 	@State(Scope.Thread)
 	public static class SmallIntState {
@@ -143,6 +151,36 @@ public class JdkComparisonBenchmark {
 				index = 0;
 			}
 			return pair;
+		}
+	}
+
+	@State(Scope.Thread)
+	public static class CpuNttDispatchState {
+		@Param({"4096", "8192", "32768", "80000"})
+		public int digits;
+
+		BigInt nativeLeft;
+		BigInt nativeRight;
+		BigInt nativeResult;
+		BigInteger jdkLeft;
+		BigInteger jdkRight;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			String left = repeatDigits("1234567890", digits);
+			String right = repeatDigits("9876543210", digits);
+			nativeLeft = BigInt.fromString(left, 10);
+			nativeRight = BigInt.fromString(right, 10);
+			nativeResult = BigInt.fromLong(0);
+			jdkLeft = new BigInteger(left);
+			jdkRight = new BigInteger(right);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			nativeLeft.close();
+			nativeRight.close();
+			nativeResult.close();
 		}
 	}
 
@@ -307,6 +345,43 @@ public class JdkComparisonBenchmark {
 	}
 
 	@Benchmark
+	public void cpuDispatchNativeMultiplyAuto(CpuNttDispatchState state, CudaState cudaState, Blackhole blackhole) {
+		blackhole.consume(cudaState.status);
+		blackhole.consume(cudaState.available);
+		try (BigInt result = state.nativeLeft.multiply(state.nativeRight)) {
+			blackhole.consume(BigmathFFM.cudaMultiplyCount());
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void cpuDispatchNativeMultiplyIntoAuto(CpuNttDispatchState state, CudaState cudaState, Blackhole blackhole) {
+		blackhole.consume(cudaState.status);
+		blackhole.consume(cudaState.available);
+		blackhole.consume(state.nativeResult.multiplyInto(state.nativeLeft, state.nativeRight));
+		blackhole.consume(BigmathFFM.cudaMultiplyCount());
+	}
+
+	@Benchmark
+	public void cpuDispatchNativeMultiplyCpuNtt(CpuNttDispatchState state, Blackhole blackhole) {
+		try (BigInt result = BigInt.multiplyCpu(state.nativeLeft, state.nativeRight)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void cpuDispatchNativeMultiplyGmp(CpuNttDispatchState state, Blackhole blackhole) {
+		try (BigInt result = multiplyGmp(state.nativeLeft, state.nativeRight)) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void cpuDispatchJdkBigIntegerMultiply(CpuNttDispatchState state, Blackhole blackhole) {
+		blackhole.consume(state.jdkLeft.multiply(state.jdkRight));
+	}
+
+	@Benchmark
 	public void nativeBigIntMultiplyLargeAutoBackend(LargeIntState state, CudaState cudaState, Blackhole blackhole) {
 		blackhole.consume(cudaState.status);
 		blackhole.consume(cudaState.available);
@@ -408,6 +483,13 @@ public class JdkComparisonBenchmark {
 		}
 		sb.setLength(digits);
 		return sb.toString();
+	}
+
+	private static BigInt multiplyGmp(BigInt left, BigInt right) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		BigInt.invokeBinaryOut(BIGINT_MUL_GMP_HANDLE, result, left.nativePtr(), right.nativePtr());
+		return BigInt.adoptOwnedResult(arena, result);
 	}
 
 	private static int bitsToDecimalDigits(int bits) {

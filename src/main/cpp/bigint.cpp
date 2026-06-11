@@ -200,6 +200,19 @@ void bigint_mul_cpu(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	}
 }
 
+void bigint_mul_gmp(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
+	int alen = mpz_size(a);
+	int blen = mpz_size(b);
+	if (alen == 0 || blen == 0) {
+		mpz_init(*out);
+	} else {
+		mpz_init2(*out, static_cast<mp_bitcnt_t>(alen + blen + 1) * GMP_NUMB_BITS);
+	}
+	mpz_mul(*out, a, b);
+}
+
 void bigint_div(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
@@ -465,6 +478,7 @@ void bigint_add(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_sub(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_mul(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_mul_cpu(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_mul_gmp(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_div(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_mod(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_add_into(mpz_ptr, mpz_ptr, mpz_ptr) { }

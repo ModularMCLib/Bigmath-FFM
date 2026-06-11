@@ -32,6 +32,7 @@ BIGMATH_EXPORT void  bigint_add(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_sub(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_mul_cpu(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
+BIGMATH_EXPORT void  bigint_mul_gmp(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_div(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_mod(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_add_into(mpz_ptr out, mpz_ptr a, mpz_ptr b);
