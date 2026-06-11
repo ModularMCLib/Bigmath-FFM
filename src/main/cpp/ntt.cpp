@@ -2,9 +2,29 @@
 
 namespace bigmath::ntt {
 
-// ---- NTT transform (in-place, Cooley-Tukey) ----
-void ntt_transform(u64 *a, int n, u64 mod, u64 root, bool invert) {
-	// Bit-reversal permutation
+namespace {
+
+// Modular helpers for compile-time moduli. With MOD as a template constant the
+// compiler strength-reduces % into multiply+shift, so the butterfly loops run
+// without div instructions. Operands must already be reduced; products fit in
+// u64 because every configured modulus is below 2^30.
+template <u64 MOD>
+inline u64 mul_mod(u64 a, u64 b) {
+	return a * b % MOD;
+}
+
+template <u64 MOD>
+inline u64 add_mod(u64 a, u64 b) {
+	const u64 sum = a + b;
+	return sum >= MOD ? sum - MOD : sum;
+}
+
+template <u64 MOD>
+inline u64 sub_mod(u64 a, u64 b) {
+	return a >= b ? a - b : a + MOD - b;
+}
+
+void bit_reverse_permute(u64 *a, int n) {
 	for (int i = 1, j = 0; i < n; i++) {
 		int bit = n >> 1;
 		while (j & bit) {
@@ -14,88 +34,179 @@ void ntt_transform(u64 *a, int n, u64 mod, u64 root, bool invert) {
 		j ^= bit;
 		if (i < j) std::swap(a[i], a[j]);
 	}
+}
 
-	u64 root_base = invert ? mod_pow(root, mod - 2, mod) : root;
+// In-place Cooley-Tukey transform with the modulus as a compile-time constant.
+// Each level expands its twiddle factors into tw once and reuses the row for
+// every block, replacing the serial w *= wlen chain inside the inner loops.
+template <u64 MOD>
+void transform_fixed(u64 *a, int n, bool invert, std::vector<u64> &tw) {
+	bit_reverse_permute(a, n);
+	if ((int)tw.size() < n / 2) {
+		tw.resize(n / 2);
+	}
+	const u64 root_base = invert ? mod_pow(PRIMITIVE_ROOT, MOD - 2, MOD) : PRIMITIVE_ROOT;
 	for (int len = 2; len <= n; len <<= 1) {
-		u64 wlen = mod_pow(root_base, (mod - 1) / len, mod);
+		const int half = len >> 1;
+		const u64 wlen = mod_pow(root_base, (MOD - 1) / (u64)len, MOD);
+		tw[0] = 1;
+		for (int j = 1; j < half; j++) {
+			tw[j] = mul_mod<MOD>(tw[j - 1], wlen);
+		}
 		for (int i = 0; i < n; i += len) {
-			u64 w = 1;
-			for (int j = 0; j < len / 2; j++) {
-				u64 u_val = a[i + j];
-				u64 v_val = mod_mul(a[i + j + len / 2], w, mod);
-				u64 sum = u_val + v_val;
-				if (sum >= mod) sum -= mod;
-				a[i + j] = sum;
-				a[i + j + len / 2] = u_val >= v_val ? u_val - v_val : u_val + mod - v_val;
-				w = mod_mul(w, wlen, mod);
+			u64 *lo = a + i;
+			u64 *hi = lo + half;
+			for (int j = 0; j < half; j++) {
+				const u64 u_val = lo[j];
+				const u64 v_val = mul_mod<MOD>(hi[j], tw[j]);
+				lo[j] = add_mod<MOD>(u_val, v_val);
+				hi[j] = sub_mod<MOD>(u_val, v_val);
 			}
 		}
 	}
-
 	if (invert) {
-		u64 inv_n = mod_pow(n, mod - 2, mod);
+		const u64 inv_n = mod_pow((u64)n, MOD - 2, MOD);
 		for (int i = 0; i < n; i++) {
-			a[i] = mod_mul(a[i], inv_n, mod);
+			a[i] = mul_mod<MOD>(a[i], inv_n);
 		}
 	}
+}
+
+// Fallback for runtime moduli below 2^32 with reduced inputs; same structure,
+// one division per multiply instead of three.
+void transform_any(u64 *a, int n, u64 mod, u64 root, bool invert, std::vector<u64> &tw) {
+	bit_reverse_permute(a, n);
+	if ((int)tw.size() < n / 2) {
+		tw.resize(n / 2);
+	}
+	const u64 root_base = invert ? mod_pow(root, mod - 2, mod) : root;
+	for (int len = 2; len <= n; len <<= 1) {
+		const int half = len >> 1;
+		const u64 wlen = mod_pow(root_base, (mod - 1) / (u64)len, mod);
+		tw[0] = 1;
+		for (int j = 1; j < half; j++) {
+			tw[j] = tw[j - 1] * wlen % mod;
+		}
+		for (int i = 0; i < n; i += len) {
+			u64 *lo = a + i;
+			u64 *hi = lo + half;
+			for (int j = 0; j < half; j++) {
+				const u64 u_val = lo[j];
+				const u64 v_val = hi[j] * tw[j] % mod;
+				const u64 sum = u_val + v_val;
+				lo[j] = sum >= mod ? sum - mod : sum;
+				hi[j] = u_val >= v_val ? u_val - v_val : u_val + mod - v_val;
+			}
+		}
+	}
+	if (invert) {
+		const u64 inv_n = mod_pow((u64)n, mod - 2, mod);
+		for (int i = 0; i < n; i++) {
+			a[i] = a[i] * inv_n % mod;
+		}
+	}
+}
+
+template <u64 MOD>
+std::vector<u64> convolve_mod_fixed(const std::vector<u64> &a, const std::vector<u64> &b) {
+	const size_t result_size = a.size() + b.size() - 1;
+	const int n = next_pow2((int)result_size);
+	if ((MOD - 1) % (u64)n != 0) {
+		return {};
+	}
+	std::vector<u64> fa(n), fb(n), tw;
+	for (size_t i = 0; i < a.size(); i++) fa[i] = a[i] % MOD;
+	for (size_t i = 0; i < b.size(); i++) fb[i] = b[i] % MOD;
+
+	transform_fixed<MOD>(fa.data(), n, false, tw);
+	transform_fixed<MOD>(fb.data(), n, false, tw);
+	for (int i = 0; i < n; i++) {
+		fa[i] = mul_mod<MOD>(fa[i], fb[i]);
+	}
+	transform_fixed<MOD>(fa.data(), n, true, tw);
+
+	fa.resize(result_size);
+	return fa;
+}
+
+}
+
+// ---- NTT transform (in-place, Cooley-Tukey) ----
+void ntt_transform(u64 *a, int n, u64 mod, u64 root, bool invert) {
+	std::vector<u64> tw;
+	if (root == PRIMITIVE_ROOT) {
+		switch (mod) {
+			case MOD1: transform_fixed<MOD1>(a, n, invert, tw); return;
+			case MOD2: transform_fixed<MOD2>(a, n, invert, tw); return;
+			case MOD3: transform_fixed<MOD3>(a, n, invert, tw); return;
+			default: break;
+		}
+	}
+	transform_any(a, n, mod, root, invert, tw);
 }
 
 // ---- Single-modulus convolution ----
 std::vector<u64> convolve_mod(const std::vector<u64> &a, const std::vector<u64> &b, u64 mod) {
-	int n = next_pow2((int)(a.size() + b.size() - 1));
+	if (a.empty() || b.empty()) {
+		return {};
+	}
+	switch (mod) {
+		case MOD1: return convolve_mod_fixed<MOD1>(a, b);
+		case MOD2: return convolve_mod_fixed<MOD2>(a, b);
+		case MOD3: return convolve_mod_fixed<MOD3>(a, b);
+		default: break;
+	}
+	const size_t result_size = a.size() + b.size() - 1;
+	const int n = next_pow2((int)result_size);
 	if ((mod - 1) % (u64)n != 0) {
 		return {};
 	}
-	std::vector<u64> fa(n), fb(n);
+	std::vector<u64> fa(n), fb(n), tw;
 	for (size_t i = 0; i < a.size(); i++) fa[i] = a[i] % mod;
 	for (size_t i = 0; i < b.size(); i++) fb[i] = b[i] % mod;
 
-	ntt_transform(fa.data(), n, mod, PRIMITIVE_ROOT, false);
-	ntt_transform(fb.data(), n, mod, PRIMITIVE_ROOT, false);
-	for (int i = 0; i < n; i++) fa[i] = mod_mul(fa[i], fb[i], mod);
-	ntt_transform(fa.data(), n, mod, PRIMITIVE_ROOT, true);
+	transform_any(fa.data(), n, mod, PRIMITIVE_ROOT, false, tw);
+	transform_any(fb.data(), n, mod, PRIMITIVE_ROOT, false, tw);
+	for (int i = 0; i < n; i++) {
+		fa[i] = fa[i] * fb[i] % mod;
+	}
+	transform_any(fa.data(), n, mod, PRIMITIVE_ROOT, true, tw);
 
-	std::vector<u64> res(a.size() + b.size() - 1);
-	for (size_t i = 0; i < res.size(); i++) res[i] = fa[i];
-	return res;
+	fa.resize(result_size);
+	return fa;
 }
 
-// ---- CRT reconstruction from 3 moduli ----
-// Given x ≡ r1 (mod m1), x ≡ r2 (mod m2), x ≡ r3 (mod m3)
-// Returns x (which is < m1*m2*m3)
-static u64 crt3(u64 r1, u64 r2, u64 r3, u64 m1_inv_m2, u64 m12_inv_m3) {
-	// Combine first two moduli
-	// x = r1 + k * m1 ≡ r2 (mod m2)  =>  k ≡ (r2 - r1) * m1^-1 (mod m2)
-	u64 r1_mod_m2 = r1 % MOD2;
-	u64 delta12 = r2 >= r1_mod_m2 ? r2 - r1_mod_m2 : r2 + MOD2 - r1_mod_m2;
-	u64 k1 = mod_mul(delta12, m1_inv_m2, MOD2);
-	u64 x12 = r1 + k1 * MOD1;  // x mod (m1*m2), exact value
-	u64 m12 = MOD1 * MOD2;
-
-	// Combine with third modulus
-	u64 x12_mod_m3 = x12 % MOD3;
-	u64 delta3 = r3 >= x12_mod_m3 ? r3 - x12_mod_m3 : r3 + MOD3 - x12_mod_m3;
-	u64 k2 = mod_mul(delta3, m12_inv_m3, MOD3);
-	return x12 + k2 * m12;
-}
-
-// ---- Multi-modulus convolution with CRT ----
+// ---- Dual-modulus convolution with CRT ----
+// Coefficients are bounded by min(|a|,|b|) * (base-1)^2, so reconstruction
+// over MOD1 * MOD3 (~2^58.8) is exact whenever that bound stays below it.
 std::vector<u64> convolve(const std::vector<u64> &a, const std::vector<u64> &b, u64 digit_base) {
-	auto c1 = convolve_mod(a, b, MOD1);
-	auto c2 = convolve_mod(a, b, MOD2);
-	auto c3 = convolve_mod(a, b, MOD3);
-	if (c1.empty() || c2.empty() || c3.empty()) {
+	if (a.empty() || b.empty() || digit_base < 2) {
+		return {};
+	}
+	static constexpr u64 CRT_MODULUS = MOD1 * MOD3;
+	const u64 max_digit = digit_base - 1;
+	if ((max_digit >> 32) != 0) {
+		return {};
+	}
+	const u64 min_len = (u64)std::min(a.size(), b.size());
+	if (max_digit * max_digit > CRT_MODULUS / min_len) {
 		return {};
 	}
 
-	size_t n = c1.size();
-	std::vector<u64> res(n);
-	u64 m1_inv_m2 = mod_pow(MOD1 % MOD2, MOD2 - 2, MOD2);
-	u64 m12_inv_m3 = mod_pow((MOD1 * MOD2) % MOD3, MOD3 - 2, MOD3);
-	for (size_t i = 0; i < n; i++) {
-		res[i] = crt3(c1[i], c2[i], c3[i], m1_inv_m2, m12_inv_m3);
+	auto c1 = convolve_mod_fixed<MOD1>(a, b);
+	auto c3 = convolve_mod_fixed<MOD3>(a, b);
+	if (c1.empty() || c3.empty()) {
+		return {};
 	}
-	return res;
+
+	// x = r1 + k * MOD1 with k = (r3 - r1) * MOD1^-1 (mod MOD3), x < MOD1*MOD3
+	static constexpr u64 MOD1_INV_MOD3 = mod_pow(MOD1, MOD3 - 2, MOD3);
+	for (size_t i = 0; i < c1.size(); i++) {
+		const u64 r1 = c1[i];
+		const u64 delta = sub_mod<MOD3>(c3[i], r1 % MOD3);
+		c1[i] = r1 + mul_mod<MOD3>(delta, MOD1_INV_MOD3) * MOD1;
+	}
+	return c1;
 }
 
 }

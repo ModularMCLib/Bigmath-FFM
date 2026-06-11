@@ -11,7 +11,9 @@
 namespace bigmath::ntt {
 
 // NTT-friendly primes = k * 2^b + 1 with primitive root 3
-// For Chinese Remainder Theorem: product > (base)^(2n) so we can reconstruct
+// convolve() reconstructs exact coefficients via CRT over MOD1 * MOD3
+// (~2^58.8), which also bounds the transform size at MOD1's 2^23 root order.
+// MOD2 stays available for the generic transform/convolve_mod API.
 inline constexpr uint64_t MOD1 = 998244353;   //  119 * 2^23 + 1
 inline constexpr uint64_t MOD2 = 1004535809;  //  479 * 2^21 + 1
 inline constexpr uint64_t MOD3 = 469762049;   //    7 * 2^26 + 1
@@ -20,11 +22,11 @@ inline constexpr uint64_t PRIMITIVE_ROOT = 3;
 using u64 = uint64_t;
 
 // The configured NTT primes keep residue products below uint64_t overflow.
-inline u64 mod_mul(u64 a, u64 b, u64 mod) {
+constexpr u64 mod_mul(u64 a, u64 b, u64 mod) {
 	return (a % mod) * (b % mod) % mod;
 }
 
-inline u64 mod_pow(u64 a, u64 e, u64 mod) {
+constexpr u64 mod_pow(u64 a, u64 e, u64 mod) {
 	u64 r = 1;
 	while (e) {
 		if (e & 1) r = mod_mul(r, a, mod);
