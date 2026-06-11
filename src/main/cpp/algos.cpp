@@ -821,11 +821,11 @@ void cpu_ntt_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 }
 
 static bool should_use_cpu_ntt_fallback(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
-	static constexpr int CPU_NTT_AUTO_THRESHOLD = 32768;
-	if (out == a || out == b) {
-		return false;
-	}
-	return mpz_size(a) + mpz_size(b) >= CPU_NTT_AUTO_THRESHOLD;
+	(void)out;
+	(void)a;
+	(void)b;
+	// Dispatch benchmarks show no stable CPU NTT win over GMP yet; keep it opt-in via bigint_mul_cpu.
+	return false;
 }
 
 static void fft_multiply_impl(mpz_ptr out, mpz_ptr a, mpz_ptr b, bool allow_cpu_ntt_fallback) {
