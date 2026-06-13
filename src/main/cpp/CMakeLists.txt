@@ -172,7 +172,6 @@ add_library(bigmath_ffm SHARED
 	bigdecimal.cpp
 	int128.cpp
 	algos.cpp
-	ntt.cpp
 	cuda_runtime_state.cpp
 )
 target_include_directories(bigmath_ffm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

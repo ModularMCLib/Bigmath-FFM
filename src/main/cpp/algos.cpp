@@ -1,7 +1,6 @@
 #include "algos.h"
 #include "cuda_convolution.h"
 #include "cuda_runtime_state.h"
-#include "ntt.h"
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -235,50 +234,6 @@ void product_tree_factorial(mpz_ptr out, uint64_t n) {
 		return;
 	}
 	product_tree(out, 2, n);
-}
-
-static std::vector<uint64_t> digits_from_abs_mpz_generic(mpz_ptr value, unsigned bits_per_digit) {
-	std::vector<uint64_t> digits;
-	digits.reserve((mpz_sizeinbase(value, 2) + bits_per_digit - 1) / bits_per_digit);
-	mpz_t tmp, digit;
-	mpz_init(tmp);
-	mpz_init(digit);
-	mpz_set(tmp, value);
-	while (mpz_sgn(tmp) > 0) {
-		mpz_tdiv_r_2exp(digit, tmp, bits_per_digit);
-		digits.push_back(mpz_get_ui(digit));
-		mpz_tdiv_q_2exp(tmp, tmp, bits_per_digit);
-	}
-	if (digits.empty()) {
-		digits.push_back(0);
-	}
-	mpz_clear(tmp);
-	mpz_clear(digit);
-	return digits;
-}
-
-static std::vector<uint64_t> digits_from_abs_mpz(mpz_ptr value, unsigned bits_per_digit) {
-	if (bits_per_digit != 16) {
-		return digits_from_abs_mpz_generic(value, bits_per_digit);
-	}
-	if (mpz_sgn(value) == 0) {
-		return {0};
-	}
-
-	size_t count = 0;
-	const size_t max_count = (mpz_sizeinbase(value, 2) + bits_per_digit - 1) / bits_per_digit;
-	std::vector<uint16_t> exported(max_count);
-	mpz_export(exported.data(), &count, -1, sizeof(uint16_t), 0, 0, value);
-
-	std::vector<uint64_t> digits;
-	digits.reserve(count == 0 ? 1 : count);
-	for (size_t i = 0; i < count; i++) {
-		digits.push_back(exported[i]);
-	}
-	if (digits.empty()) {
-		digits.push_back(0);
-	}
-	return digits;
 }
 
 static void export_abs_mpz_to_u16_digits(mpz_ptr value, mp_bitcnt_t bits, std::vector<uint16_t> &out);
@@ -572,58 +527,6 @@ static void export_abs_mpz_to_digits(mpz_ptr value, mp_bitcnt_t bits, unsigned b
 #endif
 }
 
-static void write_digits_to_mpz_generic(mpz_ptr out, std::vector<uint64_t> &digits, unsigned bits_per_digit) {
-	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
-	uint64_t carry = 0;
-	for (size_t i = 0; i < digits.size(); i++) {
-		uint64_t val = digits[i] + carry;
-		digits[i] = val & base_mask;
-		carry = val >> bits_per_digit;
-	}
-	while (carry != 0) {
-		digits.push_back(carry & base_mask);
-		carry >>= bits_per_digit;
-	}
-	while (digits.size() > 1 && digits.back() == 0) {
-		digits.pop_back();
-	}
-
-	mpz_set_ui(out, 0);
-	for (int i = static_cast<int>(digits.size()) - 1; i >= 0; i--) {
-		mpz_mul_2exp(out, out, bits_per_digit);
-		mpz_add_ui(out, out, digits[static_cast<size_t>(i)]);
-	}
-}
-
-static void write_digits_to_mpz(mpz_ptr out, std::vector<uint64_t> &digits, unsigned bits_per_digit) {
-	if (bits_per_digit != 16) {
-		write_digits_to_mpz_generic(out, digits, bits_per_digit);
-		return;
-	}
-
-	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
-	uint64_t carry = 0;
-	for (size_t i = 0; i < digits.size(); i++) {
-		uint64_t val = digits[i] + carry;
-		digits[i] = val & base_mask;
-		carry = val >> bits_per_digit;
-	}
-	while (carry != 0) {
-		digits.push_back(carry & base_mask);
-		carry >>= bits_per_digit;
-	}
-	while (digits.size() > 1 && digits.back() == 0) {
-		digits.pop_back();
-	}
-
-	std::vector<uint16_t> imported;
-	imported.reserve(digits.size());
-	for (uint64_t digit : digits) {
-		imported.push_back(static_cast<uint16_t>(digit));
-	}
-	mpz_import(out, imported.size(), -1, sizeof(uint16_t), 0, 0, imported.data());
-}
-
 static void write_u16_digits_to_mpz(mpz_ptr out, const std::vector<uint16_t> &digits, unsigned bits_per_digit = 16) {
 #if GMP_NUMB_BITS <= 64
 	if (digits.empty()) {
@@ -692,48 +595,6 @@ static void write_u64_limbs_to_mpz(mpz_ptr out, const std::vector<uint64_t> &lim
 		mpz_add_ui(out, out, limbs[static_cast<size_t>(i)]);
 	}
 #endif
-}
-
-static void write_convolution_to_mpz(mpz_ptr out, std::vector<uint64_t> &digits, unsigned bits_per_digit) {
-#if GMP_NUMB_BITS <= 64
-	if (bits_per_digit != 0 && bits_per_digit <= 16 && GMP_NUMB_BITS % bits_per_digit == 0) {
-		const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
-		const int digits_per_limb = GMP_NUMB_BITS / static_cast<int>(bits_per_digit);
-		std::vector<uint64_t> limbs;
-		limbs.reserve((digits.size() + static_cast<size_t>(digits_per_limb) - 1) /
-				static_cast<size_t>(digits_per_limb) + 1);
-		uint64_t carry = 0;
-		uint64_t limb = 0;
-		int limb_digit = 0;
-		auto append_digit = [&](uint64_t digit) {
-			limb |= digit << (bits_per_digit * limb_digit);
-			limb_digit++;
-			if (limb_digit == digits_per_limb) {
-				limbs.push_back(limb);
-				limb = 0;
-				limb_digit = 0;
-			}
-		};
-		for (size_t i = 0; i < digits.size(); i++) {
-			const uint64_t value = digits[i] + carry;
-			append_digit(value & base_mask);
-			carry = value >> bits_per_digit;
-		}
-		while (carry != 0) {
-			append_digit(carry & base_mask);
-			carry >>= bits_per_digit;
-		}
-		if (limb_digit != 0) {
-			limbs.push_back(limb);
-		}
-		while (!limbs.empty() && limbs.back() == 0) {
-			limbs.pop_back();
-		}
-		write_u64_limbs_to_mpz(out, limbs);
-		return;
-	}
-#endif
-	write_digits_to_mpz(out, digits, bits_per_digit);
 }
 
 #ifdef BIGMATH_HAS_CUDA
@@ -824,54 +685,7 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 #endif
 }
 
-static bool cpu_ntt_multiply_abs(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
-	static constexpr uint64_t BASE = 1ULL << 16;
-
-	auto ad = digits_from_abs_mpz(abs_a, 16);
-	auto bd = digits_from_abs_mpz(abs_b, 16);
-
-	auto conv = ntt::convolve(ad, bd, BASE);
-	if (conv.empty()) {
-		return false;
-	}
-	write_convolution_to_mpz(out, conv, 16);
-	return true;
-}
-
-// ---- FFT/NTT-based multiplication ----
-void cpu_ntt_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
-	int alen = mpz_size(a);
-	int blen = mpz_size(b);
-	if (alen == 0 || blen == 0) { mpz_set_ui(out, 0); return; }
-
-	bool a_neg = (mpz_sgn(a) < 0);
-	bool b_neg = (mpz_sgn(b) < 0);
-
-	mpz_t abs_a, abs_b;
-	mpz_init(abs_a); mpz_abs(abs_a, a);
-	mpz_init(abs_b); mpz_abs(abs_b, b);
-
-	if (!cpu_ntt_multiply_abs(out, abs_a, abs_b)) {
-		mpz_mul(out, a, b);
-		mpz_clear(abs_a);
-		mpz_clear(abs_b);
-		return;
-	}
-	mpz_clear(abs_a);
-	mpz_clear(abs_b);
-
-	if (a_neg != b_neg) mpz_neg(out, out);
-}
-
-static bool should_use_cpu_ntt_fallback(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
-	(void)out;
-	(void)a;
-	(void)b;
-	// Dispatch benchmarks show no stable CPU NTT win over GMP yet; keep it opt-in via bigint_mul_cpu.
-	return false;
-}
-
-static void fft_multiply_impl(mpz_ptr out, mpz_ptr a, mpz_ptr b, bool allow_cpu_ntt_fallback) {
+static void fft_multiply_impl(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	int alen = mpz_size(a);
 	int blen = mpz_size(b);
 	if (alen == 0 || blen == 0) { mpz_set_ui(out, 0); return; }
@@ -914,11 +728,7 @@ static void fft_multiply_impl(mpz_ptr out, mpz_ptr a, mpz_ptr b, bool allow_cpu_
 		return;
 	}
 
-	if (allow_cpu_ntt_fallback && should_use_cpu_ntt_fallback(out, a, b) && cpu_ntt_multiply_abs(out, abs_a, abs_b)) {
-		if (a_neg != b_neg) mpz_neg(out, out);
-	} else {
-		mpz_mul(out, a, b);
-	}
+	mpz_mul(out, a, b);
 #if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
 	product_cache().store(abs_a, abs_b, out);
 #endif
@@ -927,19 +737,19 @@ static void fft_multiply_impl(mpz_ptr out, mpz_ptr a, mpz_ptr b, bool allow_cpu_
 }
 
 void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
-	fft_multiply_impl(out, a, b, true);
+	fft_multiply_impl(out, a, b);
 }
 
 void fft_multiply_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	if (out == a || out == b) {
 		mpz_t tmp;
 		mpz_init(tmp);
-		fft_multiply_impl(tmp, a, b, false);
+		fft_multiply_impl(tmp, a, b);
 		mpz_set(out, tmp);
 		mpz_clear(tmp);
 		return;
 	}
-	fft_multiply_impl(out, a, b, true);
+	fft_multiply_impl(out, a, b);
 }
 
 void accelerated_mul(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
@@ -957,7 +767,6 @@ void accelerated_mul(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 void binary_gcd(mpz_ptr, mpz_ptr, mpz_ptr) {}
 void fast_pow(mpz_ptr, mpz_ptr, uint64_t) {}
 void product_tree_factorial(mpz_ptr, uint64_t) {}
-void cpu_ntt_multiply(mpz_ptr, mpz_ptr, mpz_ptr) {}
 void fft_multiply(mpz_ptr, mpz_ptr, mpz_ptr) {}
 void fft_multiply_into(mpz_ptr, mpz_ptr, mpz_ptr) {}
 void accelerated_mul(mpz_ptr, mpz_ptr, mpz_ptr) {}

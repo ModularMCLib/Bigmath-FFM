@@ -492,19 +492,6 @@ class BigIntTest {
 	}
 
 	@Test
-	void forcedCpuMultiplyMatchesBigInteger() {
-		Random random = new Random(0x51A7E5EEDL);
-		BigInteger leftValue = signedRandomBigInteger(90000, random);
-		BigInteger rightValue = signedRandomBigInteger(73000, random);
-		BigInteger expected = leftValue.multiply(rightValue);
-		try (BigInt left = BigInt.fromBigInteger(leftValue);
-			BigInt right = BigInt.fromBigInteger(rightValue);
-			BigInt product = BigInt.multiplyCpu(left, right)) {
-			assertEquals(expected, product.toBigInteger());
-		}
-	}
-
-	@Test
 	void cudaStatusIsCachedAndQueryable() {
 		int firstProbeCount = BigmathFFM.cudaProbeCount();
 		String firstStatus = BigmathFFM.cudaStatusMessage();

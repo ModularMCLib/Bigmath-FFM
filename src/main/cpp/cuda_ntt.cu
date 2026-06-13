@@ -8,8 +8,8 @@
 
 namespace bigmath::cuda {
 
-// NTT-friendly primes = k*2^b + 1 with primitive root 3, shared with the CPU
-// path (ntt.h). CRT reconstructs exact coefficients over MOD1*MOD3 (~2^58.8).
+// NTT-friendly primes = k*2^b + 1 with primitive root 3. CRT reconstructs
+// exact coefficients over MOD1*MOD3 (~2^58.8).
 // Every modulus is < 2^30, so a product of two reduced residues is < 2^60 and
 // fits in u64 without 128-bit arithmetic.
 namespace {

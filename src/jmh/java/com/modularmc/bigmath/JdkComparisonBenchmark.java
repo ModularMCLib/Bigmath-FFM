@@ -225,7 +225,7 @@ public class JdkComparisonBenchmark {
 	}
 
 	@State(Scope.Thread)
-	public static class CpuNttDispatchState {
+	public static class MultiplyDispatchState {
 		@Param({"4096", "8192", "32768", "80000"})
 		public int digits;
 
@@ -472,15 +472,7 @@ public class JdkComparisonBenchmark {
 	}
 
 	@Benchmark
-	public void nativeBigIntMultiplyLargeCpuNtt(LargeIntState state, Blackhole blackhole) {
-		int pair = state.nextPair();
-		try (BigInt result = BigInt.multiplyCpu(state.nativeLeftValues[pair], state.nativeRightValues[pair])) {
-			blackhole.consume(result);
-		}
-	}
-
-	@Benchmark
-	public void cpuDispatchNativeMultiplyAuto(CpuNttDispatchState state, CudaState cudaState, Blackhole blackhole) {
+	public void cpuDispatchNativeMultiplyAuto(MultiplyDispatchState state, CudaState cudaState, Blackhole blackhole) {
 		blackhole.consume(cudaState.status);
 		blackhole.consume(cudaState.available);
 		int pair = state.nextPair();
@@ -491,7 +483,7 @@ public class JdkComparisonBenchmark {
 	}
 
 	@Benchmark
-	public void cpuDispatchNativeMultiplyIntoAuto(CpuNttDispatchState state, CudaState cudaState, Blackhole blackhole) {
+	public void cpuDispatchNativeMultiplyIntoAuto(MultiplyDispatchState state, CudaState cudaState, Blackhole blackhole) {
 		blackhole.consume(cudaState.status);
 		blackhole.consume(cudaState.available);
 		int pair = state.nextPair();
@@ -500,15 +492,7 @@ public class JdkComparisonBenchmark {
 	}
 
 	@Benchmark
-	public void cpuDispatchNativeMultiplyCpuNtt(CpuNttDispatchState state, Blackhole blackhole) {
-		int pair = state.nextPair();
-		try (BigInt result = BigInt.multiplyCpu(state.nativeLeftValues[pair], state.nativeRightValues[pair])) {
-			blackhole.consume(result);
-		}
-	}
-
-	@Benchmark
-	public void cpuDispatchNativeMultiplyGmp(CpuNttDispatchState state, Blackhole blackhole) {
+	public void cpuDispatchNativeMultiplyGmp(MultiplyDispatchState state, Blackhole blackhole) {
 		int pair = state.nextPair();
 		MemorySegment result = multiplyGmp(state.nativeLeftValues[pair], state.nativeRightValues[pair]);
 		try {
@@ -519,7 +503,7 @@ public class JdkComparisonBenchmark {
 	}
 
 	@Benchmark
-	public void cpuDispatchJdkBigIntegerMultiply(CpuNttDispatchState state, Blackhole blackhole) {
+	public void cpuDispatchJdkBigIntegerMultiply(MultiplyDispatchState state, Blackhole blackhole) {
 		int pair = state.nextPair();
 		blackhole.consume(state.jdkLeftValues[pair].multiply(state.jdkRightValues[pair]));
 	}

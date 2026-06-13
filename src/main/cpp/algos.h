@@ -31,8 +31,6 @@ void fast_pow(mpz_ptr out, mpz_ptr base, uint64_t exp);
 
 void product_tree_factorial(mpz_ptr out, uint64_t n);
 
-void cpu_ntt_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b);
-
 void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b);
 
 void fft_multiply_into(mpz_ptr out, mpz_ptr a, mpz_ptr b);
