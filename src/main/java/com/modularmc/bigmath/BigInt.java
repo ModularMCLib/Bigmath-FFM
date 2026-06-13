@@ -28,151 +28,151 @@ import java.math.BigInteger;
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class BigInt extends Number implements AutoCloseable, Comparable<BigInt> {
 
-	private static final MethodHandle BIGINT_ADD_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_ADD_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_add",
 			FunctionDescriptors.BIGINT_BINARY
 	);
-	private static final MethodHandle BIGINT_CMP_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_CMP_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_cmp",
 			FunctionDescriptors.BIGINT_CMP
 	);
-	private static final MethodHandle BIGINT_DIV_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_DIV_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_div",
 			FunctionDescriptors.BIGINT_BINARY
 	);
-	private static final MethodHandle BIGINT_MOD_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_MOD_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_mod",
 			FunctionDescriptors.BIGINT_BINARY
 	);
-	private static final MethodHandle BIGINT_MUL_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_MUL_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_mul",
 			FunctionDescriptors.BIGINT_BINARY
 	);
-	private static final MethodHandle BIGINT_POW_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_POW_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_pow",
 			FunctionDescriptors.BIGINT_POW
 	);
-	private static final MethodHandle BIGINT_SUB_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_SUB_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_sub",
 			FunctionDescriptors.BIGINT_BINARY
 	);
-	private static final MethodHandle BIGINT_NEG_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_NEG_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_neg",
 			FunctionDescriptors.BIGINT_UNARY
 	);
-	private static final MethodHandle BIGINT_ABS_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_ABS_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_abs",
 			FunctionDescriptors.BIGINT_UNARY
 	);
-	private static final MethodHandle BIGINT_GCD_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_GCD_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_gcd",
 			FunctionDescriptors.BIGINT_BINARY
 	);
-	private static final MethodHandle BIGINT_LCM_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_LCM_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_lcm",
 			FunctionDescriptors.BIGINT_BINARY
 	);
-	private static final MethodHandle BIGINT_SQRT_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_SQRT_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_sqrt",
 			FunctionDescriptors.BIGINT_UNARY
 	);
-	private static final MethodHandle BIGINT_AND_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_AND_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_and",
 			FunctionDescriptors.BIGINT_BINARY
 	);
-	private static final MethodHandle BIGINT_OR_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_OR_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_or",
 			FunctionDescriptors.BIGINT_BINARY
 	);
-	private static final MethodHandle BIGINT_XOR_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_XOR_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_xor",
 			FunctionDescriptors.BIGINT_BINARY
 	);
-	private static final MethodHandle BIGINT_SHL_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_SHL_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_shl",
 			FunctionDescriptors.BIGINT_POW
 	);
-	private static final MethodHandle BIGINT_SHR_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_SHR_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_shr",
 			FunctionDescriptors.BIGINT_POW
 	);
-	private static final MethodHandle BIGINT_FACTORIAL_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_FACTORIAL_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_factorial",
 			FunctionDescriptors.BIGINT_FROM_LONG
 	);
-	private static final MethodHandle BIGINT_NEXT_PRIME_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_NEXT_PRIME_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_next_prime",
 			FunctionDescriptors.BIGINT_UNARY
 	);
-	private static final MethodHandle BIGINT_IS_PROBABLY_PRIME_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_IS_PROBABLY_PRIME_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_is_probably_prime",
 			FunctionDescriptors.BIGINT_IS_PROBABLY_PRIME
 	);
-	private static final MethodHandle BIGINT_FROM_LONG_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_FROM_LONG_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_from_long",
 			FunctionDescriptors.BIGINT_FROM_LONG
 	);
-	private static final MethodHandle BIGINT_FROM_STRING_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_FROM_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_from_string",
 			FunctionDescriptors.BIGINT_FROM_STRING
 	);
-	private static final MethodHandle BIGINT_SET_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_SET_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_set",
 			FunctionDescriptors.BIGINT_SET
 	);
-	private static final MethodHandle BIGINT_SET_LONG_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_SET_LONG_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_set_long",
 			FunctionDescriptors.BIGINT_SET_LONG
 	);
-	private static final MethodHandle BIGINT_SET_STRING_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_SET_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_set_string",
 			FunctionDescriptors.BIGINT_SET_STRING
 	);
-	private static final MethodHandle BIGINT_ADD_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_ADD_INTO_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_add_into",
 			FunctionDescriptors.BIGINT_BINARY_INTO
 	);
-	private static final MethodHandle BIGINT_MUL_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_MUL_INTO_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_mul_into",
 			FunctionDescriptors.BIGINT_BINARY_INTO
 	);
-	private static final MethodHandle BIGINT_DIV_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_DIV_INTO_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_div_into",
 			FunctionDescriptors.BIGINT_BINARY_INTO
 	);
-	private static final MethodHandle BIGINT_SQRT_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_SQRT_INTO_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_sqrt_into",
 			FunctionDescriptors.BIGINT_UNARY_INTO
 	);
-	private static final MethodHandle BIGINT_SIGN_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_SIGN_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_sign",
 			FunctionDescriptors.BIGINT_SIGN
 	);
-	private static final MethodHandle BIGINT_TO_LONG_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_TO_LONG_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_to_long",
 			FunctionDescriptors.BIGINT_TO_LONG
 	);
-	private static final MethodHandle BIGINT_TO_DOUBLE_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_TO_DOUBLE_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_to_double",
 			FunctionDescriptors.BIGINT_TO_DOUBLE
 	);
-	private static final MethodHandle BIGINT_TO_STRING_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_TO_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_to_string",
 			FunctionDescriptors.BIGINT_TO_STRING
 	);
-	private static final MethodHandle BIGINT_FORMAT_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_FORMAT_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_format",
 			FunctionDescriptors.BIGINT_FORMAT
 	);
-	private static final MethodHandle BIGINT_FREE_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_FREE_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_free",
 			FunctionDescriptors.BIGINT_FREE
 	);
-	private static final MethodHandle BIGINT_FREE_STRING_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGINT_FREE_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_free_string",
 			FunctionDescriptors.BIGINT_FREE_STRING
 	);
-	private static final MemorySegment BIGINT_COMMA_SEPARATOR = Arena.global()
+	static final MemorySegment BIGINT_COMMA_SEPARATOR = Arena.global()
 			.allocateFrom(",", java.nio.charset.StandardCharsets.UTF_8);
 
 	public static final BigInt ZERO = createConstant(0);
@@ -181,8 +181,8 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	public static final BigInt TEN = createConstant(10);
 	public static final BigInt NEGATIVE_ONE = createConstant(-1);
 
-	private final MemorySegment nativePtr;
-	private final Arena arena;
+	final MemorySegment nativePtr;
+	final Arena arena;
 
 	MemorySegment nativePtr() {
 		return nativePtr;
@@ -689,7 +689,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		arena.close();
 	}
 
-	private static void invokeBinaryOut(MethodHandle handle, MemorySegment out, MemorySegment left, MemorySegment right) {
+	static void invokeBinaryOut(MethodHandle handle, MemorySegment out, MemorySegment left, MemorySegment right) {
 		try {
 			handle.invokeExact(out, left, right);
 		} catch (RuntimeException | Error e) {
@@ -699,7 +699,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static void invokeUnaryOut(MethodHandle handle, MemorySegment out, MemorySegment value) {
+	static void invokeUnaryOut(MethodHandle handle, MemorySegment out, MemorySegment value) {
 		try {
 			handle.invokeExact(out, value);
 		} catch (RuntimeException | Error e) {
@@ -709,7 +709,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static void invokeOrOut(MemorySegment out, MemorySegment left, MemorySegment right) {
+	static void invokeOrOut(MemorySegment out, MemorySegment left, MemorySegment right) {
 		try {
 			BIGINT_OR_HANDLE.invokeExact(out, left, right);
 		} catch (RuntimeException | Error e) {
@@ -719,7 +719,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static void invokeSet(MemorySegment out, MemorySegment value) {
+	static void invokeSet(MemorySegment out, MemorySegment value) {
 		try {
 			BIGINT_SET_HANDLE.invokeExact(out, value);
 		} catch (RuntimeException | Error e) {
@@ -729,7 +729,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static void invokeSetLong(MemorySegment out, long value) {
+	static void invokeSetLong(MemorySegment out, long value) {
 		try {
 			BIGINT_SET_LONG_HANDLE.invokeExact(out, value);
 		} catch (RuntimeException | Error e) {
@@ -739,7 +739,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static void invokeSetString(MemorySegment out, MemorySegment value, int radix) {
+	static void invokeSetString(MemorySegment out, MemorySegment value, int radix) {
 		try {
 			BIGINT_SET_STRING_HANDLE.invokeExact(out, value, radix);
 		} catch (RuntimeException | Error e) {
@@ -749,7 +749,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static void invokeOutAddressLong(MethodHandle handle, MemorySegment out, MemorySegment value, long argument) {
+	static void invokeOutAddressLong(MethodHandle handle, MemorySegment out, MemorySegment value, long argument) {
 		try {
 			handle.invokeExact(out, value, argument);
 		} catch (RuntimeException | Error e) {
@@ -759,7 +759,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static void invokeOutWithLong(MethodHandle handle, MemorySegment out, long value) {
+	static void invokeOutWithLong(MethodHandle handle, MemorySegment out, long value) {
 		try {
 			handle.invokeExact(out, value);
 		} catch (RuntimeException | Error e) {
@@ -769,7 +769,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int argument) {
+	static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int argument) {
 		try {
 			BIGINT_FROM_STRING_HANDLE.invokeExact(out, value, argument);
 		} catch (RuntimeException | Error e) {
@@ -779,7 +779,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static MemorySegment invokeStringWithRadix(MemorySegment value, int radix) {
+	static MemorySegment invokeStringWithRadix(MemorySegment value, int radix) {
 		try {
 			return (MemorySegment) BIGINT_TO_STRING_HANDLE.invokeExact(value, radix);
 		} catch (RuntimeException | Error e) {
@@ -789,7 +789,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static MemorySegment invokeFormat(MemorySegment value, int groupSize, MemorySegment separator) {
+	static MemorySegment invokeFormat(MemorySegment value, int groupSize, MemorySegment separator) {
 		try {
 			return (MemorySegment) BIGINT_FORMAT_HANDLE.invokeExact(value, groupSize, separator);
 		} catch (RuntimeException | Error e) {
@@ -799,7 +799,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static int invokeIntBinary(MemorySegment left, MemorySegment right) {
+	static int invokeIntBinary(MemorySegment left, MemorySegment right) {
 		try {
 			return (int) BIGINT_CMP_HANDLE.invokeExact(left, right);
 		} catch (RuntimeException | Error e) {
@@ -809,7 +809,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static int invokeIntUnary(MemorySegment value) {
+	static int invokeIntUnary(MemorySegment value) {
 		try {
 			return (int) BIGINT_SIGN_HANDLE.invokeExact(value);
 		} catch (RuntimeException | Error e) {
@@ -819,7 +819,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static int invokeIntAddressInt(MemorySegment value, int argument) {
+	static int invokeIntAddressInt(MemorySegment value, int argument) {
 		try {
 			return (int) BIGINT_IS_PROBABLY_PRIME_HANDLE.invokeExact(value, argument);
 		} catch (RuntimeException | Error e) {
@@ -829,7 +829,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static long invokeLongUnary(MemorySegment value) {
+	static long invokeLongUnary(MemorySegment value) {
 		try {
 			return (long) BIGINT_TO_LONG_HANDLE.invokeExact(value);
 		} catch (RuntimeException | Error e) {
@@ -839,7 +839,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static double invokeDoubleUnary(MemorySegment value) {
+	static double invokeDoubleUnary(MemorySegment value) {
 		try {
 			return (double) BIGINT_TO_DOUBLE_HANDLE.invokeExact(value);
 		} catch (RuntimeException | Error e) {
@@ -849,7 +849,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static void invokeVoidAddress(MethodHandle handle, MemorySegment value) {
+	static void invokeVoidAddress(MethodHandle handle, MemorySegment value) {
 		try {
 			handle.invokeExact(value);
 		} catch (RuntimeException | Error e) {
@@ -859,7 +859,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		}
 	}
 
-	private static BigInt adoptOwnedResult(Arena arena, MemorySegment result) {
+	static BigInt adoptOwnedResult(Arena arena, MemorySegment result) {
 		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
@@ -869,7 +869,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	 * @param value the source value
 	 * @return a new constant {@code BigInt}
 	 */
-	private static BigInt createConstant(long value) {
+	static BigInt createConstant(long value) {
 		Arena arena = Arena.global();
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
 		invokeOutWithLong(BIGINT_FROM_LONG_HANDLE, ptr, value);
@@ -881,7 +881,7 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		return new BigInt(nativePtr, arena);
 	}
 
-	private void ensureMutable() {
+	void ensureMutable() {
 		if (this == ZERO || this == ONE || this == TWO || this == TEN || this == NEGATIVE_ONE) {
 			throw new UnsupportedOperationException("BigInt constants are shared and cannot be mutated");
 		}

@@ -40,27 +40,26 @@ import java.util.stream.Stream;
  *   <li>{@code bigmath.native.classifier}: explicit classifier such as {@code linux-x86-64}</li>
  * </ul>
  */
-@Getter
 public final class BigmathFFM {
 
 	public static final Logger LOGGER = Logger.getLogger(BigmathFFM.class.getName());
 
-	private static final Os CURRENT_OS = detectOs();
-	private static final Arch CURRENT_ARCH = detectArch();
-	private static final BigmathFFM INSTANCE = new BigmathFFM();
+	static final Os CURRENT_OS = detectOs();
+	static final Arch CURRENT_ARCH = detectArch();
+	static final BigmathFFM INSTANCE = new BigmathFFM();
 
-	private final Arena arena = Arena.ofAuto();
-	private final Linker linker = Linker.nativeLinker();
-	private final SymbolLookup lookup;
-	private final Map<DowncallKey, MethodHandle> downcallCache = new ConcurrentHashMap<>();
-	private final MethodHandle cudaAvailableHandle;
-	private final MethodHandle cudaDeviceCountHandle;
-	private final MethodHandle cudaProbeCountHandle;
-	private final MethodHandle cudaMultiplyCountHandle;
-	private final MethodHandle cudaDeviceNameHandle;
-	private final MethodHandle cudaStatusMessageHandle;
+	final Arena arena = Arena.ofAuto();
+	final Linker linker = Linker.nativeLinker();
+	final SymbolLookup lookup;
+	final Map<DowncallKey, MethodHandle> downcallCache = new ConcurrentHashMap<>();
+	final MethodHandle cudaAvailableHandle;
+	final MethodHandle cudaDeviceCountHandle;
+	final MethodHandle cudaProbeCountHandle;
+	final MethodHandle cudaMultiplyCountHandle;
+	final MethodHandle cudaDeviceNameHandle;
+	final MethodHandle cudaStatusMessageHandle;
 
-	private BigmathFFM() {
+	BigmathFFM() {
 		this.lookup = loadLibrary();
 		this.cudaAvailableHandle = optionalDowncall("bigmath_cuda_available", FunctionDescriptors.CUDA_INT);
 		this.cudaDeviceCountHandle = optionalDowncall("bigmath_cuda_device_count", FunctionDescriptors.CUDA_INT);
@@ -70,17 +69,17 @@ public final class BigmathFFM {
 		this.cudaStatusMessageHandle = optionalDowncall("bigmath_cuda_status_message", FunctionDescriptors.CUDA_STRING);
 	}
 
-	private record DowncallKey(String name, FunctionDescriptor descriptor) {}
+	record DowncallKey(String name, FunctionDescriptor descriptor) {}
 
-	private enum Os {
+	enum Os {
 		LINUX, MACOS, WINDOWS, ANDROID
 	}
 
-	private enum Arch {
+	enum Arch {
 		X86_64, AARCH64, UNKNOWN
 	}
 
-	private static Os detectOs() {
+	static Os detectOs() {
 		String name = System.getProperty("os.name", "").toLowerCase();
 		if (name.contains("win")) return Os.WINDOWS;
 		if (name.contains("mac") || name.contains("darwin")) return Os.MACOS;
@@ -90,7 +89,7 @@ public final class BigmathFFM {
 		return Os.LINUX;
 	}
 
-	private static Arch detectArch() {
+	static Arch detectArch() {
 		String arch = System.getProperty("os.arch", "").toLowerCase();
 		if (arch.contains("amd64") || arch.contains("x86_64") || arch.contains("x86-64")) return Arch.X86_64;
 		if (arch.contains("aarch64") || arch.contains("arm64") || arch.contains("armv8")) return Arch.AARCH64;
@@ -115,7 +114,7 @@ public final class BigmathFFM {
 	 *
 	 * @return the native classifier for the current process
 	 */
-	private static String platformClassifier() {
+	static String platformClassifier() {
 		StringBuilder sb = new StringBuilder();
 		switch (CURRENT_OS) {
 			case ANDROID -> sb.append("android");
@@ -138,7 +137,7 @@ public final class BigmathFFM {
 		return sb.toString();
 	}
 
-	private static String platformLibName() {
+	static String platformLibName() {
 		return switch (CURRENT_OS) {
 			case WINDOWS -> "bigmath_ffm.dll";
 			case MACOS -> "libbigmath_ffm.dylib";
@@ -146,7 +145,7 @@ public final class BigmathFFM {
 		};
 	}
 
-	private static void preloadWindowsDependencies(Path nativeDir, String libName) {
+	static void preloadWindowsDependencies(Path nativeDir, String libName) {
 		if (CURRENT_OS != Os.WINDOWS || nativeDir == null || !Files.isDirectory(nativeDir)) {
 			return;
 		}
@@ -171,7 +170,7 @@ public final class BigmathFFM {
 		}
 	}
 
-	private static int windowsDependencyPriority(Path path) {
+	static int windowsDependencyPriority(Path path) {
 		String fileName = path.getFileName().toString().toLowerCase(Locale.ROOT);
 		if (fileName.equals("libwinpthread-1.dll")) return 0;
 		if (fileName.startsWith("libgcc")) return 1;
@@ -192,7 +191,7 @@ public final class BigmathFFM {
 	 * @return a {@link SymbolLookup} over the loaded library
 	 * @throws UnsatisfiedLinkError if the library cannot be found or loaded
 	 */
-	private static SymbolLookup loadLibrary() {
+	static SymbolLookup loadLibrary() {
 		String classifier = System.getProperty("bigmath.native.classifier");
 		if (classifier == null) {
 			classifier = platformClassifier();
@@ -325,13 +324,13 @@ public final class BigmathFFM {
 		return getInstance().invokeCudaString(getInstance().cudaStatusMessageHandle);
 	}
 
-	private MethodHandle optionalDowncall(String name, FunctionDescriptor descriptor) {
+	MethodHandle optionalDowncall(String name, FunctionDescriptor descriptor) {
 		return lookup.find(name)
 			.map(symbol -> linker.downcallHandle(symbol, descriptor))
 			.orElse(null);
 	}
 
-	private int invokeCudaInt(MethodHandle handle) {
+	int invokeCudaInt(MethodHandle handle) {
 		try {
 			return (int) handle.invokeExact();
 		} catch (RuntimeException | Error e) {
@@ -341,7 +340,7 @@ public final class BigmathFFM {
 		}
 	}
 
-	private String invokeCudaString(MethodHandle handle) {
+	String invokeCudaString(MethodHandle handle) {
 		try {
 			MemorySegment value = (MemorySegment) handle.invokeExact();
 			if (value.equals(MemorySegment.NULL)) {

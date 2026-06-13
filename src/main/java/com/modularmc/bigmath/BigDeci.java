@@ -22,140 +22,140 @@ import java.lang.invoke.MethodHandle;
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class BigDeci extends Number implements AutoCloseable, Comparable<BigDeci> {
 
-	private static final int CONSTANT_PRECISION = 128;
-	private static final MethodHandle BIGDECIMAL_ADD_HANDLE = BigmathFFM.getInstance().downcall(
+	static final int CONSTANT_PRECISION = 128;
+	static final MethodHandle BIGDECIMAL_ADD_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_add",
 			FunctionDescriptors.BIGDECIMAL_BINARY
 	);
-	private static final MethodHandle BIGDECIMAL_CMP_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_CMP_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_cmp",
 			FunctionDescriptors.BIGDECIMAL_CMP
 	);
-	private static final MethodHandle BIGDECIMAL_DIV_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_DIV_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_div",
 			FunctionDescriptors.BIGDECIMAL_BINARY
 	);
-	private static final MethodHandle BIGDECIMAL_SUB_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_SUB_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_sub",
 			FunctionDescriptors.BIGDECIMAL_BINARY
 	);
-	private static final MethodHandle BIGDECIMAL_MUL_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_MUL_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_mul",
 			FunctionDescriptors.BIGDECIMAL_BINARY
 	);
-	private static final MethodHandle BIGDECIMAL_SQRT_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_SQRT_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_sqrt",
 			FunctionDescriptors.BIGDECIMAL_UNARY
 	);
-	private static final MethodHandle BIGDECIMAL_NEG_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_NEG_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_neg",
 			FunctionDescriptors.BIGDECIMAL_UNARY
 	);
-	private static final MethodHandle BIGDECIMAL_ABS_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_ABS_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_abs",
 			FunctionDescriptors.BIGDECIMAL_UNARY
 	);
-	private static final MethodHandle BIGDECIMAL_POW_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_POW_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_pow",
 			FunctionDescriptors.BIGDECIMAL_BINARY
 	);
-	private static final MethodHandle BIGDECIMAL_POW_LONG_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_POW_LONG_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_pow_long",
 			FunctionDescriptors.BIGDECIMAL_POW_LONG
 	);
-	private static final MethodHandle BIGDECIMAL_LOG_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_LOG_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_log",
 			FunctionDescriptors.BIGDECIMAL_UNARY
 	);
-	private static final MethodHandle BIGDECIMAL_EXP_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_EXP_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_exp",
 			FunctionDescriptors.BIGDECIMAL_UNARY
 	);
-	private static final MethodHandle BIGDECIMAL_SIN_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_SIN_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_sin",
 			FunctionDescriptors.BIGDECIMAL_UNARY
 	);
-	private static final MethodHandle BIGDECIMAL_COS_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_COS_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_cos",
 			FunctionDescriptors.BIGDECIMAL_UNARY
 	);
-	private static final MethodHandle BIGDECIMAL_TAN_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_TAN_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_tan",
 			FunctionDescriptors.BIGDECIMAL_UNARY
 	);
-	private static final MethodHandle BIGDECIMAL_CEIL_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_CEIL_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_ceil",
 			FunctionDescriptors.BIGDECIMAL_UNARY
 	);
-	private static final MethodHandle BIGDECIMAL_FLOOR_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_FLOOR_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_floor",
 			FunctionDescriptors.BIGDECIMAL_UNARY
 	);
-	private static final MethodHandle BIGDECIMAL_ROUND_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_ROUND_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_round",
 			FunctionDescriptors.BIGDECIMAL_UNARY
 	);
-	private static final MethodHandle BIGDECIMAL_FROM_DOUBLE_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_FROM_DOUBLE_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_from_double",
 			FunctionDescriptors.BIGDECIMAL_FROM_DOUBLE
 	);
-	private static final MethodHandle BIGDECIMAL_FROM_STRING_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_FROM_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_from_string",
 			FunctionDescriptors.BIGDECIMAL_FROM_STRING
 	);
-	private static final MethodHandle BIGDECIMAL_FROM_BIGINT_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_FROM_BIGINT_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_from_bigint",
 			FunctionDescriptors.BIGDECIMAL_FROM_BIGINT
 	);
-	private static final MethodHandle BIGDECIMAL_SET_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_SET_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_set",
 			FunctionDescriptors.BIGDECIMAL_SET
 	);
-	private static final MethodHandle BIGDECIMAL_SET_DOUBLE_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_SET_DOUBLE_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_set_double",
 			FunctionDescriptors.BIGDECIMAL_SET_DOUBLE
 	);
-	private static final MethodHandle BIGDECIMAL_SET_STRING_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_SET_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_set_string",
 			FunctionDescriptors.BIGDECIMAL_SET_STRING
 	);
-	private static final MethodHandle BIGDECIMAL_ADD_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_ADD_INTO_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_add_into",
 			FunctionDescriptors.BIGDECIMAL_BINARY_INTO
 	);
-	private static final MethodHandle BIGDECIMAL_MUL_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_MUL_INTO_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_mul_into",
 			FunctionDescriptors.BIGDECIMAL_BINARY_INTO
 	);
-	private static final MethodHandle BIGDECIMAL_DIV_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_DIV_INTO_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_div_into",
 			FunctionDescriptors.BIGDECIMAL_BINARY_INTO
 	);
-	private static final MethodHandle BIGDECIMAL_SQRT_INTO_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_SQRT_INTO_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_sqrt_into",
 			FunctionDescriptors.BIGDECIMAL_UNARY_INTO
 	);
-	private static final MethodHandle BIGDECIMAL_TO_DOUBLE_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_TO_DOUBLE_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_to_double",
 			FunctionDescriptors.BIGDECIMAL_TO_DOUBLE
 	);
-	private static final MethodHandle BIGDECIMAL_TO_STRING_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_TO_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_to_string",
 			FunctionDescriptors.BIGDECIMAL_TO_STRING
 	);
-	private static final MethodHandle BIGDECIMAL_FORMAT_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_FORMAT_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_format",
 			FunctionDescriptors.BIGDECIMAL_FORMAT
 	);
-	private static final MethodHandle BIGDECIMAL_FREE_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_FREE_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_free",
 			FunctionDescriptors.BIGDECIMAL_FREE
 	);
-	private static final MethodHandle BIGDECIMAL_FREE_STRING_HANDLE = BigmathFFM.getInstance().downcall(
+	static final MethodHandle BIGDECIMAL_FREE_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_free_string",
 			FunctionDescriptors.BIGDECIMAL_FREE_STRING
 	);
-	private static final MemorySegment BIGDECIMAL_COMMA_SEPARATOR = Arena.global()
+	static final MemorySegment BIGDECIMAL_COMMA_SEPARATOR = Arena.global()
 			.allocateFrom(",", java.nio.charset.StandardCharsets.UTF_8);
 
 	public static final BigDeci ZERO = createConstant(0.0);
@@ -164,8 +164,8 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	public static final BigDeci TEN = createConstant(10.0);
 	public static final BigDeci NEGATIVE_ONE = createConstant(-1.0);
 
-	private final MemorySegment nativePtr;
-	private final Arena arena;
+	final MemorySegment nativePtr;
+	final Arena arena;
 
 	MemorySegment nativePtr() {
 		return nativePtr;
@@ -614,14 +614,14 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	 * @param value the source value
 	 * @return a new constant {@code BigDeci}
 	 */
-	private static BigDeci createConstant(double value) {
+	static BigDeci createConstant(double value) {
 		Arena arena = Arena.global();
 		MemorySegment ptr = arena.allocate(ValueLayout.ADDRESS);
 		invokeOutDoubleInt(ptr, value, BigDeci.CONSTANT_PRECISION);
 		return new BigDeci(ptr.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
 	}
 
-	private static void invokeBinaryOut(MethodHandle handle, MemorySegment out, MemorySegment left, MemorySegment right) {
+	static void invokeBinaryOut(MethodHandle handle, MemorySegment out, MemorySegment left, MemorySegment right) {
 		try {
 			handle.invokeExact(out, left, right);
 		} catch (RuntimeException | Error e) {
@@ -631,7 +631,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static void invokeUnaryOut(MethodHandle handle, MemorySegment out, MemorySegment value) {
+	static void invokeUnaryOut(MethodHandle handle, MemorySegment out, MemorySegment value) {
 		try {
 			handle.invokeExact(out, value);
 		} catch (RuntimeException | Error e) {
@@ -641,7 +641,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static MemorySegment invokeString(MemorySegment value) {
+	static MemorySegment invokeString(MemorySegment value) {
 		try {
 			return (MemorySegment) BIGDECIMAL_TO_STRING_HANDLE.invokeExact(value);
 		} catch (RuntimeException | Error e) {
@@ -651,7 +651,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static MemorySegment invokeFormat(MemorySegment value, int scale, int groupSize, MemorySegment separator) {
+	static MemorySegment invokeFormat(MemorySegment value, int scale, int groupSize, MemorySegment separator) {
 		try {
 			return (MemorySegment) BIGDECIMAL_FORMAT_HANDLE.invokeExact(value, scale, groupSize, separator);
 		} catch (RuntimeException | Error e) {
@@ -661,7 +661,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static int invokeIntBinary(MemorySegment left, MemorySegment right) {
+	static int invokeIntBinary(MemorySegment left, MemorySegment right) {
 		try {
 			return (int) BIGDECIMAL_CMP_HANDLE.invokeExact(left, right);
 		} catch (RuntimeException | Error e) {
@@ -671,7 +671,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static void invokeOutDoubleInt(MemorySegment out, double value, int precision) {
+	static void invokeOutDoubleInt(MemorySegment out, double value, int precision) {
 		try {
 			BIGDECIMAL_FROM_DOUBLE_HANDLE.invokeExact(out, value, precision);
 		} catch (RuntimeException | Error e) {
@@ -681,7 +681,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int precision) {
+	static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int precision) {
 		try {
 			BIGDECIMAL_FROM_STRING_HANDLE.invokeExact(out, value, precision);
 		} catch (RuntimeException | Error e) {
@@ -691,7 +691,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static void invokeOutAddressInt(MethodHandle handle, MemorySegment out, MemorySegment value, int precision) {
+	static void invokeOutAddressInt(MethodHandle handle, MemorySegment out, MemorySegment value, int precision) {
 		try {
 			handle.invokeExact(out, value, precision);
 		} catch (RuntimeException | Error e) {
@@ -701,7 +701,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static double invokeDoubleUnary(MemorySegment value) {
+	static double invokeDoubleUnary(MemorySegment value) {
 		try {
 			return (double) BIGDECIMAL_TO_DOUBLE_HANDLE.invokeExact(value);
 		} catch (RuntimeException | Error e) {
@@ -711,7 +711,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static void invokeOutAddressLong(MethodHandle handle, MemorySegment out, MemorySegment value, long argument) {
+	static void invokeOutAddressLong(MethodHandle handle, MemorySegment out, MemorySegment value, long argument) {
 		try {
 			handle.invokeExact(out, value, argument);
 		} catch (RuntimeException | Error e) {
@@ -721,7 +721,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static void invokeVoidAddress(MethodHandle handle, MemorySegment value) {
+	static void invokeVoidAddress(MethodHandle handle, MemorySegment value) {
 		try {
 			handle.invokeExact(value);
 		} catch (RuntimeException | Error e) {
@@ -731,7 +731,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static void invokeSet(MemorySegment out, MemorySegment value) {
+	static void invokeSet(MemorySegment out, MemorySegment value) {
 		try {
 			BIGDECIMAL_SET_HANDLE.invokeExact(out, value);
 		} catch (RuntimeException | Error e) {
@@ -741,7 +741,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static void invokeSetDouble(MemorySegment out, double value) {
+	static void invokeSetDouble(MemorySegment out, double value) {
 		try {
 			BIGDECIMAL_SET_DOUBLE_HANDLE.invokeExact(out, value);
 		} catch (RuntimeException | Error e) {
@@ -751,7 +751,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private static void invokeSetString(MemorySegment out, MemorySegment value, int precision) {
+	static void invokeSetString(MemorySegment out, MemorySegment value, int precision) {
 		try {
 			BIGDECIMAL_SET_STRING_HANDLE.invokeExact(out, value, precision);
 		} catch (RuntimeException | Error e) {
@@ -761,7 +761,7 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		}
 	}
 
-	private void ensureMutable() {
+	void ensureMutable() {
 		if (this == ZERO || this == ONE || this == TWO || this == TEN || this == NEGATIVE_ONE) {
 			throw new UnsupportedOperationException("BigDeci constants are shared and cannot be mutated");
 		}
