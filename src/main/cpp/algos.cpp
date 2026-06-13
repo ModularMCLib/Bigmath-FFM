@@ -3,8 +3,13 @@
 #include "cuda_runtime_state.h"
 #include "ntt.h"
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
+
+#ifdef BIGMATH_HAS_CUDA
+#include "cuda_ntt.h"
+#endif
 
 namespace bigmath {
 
@@ -731,6 +736,29 @@ static void write_convolution_to_mpz(mpz_ptr out, std::vector<uint64_t> &digits,
 	write_digits_to_mpz(out, digits, bits_per_digit);
 }
 
+#ifdef BIGMATH_HAS_CUDA
+// Opt-in (BIGMATH_CUDA_NTT=1) switch to the integer-NTT GPU path instead of the
+// default cuFFT (FP64) path. The integer path keeps 16-bit digits at every size
+// because CRT reconstruction is exact, avoiding the FP64 2^50 coefficient cap
+// that forces the cuFFT path onto smaller digits (and more transform points) for
+// very large operands.
+static bool cuda_ntt_enabled() {
+	static const int enabled = [] {
+		const char *value = std::getenv("BIGMATH_CUDA_NTT");
+		if (value == nullptr) {
+			return 0;
+		}
+		switch (value[0]) {
+			case '1': case 't': case 'T': case 'y': case 'Y': case 'o': case 'O':
+				return 1;
+			default:
+				return 0;
+		}
+	}();
+	return enabled != 0;
+}
+#endif
+
 static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 #ifndef BIGMATH_HAS_CUDA
 	(void)out;
@@ -750,6 +778,21 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 	}
 
 	thread_local CudaMultiplyHostWorkspace workspace;
+
+#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
+	if (cuda_ntt_enabled()) {
+		const std::vector<uint16_t> &ad = workspace.ad.load(abs_a, bits_a, 16);
+		const std::vector<uint16_t> &bd = abs_a == abs_b ? ad : workspace.bd.load(abs_b, bits_b, 16);
+		if (cuda::convolve_ntt_u16_to_limbs(ad, bd, workspace.packed_limbs, 16, GMP_NUMB_BITS)) {
+			write_u64_limbs_to_mpz(out, workspace.packed_limbs);
+			product_cache().store(abs_a, abs_b, workspace.packed_limbs);
+			cuda::record_multiply();
+			return true;
+		}
+		// Fall through to the cuFFT path on any failure.
+	}
+#endif
+
 	for (unsigned bits_per_digit : CUDA_DIGIT_BITS) {
 		const std::vector<uint16_t> &ad = workspace.ad.load(abs_a, bits_a, bits_per_digit);
 		const std::vector<uint16_t> &bd = abs_a == abs_b ? ad : workspace.bd.load(abs_b, bits_b, bits_per_digit);
