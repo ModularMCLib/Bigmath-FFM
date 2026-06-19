@@ -243,14 +243,24 @@ bool inverse_ntt(u64 *a, const u64 *wi, int n, int logn, u64 p, u64 mu) {
 bool convolve_one_prime(NttWorkspace &ws, const std::vector<uint16_t> &a,
 		const std::vector<uint16_t> &b, int n, int logn, u64 p, u64 mu,
 		const u64 *wf, const u64 *wi) {
-	if (!load_digits(ws, ws.fa, a, n) || !load_digits(ws, ws.fb, b, n)) {
+	// Squaring (a is b, e.g. the heart of modpow): the transform of b equals the
+	// transform of a, so skip the redundant load + forward NTT and square fa in
+	// place. Saves one of the two forward transforms per prime.
+	const bool squaring = (&a == &b);
+	if (!load_digits(ws, ws.fa, a, n)) {
 		return false;
 	}
-	if (!forward_ntt(ws.fa, wf, n, logn, p, mu) ||
-			!forward_ntt(ws.fb, wf, n, logn, p, mu)) {
+	if (!squaring && !load_digits(ws, ws.fb, b, n)) {
 		return false;
 	}
-	k_pointwise<<<(n + BLOCK - 1) / BLOCK, BLOCK>>>(ws.fa, ws.fb, n, p, mu);
+	if (!forward_ntt(ws.fa, wf, n, logn, p, mu)) {
+		return false;
+	}
+	if (!squaring && !forward_ntt(ws.fb, wf, n, logn, p, mu)) {
+		return false;
+	}
+	const u64 *rhs = squaring ? ws.fa : ws.fb;
+	k_pointwise<<<(n + BLOCK - 1) / BLOCK, BLOCK>>>(ws.fa, rhs, n, p, mu);
 	if (cudaGetLastError() != cudaSuccess) {
 		return false;
 	}
