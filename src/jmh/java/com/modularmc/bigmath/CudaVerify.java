@@ -31,6 +31,8 @@ public final class CudaVerify {
 			.downcall("bigint_cmp", FunctionDescriptors.BIGINT_CMP);
 	static final MethodHandle FREE = BigmathFFM.getInstance()
 			.downcall("bigint_free", FunctionDescriptors.BIGINT_FREE);
+	static final MethodHandle FROM_LONG = BigmathFFM.getInstance()
+			.downcall("bigint_from_long", FunctionDescriptors.BIGINT_FROM_LONG);
 
 	public static void main(String[] args) throws Throwable {
 		System.err.println("CUDA: " + BigmathFFM.cudaAvailable() + " / " + BigmathFFM.cudaDeviceName()
@@ -53,8 +55,65 @@ public final class CudaVerify {
 		}
 		System.out.printf("%nRESULT: %s  (%d cases checked)%n",
 				failures == 0 ? "ALL PASS" : (failures + " FAILED"), sizes.length * 2);
-		if (failures != 0) {
+
+		// Factorial: product_tree now routes its large top nodes through the GPU
+		// (accelerated_mul). Verify against an independent CPU product tree built
+		// with bigint_mul_gmp. 40000! is ~166k digits so the top two levels exceed
+		// the CUDA threshold.
+		int facFail = 0;
+		for (long fn : new long[]{40000L, 60000L}) {
+			facFail += checkFactorial(fn) ? 0 : 1;
+		}
+		System.out.printf("RESULT(factorial): %s%n",
+				facFail == 0 ? "ALL PASS" : (facFail + " FAILED"));
+
+		if (failures + facFail != 0) {
 			System.exit(1);
+		}
+	}
+
+	/** lib factorial (GPU product tree) vs an independent CPU product tree (bigint_mul_gmp). */
+	static boolean checkFactorial(long n) throws Throwable {
+		MemorySegment ref = null;
+		try (BigInt fac = BigInt.factorial(n)) {
+			ref = treeRefGmp(2, n);
+			boolean ok = (int) CMP.invokeExact(fac.nativePtr(), ref) == 0;
+			System.out.printf("%-9d %-6s %8s   %s%n", n, "fac", "-", ok ? "PASS" : "*** MISMATCH ***");
+			return ok;
+		} finally {
+			if (ref != null) {
+				FREE.invokeExact(ref);
+			}
+		}
+	}
+
+	/** Balanced product of [lo..hi] using only the pure-GMP multiply; caller frees the result. */
+	static MemorySegment treeRefGmp(long lo, long hi) throws Throwable {
+		if (lo == hi) {
+			return fromLongPtr(lo);
+		}
+		long mid = lo + (hi - lo) / 2;
+		MemorySegment left = treeRefGmp(lo, mid);
+		MemorySegment right = treeRefGmp(mid + 1, hi);
+		MemorySegment prod = mulGmpPtr(left, right);
+		FREE.invokeExact(left);
+		FREE.invokeExact(right);
+		return prod;
+	}
+
+	static MemorySegment fromLongPtr(long v) throws Throwable {
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+			FROM_LONG.invokeExact(out, v);
+			return out.get(ValueLayout.ADDRESS, 0);
+		}
+	}
+
+	static MemorySegment mulGmpPtr(MemorySegment l, MemorySegment r) throws Throwable {
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+			MUL_GMP.invokeExact(out, l, r);
+			return out.get(ValueLayout.ADDRESS, 0);
 		}
 	}
 

@@ -222,7 +222,11 @@ static void product_tree(mpz_ptr out, uint64_t a, uint64_t b) {
 	mpz_init(right);
 	product_tree(left, a, mid);
 	product_tree(right, mid + 1, b);
-	mpz_mul(out, left, right);
+	// The high tree nodes are huge balanced products; accelerated_mul routes
+	// those to the GPU above the CUDA threshold and self-falls-back to mpz_mul
+	// for the small lower nodes, so a large factorial no longer multiplies its
+	// top levels entirely on the CPU.
+	accelerated_mul(out, left, right);
 	mpz_clear(left);
 	mpz_clear(right);
 }
