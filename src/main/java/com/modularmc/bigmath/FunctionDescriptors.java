@@ -53,6 +53,11 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
 	);
 
+	/** {@code void bigint_op(void** out, void* a, void* b, void* c)} — powm */
+	static final FunctionDescriptor BIGINT_TERNARY = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+
 	/** {@code void bigint_op_into(void* out, void* a, void* b)} — add/mul/div */
 	static final FunctionDescriptor BIGINT_BINARY_INTO = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS

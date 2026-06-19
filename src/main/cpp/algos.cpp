@@ -205,6 +205,83 @@ void fast_pow(mpz_ptr out, mpz_ptr base, uint64_t exp) {
 	mpz_clear(b);
 }
 
+// ---- Modular Exponentiation (Barrett reduction, GPU multiplies) ----
+// Barrett reducer for a fixed modulus m: maps x in [0, m^2) to x mod m without
+// division, using two big multiplies (x*mu and q*m) that route through
+// accelerated_mul (GPU above the CUDA threshold). mu = floor(2^(2k)/m) with
+// k = bit length of m, precomputed once per modpow call.
+namespace {
+struct Barrett {
+	mpz_t m, mu, q, qm;
+	mp_bitcnt_t k2 = 0;
+
+	void init(mpz_ptr mod) {
+		mpz_init_set(m, mod);
+		const mp_bitcnt_t k = mpz_sizeinbase(m, 2);
+		k2 = 2 * k;
+		mpz_init2(mu, k2 + 2);
+		mpz_init(q);
+		mpz_init(qm);
+		mpz_setbit(mu, k2);          // mu = 2^(2k)
+		mpz_tdiv_q(mu, mu, m);       // mu = floor(2^(2k) / m)
+	}
+
+	void clear() {
+		mpz_clear(m);
+		mpz_clear(mu);
+		mpz_clear(q);
+		mpz_clear(qm);
+	}
+
+	// r = x mod m for 0 <= x < m^2. q = floor(x*mu / 2^(2k)) underestimates the
+	// quotient by a small bounded amount, so a few conditional subtractions fix r.
+	void reduce(mpz_ptr r, mpz_ptr x) {
+		accelerated_mul(q, x, mu);
+		mpz_tdiv_q_2exp(q, q, k2);    // q = (x*mu) >> 2k
+		accelerated_mul(qm, q, m);
+		mpz_sub(r, x, qm);           // r = x - q*m  (>= 0 since q <= x/m)
+		while (mpz_cmp(r, m) >= 0) {
+			mpz_sub(r, r, m);
+		}
+	}
+};
+}
+
+void modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
+	// GMP handles small/edge cases (and is faster below the GPU threshold).
+	static constexpr mp_bitcnt_t MODPOW_BIT_THRESHOLD = 262144;  // ~79k decimal digits
+	if (mpz_sgn(mod) <= 0 || mpz_sgn(exp) < 0 || mpz_cmp_ui(mod, 1) == 0 ||
+			mpz_sizeinbase(mod, 2) < MODPOW_BIT_THRESHOLD) {
+		mpz_powm(out, base, exp, mod);
+		return;
+	}
+
+	Barrett br;
+	br.init(mod);
+	mpz_t b, acc, t;
+	mpz_init(b);
+	mpz_init(acc);
+	mpz_init(t);
+	mpz_mod(b, base, mod);            // b = base mod m
+	mpz_set_ui(acc, 1);
+	const mp_bitcnt_t bits = mpz_sizeinbase(exp, 2);
+	for (mp_bitcnt_t i = 0; i < bits; i++) {
+		if (mpz_tstbit(exp, i)) {
+			accelerated_mul(t, acc, b);   // acc *= b (mod m)
+			br.reduce(acc, t);
+		}
+		if (i + 1 < bits) {
+			accelerated_mul(t, b, b);     // b = b^2 (mod m)
+			br.reduce(b, t);
+		}
+	}
+	mpz_set(out, acc);
+	mpz_clear(b);
+	mpz_clear(acc);
+	mpz_clear(t);
+	br.clear();
+}
+
 // ---- Product Tree Factorial ----
 static void product_tree(mpz_ptr out, uint64_t a, uint64_t b) {
 	if (a == b) {
@@ -774,6 +851,7 @@ void product_tree_factorial(mpz_ptr, uint64_t) {}
 void fft_multiply(mpz_ptr, mpz_ptr, mpz_ptr) {}
 void fft_multiply_into(mpz_ptr, mpz_ptr, mpz_ptr) {}
 void accelerated_mul(mpz_ptr, mpz_ptr, mpz_ptr) {}
+void modpow(mpz_ptr, mpz_ptr, mpz_ptr, mpz_ptr) {}
 #endif // BIGMATH_NO_GMP
 
 }

@@ -254,6 +254,21 @@ void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
 	bigmath::fast_pow(*out, a, exp);
 }
 
+void bigint_powm(mpz_ptr *out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
+	mpz_init(*out);
+	bigmath::modpow(*out, base, exp, mod);
+}
+
+// Pure-GMP reference (mpz_powm); correctness oracle for the Barrett/GPU modpow.
+void bigint_powm_gmp(mpz_ptr *out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
+	mpz_init(*out);
+	mpz_powm(*out, base, exp, mod);
+}
+
 void bigint_neg(mpz_ptr *out, mpz_ptr a) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
@@ -473,6 +488,8 @@ void bigint_mul_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
 void bigint_div_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
 void bigint_sqrt_into(mpz_ptr, mpz_ptr) { }
 void bigint_pow(mpz_ptr *out, mpz_ptr, uint64_t) { *out = nullptr; }
+void bigint_powm(mpz_ptr *out, mpz_ptr, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_powm_gmp(mpz_ptr *out, mpz_ptr, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_neg(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
 void bigint_abs(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
 int  bigint_cmp(mpz_ptr, mpz_ptr) { return 0; }

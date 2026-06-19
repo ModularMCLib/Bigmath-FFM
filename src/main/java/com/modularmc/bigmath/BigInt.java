@@ -52,6 +52,10 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 			"bigint_pow",
 			FunctionDescriptors.BIGINT_POW
 	);
+	static final MethodHandle BIGINT_POWM_HANDLE = BigmathFFM.getInstance().downcall(
+			"bigint_powm",
+			FunctionDescriptors.BIGINT_TERNARY
+	);
 	static final MethodHandle BIGINT_SUB_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_sub",
 			FunctionDescriptors.BIGINT_BINARY
@@ -368,6 +372,22 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	}
 
 	/**
+	 * Returns {@code this^exp mod modulus}. For very large moduli the modular
+	 * multiplications are GPU-accelerated (Barrett reduction); otherwise this
+	 * matches GMP's {@code mpz_powm}.
+	 *
+	 * @param exp the exponent (must be non-negative)
+	 * @param modulus the modulus (must be positive)
+	 * @return {@code this^exp mod modulus}
+	 */
+	public BigInt modPow(BigInt exp, BigInt modulus) {
+		Arena arena = Arena.ofConfined();
+		MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
+		invokeTernaryOut(BIGINT_POWM_HANDLE, result, nativePtr, exp.nativePtr, modulus.nativePtr);
+		return new BigInt(result.get(ValueLayout.ADDRESS, 0).reinterpret(arena, null), arena);
+	}
+
+	/**
 	 * Returns {@code this / other} (integer division, truncating toward zero).
 	 *
 	 * @param other the divisor
@@ -676,6 +696,17 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	static void invokeBinaryOut(MethodHandle handle, MemorySegment out, MemorySegment left, MemorySegment right) {
 		try {
 			handle.invokeExact(out, left, right);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	static void invokeTernaryOut(MethodHandle handle, MemorySegment out,
+			MemorySegment a, MemorySegment b, MemorySegment c) {
+		try {
+			handle.invokeExact(out, a, b, c);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {

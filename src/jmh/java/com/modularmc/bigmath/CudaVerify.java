@@ -38,6 +38,8 @@ public final class CudaVerify {
 			.downcall("bigdecimal_cmp", FunctionDescriptors.BIGINT_CMP);
 	static final MethodHandle DEC_FREE = BigmathFFM.getInstance()
 			.downcall("bigdecimal_free", FunctionDescriptors.BIGINT_FREE);
+	static final MethodHandle POWM_GMP = BigmathFFM.getInstance()
+			.downcall("bigint_powm_gmp", FunctionDescriptors.BIGINT_TERNARY);
 
 	public static void main(String[] args) throws Throwable {
 		System.err.println("CUDA: " + BigmathFFM.cudaAvailable() + " / " + BigmathFFM.cudaDeviceName()
@@ -71,8 +73,48 @@ public final class CudaVerify {
 		System.out.printf("RESULT(bigdeci): %s%n",
 				decFail == 0 ? "ALL PASS" : (decFail + " FAILED"));
 
-		if (failures + decFail != 0) {
+		// Modular exponentiation: modPow uses Barrett reduction with GPU multiplies
+		// above ~262144-bit moduli. Verify bit-exactly vs GMP's mpz_powm.
+		int powmFail = 0;
+		for (int modDigits : new int[]{80000, 90000}) {
+			powmFail += checkModPow(modDigits, rnd) ? 0 : 1;
+		}
+		System.out.printf("RESULT(modpow): %s%n",
+				powmFail == 0 ? "ALL PASS" : (powmFail + " FAILED"));
+
+		if (failures + decFail + powmFail != 0) {
 			System.exit(1);
+		}
+	}
+
+	/** GPU Barrett modPow vs GMP mpz_powm reference (large modulus). */
+	static boolean checkModPow(int modDigits, SplittableRandom rnd) throws Throwable {
+		BigInt base = BigInt.fromString(randDigits(modDigits, rnd), 10);
+		BigInt mod = BigInt.fromString(randDigits(modDigits, rnd), 10);
+		BigInt exp = BigInt.fromLong(rnd.nextLong(1L << 40, 1L << 46));
+		long before = BigmathFFM.cudaMultiplyCount();
+		MemorySegment ref = null;
+		try (BigInt r = base.modPow(exp, mod)) {
+			long ops = BigmathFFM.cudaMultiplyCount() - before;
+			ref = powmGmp(base, exp, mod);
+			boolean ok = (int) CMP.invokeExact(r.nativePtr(), ref) == 0;
+			System.out.printf("%-9d %-6s %8d   %s%n", modDigits, "powm", ops, ok ? "PASS" : "*** MISMATCH ***");
+			return ok;
+		} finally {
+			if (ref != null) {
+				FREE.invokeExact(ref);
+			}
+			exp.close();
+			mod.close();
+			base.close();
+		}
+	}
+
+	static MemorySegment powmGmp(BigInt base, BigInt exp, BigInt mod) throws Throwable {
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+			POWM_GMP.invokeExact(out, base.nativePtr(), exp.nativePtr(), mod.nativePtr());
+			return out.get(ValueLayout.ADDRESS, 0);
 		}
 	}
 
