@@ -92,6 +92,39 @@ __global__ void k_butterfly(u64 *a, const u64 *twiddles, int n, int len, u64 p, 
 	a[i + half] = d;
 }
 
+// Fused shared-memory stages. Each block owns one `tile`-element span of the
+// (already bit-reversed) array and runs every Cooley-Tukey stage with len <=
+// tile entirely in shared memory, so those ~log2(tile) stages cost a single
+// global read + write instead of one full global pass each. Twiddle indices
+// (j * n/len) are identical to the global k_butterfly because the span is
+// tile-aligned and tile is a multiple of len, so the same global twiddle table
+// is reused. Launch with blockDim = tile/2 threads and tile*sizeof(u64) smem.
+__global__ void k_ntt_shared(u64 *a, const u64 *twiddles, int n, int tile, u64 p, u64 mu) {
+	extern __shared__ u64 s[];
+	const int base = blockIdx.x * tile;
+	const int tid = threadIdx.x;          // 0 .. tile/2 - 1
+	const int halfTile = tile >> 1;
+	s[tid] = a[base + tid];
+	s[tid + halfTile] = a[base + tid + halfTile];
+	__syncthreads();
+	for (int len = 2; len <= tile; len <<= 1) {
+		const int half = len >> 1;
+		const int step = n / len;
+		const int block = tid / half;
+		const int j = tid - block * half;
+		const int i = block * len + j;
+		const u64 u = s[i];
+		const u64 v = dmul(s[i + half], twiddles[j * step], p, mu);
+		u64 sp = u + v;
+		if (sp >= p) sp -= p;
+		s[i] = sp;
+		s[i + half] = u >= v ? u - v : u + p - v;
+		__syncthreads();
+	}
+	a[base + tid] = s[tid];
+	a[base + tid + halfTile] = s[tid + halfTile];
+}
+
 __global__ void k_pointwise(u64 *fa, const u64 *fb, int n, u64 p, u64 mu) {
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i >= n) return;
@@ -217,22 +250,31 @@ bool load_digits(NttWorkspace &ws, u64 *dst, const std::vector<uint16_t> &digits
 }
 
 constexpr int BLOCK = 256;
+// Largest fused shared-memory tile. tile/2 threads/block (<= 1024) and
+// tile*8 bytes of shared memory (16 KiB at 2048); fuses log2(tile)=11 stages.
+constexpr int SHARED_TILE = 2048;
+
+// Run all butterfly stages for one transform: the low stages (len <= tile)
+// fused in shared memory, the remaining high-stride stages as global passes.
+void run_stages(u64 *a, const u64 *tw, int n, u64 p, u64 mu) {
+	const int tile = n < SHARED_TILE ? n : SHARED_TILE;
+	k_ntt_shared<<<n / tile, tile / 2, sizeof(u64) * static_cast<size_t>(tile)>>>(
+			a, tw, n, tile, p, mu);
+	const int butter = (n / 2 + BLOCK - 1) / BLOCK;
+	for (int len = 2 * tile; len <= n; len <<= 1) {
+		k_butterfly<<<butter, BLOCK>>>(a, tw, n, len, p, mu);
+	}
+}
 
 bool forward_ntt(u64 *a, const u64 *wf, int n, int logn, u64 p, u64 mu) {
 	k_bit_reverse<<<(n + BLOCK - 1) / BLOCK, BLOCK>>>(a, n, logn);
-	const int butter = (n / 2 + BLOCK - 1) / BLOCK;
-	for (int len = 2; len <= n; len <<= 1) {
-		k_butterfly<<<butter, BLOCK>>>(a, wf, n, len, p, mu);
-	}
+	run_stages(a, wf, n, p, mu);
 	return cudaGetLastError() == cudaSuccess;
 }
 
 bool inverse_ntt(u64 *a, const u64 *wi, int n, int logn, u64 p, u64 mu) {
 	k_bit_reverse<<<(n + BLOCK - 1) / BLOCK, BLOCK>>>(a, n, logn);
-	const int butter = (n / 2 + BLOCK - 1) / BLOCK;
-	for (int len = 2; len <= n; len <<= 1) {
-		k_butterfly<<<butter, BLOCK>>>(a, wi, n, len, p, mu);
-	}
+	run_stages(a, wi, n, p, mu);
 	const u64 inv_n = host_powmod(static_cast<u64>(n), p - 2, p);
 	k_scale<<<(n + BLOCK - 1) / BLOCK, BLOCK>>>(a, n, inv_n, p, mu);
 	return cudaGetLastError() == cudaSuccess;
