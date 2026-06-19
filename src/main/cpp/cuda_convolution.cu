@@ -140,7 +140,8 @@ struct CudaConvolutionWorkspace {
 	uint64_t spectrum_cache_tick = 0;
 	std::vector<double> host_a;
 	std::vector<double> host_b;
-	std::vector<double> host_result;
+	double *host_result = nullptr;          // pinned (page-locked) staging for fast D2H
+	int host_result_capacity = 0;
 	CachedSpectrum cache_a[SPECTRUM_CACHE_WAYS];
 	CachedSpectrum cache_b[SPECTRUM_CACHE_WAYS];
 
@@ -189,9 +190,11 @@ struct CudaConvolutionWorkspace {
 		fa = nullptr;
 		fb = nullptr;
 		capacity = 0;
+		cudaFreeHost(host_result);
+		host_result = nullptr;
+		host_result_capacity = 0;
 		host_a.clear();
 		host_b.clear();
-		host_result.clear();
 	}
 
 	bool ensure_capacity(int n) {
@@ -267,8 +270,23 @@ struct CudaConvolutionWorkspace {
 		return true;
 	}
 
-	void prepare_host_result(size_t result_size) {
-		host_result.resize(result_size);
+	// Allocate the D2H result staging buffer in page-locked (pinned) host memory
+	// so the device->host copy runs at full PCIe bandwidth instead of going
+	// through a pageable bounce buffer.
+	bool ensure_host_result(size_t result_size) {
+		if (host_result_capacity >= static_cast<int>(result_size)) {
+			return true;
+		}
+		cudaFreeHost(host_result);
+		host_result = nullptr;
+		host_result_capacity = 0;
+		if (cudaHostAlloc(reinterpret_cast<void **>(&host_result),
+				sizeof(double) * result_size, cudaHostAllocDefault) != cudaSuccess) {
+			host_result = nullptr;
+			return false;
+		}
+		host_result_capacity = static_cast<int>(result_size);
+		return true;
 	}
 
 	void prepare_host_inputs(size_t a_size, size_t b_size) {
@@ -335,7 +353,7 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 	return true;
 }
 
-static bool collect_u16_digits_result(const std::vector<double> &host_result,
+static bool collect_u16_digits_result(const double *host_result,
 		size_t result_size,
 		int n,
 		std::vector<uint16_t> &out,
@@ -364,7 +382,7 @@ static bool collect_u16_digits_result(const std::vector<double> &host_result,
 	return true;
 }
 
-static bool collect_u16_limb_result(const std::vector<double> &host_result,
+static bool collect_u16_limb_result(const double *host_result,
 		size_t result_size,
 		int n,
 		std::vector<uint64_t> &out,
@@ -481,8 +499,10 @@ static bool convolve_u16_digits_impl(const std::vector<uint16_t> &a,
 	if (cufftExecZ2D(workspace.inverse_plan, workspace.fa, workspace.da) != CUFFT_SUCCESS) {
 		return false;
 	}
-	workspace.prepare_host_result(result_size);
-	if (cudaMemcpy(workspace.host_result.data(), workspace.da, sizeof(double) * result_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
+	if (!workspace.ensure_host_result(result_size)) {
+		return false;
+	}
+	if (cudaMemcpy(workspace.host_result, workspace.da, sizeof(double) * result_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
 		return false;
 	}
 
@@ -561,8 +581,10 @@ bool convolve_digits(const std::vector<uint64_t> &a,
 	if (cufftExecZ2D(workspace.inverse_plan, workspace.fa, workspace.da) != CUFFT_SUCCESS) {
 		return false;
 	}
-	workspace.prepare_host_result(result_size);
-	if (cudaMemcpy(workspace.host_result.data(), workspace.da, sizeof(double) * result_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
+	if (!workspace.ensure_host_result(result_size)) {
+		return false;
+	}
+	if (cudaMemcpy(workspace.host_result, workspace.da, sizeof(double) * result_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
 		return false;
 	}
 
