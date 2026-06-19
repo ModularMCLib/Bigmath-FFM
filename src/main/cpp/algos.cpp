@@ -628,7 +628,11 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 	return false;
 #else
 	static constexpr unsigned CUDA_DIGIT_BITS[] = {16, 12, 8};
-	static constexpr mp_bitcnt_t CUDA_BIT_THRESHOLD = 131072;
+	// Only hand off to the GPU once it actually beats CPU GMP. Measured crossover
+	// on an RTX 3050 (cuFFT path, pinned-D2H build) is ~80k decimal digits
+	// ~= 2^18 bits; below this the fixed GPU overhead makes mpz_mul faster, so a
+	// lower threshold (was 131072) regressed ~40-70k-digit multiplies ~2x.
+	static constexpr mp_bitcnt_t CUDA_BIT_THRESHOLD = 262144;
 	if (!cuda::is_available()) {
 		return false;
 	}
