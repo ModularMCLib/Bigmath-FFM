@@ -76,7 +76,7 @@ public final class CudaVerify {
 		// Modular exponentiation: modPow uses Barrett reduction with GPU multiplies
 		// above ~262144-bit moduli. Verify bit-exactly vs GMP's mpz_powm.
 		int powmFail = 0;
-		for (int modDigits : new int[]{80000, 90000}) {
+		for (int modDigits : new int[]{200000, 250000}) {   // above the ~158k-digit GPU threshold
 			powmFail += checkModPow(modDigits, rnd) ? 0 : 1;
 		}
 		System.out.printf("RESULT(modpow): %s%n",

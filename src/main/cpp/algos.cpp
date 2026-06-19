@@ -249,7 +249,10 @@ struct Barrett {
 
 void modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
 	// GMP handles small/edge cases (and is faster below the GPU threshold).
-	static constexpr mp_bitcnt_t MODPOW_BIT_THRESHOLD = 262144;  // ~79k decimal digits
+	// Measured crossover on an RTX 3050: GPU Barrett modpow loses at 80k-digit
+	// moduli (0.77x) but wins from ~150k digits (1.45x at 200k, 1.65x at 400k),
+	// so engage only at >= 2^19 bits ~= 158k decimal digits.
+	static constexpr mp_bitcnt_t MODPOW_BIT_THRESHOLD = 524288;
 	if (mpz_sgn(mod) <= 0 || mpz_sgn(exp) < 0 || mpz_cmp_ui(mod, 1) == 0 ||
 			mpz_sizeinbase(mod, 2) < MODPOW_BIT_THRESHOLD) {
 		mpz_powm(out, base, exp, mod);
