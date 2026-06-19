@@ -58,13 +58,21 @@ echo "== Compiling main + CUDA harnesses"
 mkdir -p build/cudacheck
 javac --release 23 -cp "build/classes/java/main" -d build/cudacheck \
       src/jmh/java/com/modularmc/bigmath/CudaCheck.java \
-      src/jmh/java/com/modularmc/bigmath/CudaSweep.java
+      src/jmh/java/com/modularmc/bigmath/CudaSweep.java \
+      src/jmh/java/com/modularmc/bigmath/CudaVerify.java
 
 CP="build/classes/java/main${SEP}build/cudacheck"
 JAVA_OPTS=(--enable-native-access=ALL-UNNAMED -Dbigmath.native.path="$PWD/$LIBDIR/$LIB")
 
 echo "== Verifying GPU execution (CudaCheck)"
 java "${JAVA_OPTS[@]}" -cp "$CP" com.modularmc.bigmath.CudaCheck 2>/dev/null | grep -E 'cuda|device|status|multiplyCount|CUDA'
+
+# Correctness gate: bit-exact vs GMP. set -e aborts the run on any mismatch, so a
+# kernel rewrite cannot pass benchmarking while producing wrong products.
+echo "== Correctness [cuFFT FP64 path] vs GMP"
+java "${JAVA_OPTS[@]}" -cp "$CP" com.modularmc.bigmath.CudaVerify 2>/dev/null
+echo "== Correctness [integer-NTT path] vs GMP  (BIGMATH_CUDA_NTT=1)"
+BIGMATH_CUDA_NTT=1 java "${JAVA_OPTS[@]}" -cp "$CP" com.modularmc.bigmath.CudaVerify 2>/dev/null
 
 echo "== Sweep [cuFFT FP64 path]"
 java "${JAVA_OPTS[@]}" -cp "$CP" com.modularmc.bigmath.CudaSweep $SIZES
