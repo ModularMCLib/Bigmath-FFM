@@ -83,6 +83,7 @@ BIGMATH_EXPORT void   bigdecimal_set_string(mpfr_ptr out, const char *str, int p
 BIGMATH_EXPORT void   bigdecimal_add(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
 BIGMATH_EXPORT void   bigdecimal_sub(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
 BIGMATH_EXPORT void   bigdecimal_mul(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
+BIGMATH_EXPORT void   bigdecimal_mul_mpfr(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
 BIGMATH_EXPORT void   bigdecimal_div(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
 BIGMATH_EXPORT void   bigdecimal_add_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b);
 BIGMATH_EXPORT void   bigdecimal_mul_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b);

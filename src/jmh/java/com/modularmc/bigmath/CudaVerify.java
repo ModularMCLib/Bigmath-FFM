@@ -31,6 +31,13 @@ public final class CudaVerify {
 			.downcall("bigint_cmp", FunctionDescriptors.BIGINT_CMP);
 	static final MethodHandle FREE = BigmathFFM.getInstance()
 			.downcall("bigint_free", FunctionDescriptors.BIGINT_FREE);
+	// BigDeci reference handles (same FFM layout as the bigint binary/cmp/free).
+	static final MethodHandle DEC_MUL_MPFR = BigmathFFM.getInstance()
+			.downcall("bigdecimal_mul_mpfr", FunctionDescriptors.BIGINT_BINARY);
+	static final MethodHandle DEC_CMP = BigmathFFM.getInstance()
+			.downcall("bigdecimal_cmp", FunctionDescriptors.BIGINT_CMP);
+	static final MethodHandle DEC_FREE = BigmathFFM.getInstance()
+			.downcall("bigdecimal_free", FunctionDescriptors.BIGINT_FREE);
 
 	public static void main(String[] args) throws Throwable {
 		System.err.println("CUDA: " + BigmathFFM.cudaAvailable() + " / " + BigmathFFM.cudaDeviceName()
@@ -53,9 +60,57 @@ public final class CudaVerify {
 		}
 		System.out.printf("%nRESULT: %s  (%d cases checked)%n",
 				failures == 0 ? "ALL PASS" : (failures + " FAILED"), sizes.length * 2);
-		if (failures != 0) {
+
+		// BigDeci high-precision multiply: bigdecimal_mul routes the significand
+		// product through the GPU (gpu_mpfr_mul) above ~262144-bit precision.
+		// Verify bit-exactly against the pure-MPFR reference bigdecimal_mul_mpfr.
+		int decFail = 0;
+		for (int precBits : new int[]{300000, 524288}) {
+			decFail += checkBigDeci(precBits, rnd) ? 0 : 1;
+		}
+		System.out.printf("RESULT(bigdeci): %s%n",
+				decFail == 0 ? "ALL PASS" : (decFail + " FAILED"));
+
+		if (failures + decFail != 0) {
 			System.exit(1);
 		}
+	}
+
+	/** High-precision BigDeci multiply (GPU significand path) vs pure-MPFR reference. */
+	static boolean checkBigDeci(int precBits, SplittableRandom rnd) throws Throwable {
+		int decDigits = (int) (precBits * 0.3011) + 8;   // fill the significand
+		BigDeci a = BigDeci.fromString(randDecimal(decDigits, rnd), precBits);
+		BigDeci b = BigDeci.fromString(randDecimal(decDigits, rnd), precBits);
+		MemorySegment ref = null;
+		try (BigDeci prod = a.multiply(b)) {
+			ref = mulMpfr(a, b);
+			boolean ok = (int) DEC_CMP.invokeExact(prod.nativePtr(), ref) == 0;
+			System.out.printf("%-9d %-6s %8s   %s%n", precBits, "decmul", "-", ok ? "PASS" : "*** MISMATCH ***");
+			return ok;
+		} finally {
+			if (ref != null) {
+				DEC_FREE.invokeExact(ref);
+			}
+			a.close();
+			b.close();
+		}
+	}
+
+	static MemorySegment mulMpfr(BigDeci l, BigDeci r) throws Throwable {
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+			DEC_MUL_MPFR.invokeExact(out, l.nativePtr(), r.nativePtr());
+			return out.get(ValueLayout.ADDRESS, 0);
+		}
+	}
+
+	static String randDecimal(int digits, SplittableRandom rnd) {
+		StringBuilder sb = new StringBuilder(digits + 2);
+		sb.append((char) ('1' + rnd.nextInt(9))).append('.');
+		for (int i = 0; i < digits; i++) {
+			sb.append((char) ('0' + rnd.nextInt(10)));
+		}
+		return sb.toString();
 	}
 
 	/** Multiply via the auto/GPU path and compare bit-exactly to the GMP reference. */
