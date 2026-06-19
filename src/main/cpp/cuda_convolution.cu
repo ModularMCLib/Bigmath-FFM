@@ -36,23 +36,6 @@ __global__ static void load_u16_digits(const uint16_t *__restrict__ digits,
 	out[i] = i < digit_count ? static_cast<double>(digits[i]) : 0.0;
 }
 
-// Scale the inverse-FFT output by 1/n and round to the nearest non-negative
-// integer coefficient on the device, so the serial host carry loop no longer
-// does a double multiply + round per element (significant post-processing cost
-// at large sizes). Tiny negative rounding noise clamps to 0; a true large
-// negative cannot occur because coefficients_fit_double bounds the transform.
-__global__ static void scale_round_u64(const double *__restrict__ in,
-		uint64_t *__restrict__ out,
-		int count,
-		double scale) {
-	const int i = blockIdx.x * blockDim.x + threadIdx.x;
-	if (i >= count) {
-		return;
-	}
-	const double v = in[i] * scale + 0.5;
-	out[i] = v <= 0.0 ? 0 : static_cast<uint64_t>(v);
-}
-
 static bool next_pow2(size_t value, int &out) {
 	if (value > static_cast<size_t>(std::numeric_limits<int>::max() / 2)) {
 		return false;
@@ -143,7 +126,6 @@ struct CudaConvolutionWorkspace {
 
 	double *da = nullptr;
 	double *db = nullptr;
-	uint64_t *d_round = nullptr;            // device: scaled+rounded integer coefficients
 	uint16_t *digits_a = nullptr;
 	uint16_t *digits_b = nullptr;
 	cufftDoubleComplex *fa = nullptr;
@@ -158,10 +140,8 @@ struct CudaConvolutionWorkspace {
 	uint64_t spectrum_cache_tick = 0;
 	std::vector<double> host_a;
 	std::vector<double> host_b;
-	double *host_result = nullptr;          // pinned: D2H staging for the u64-input path
+	double *host_result = nullptr;          // pinned (page-locked) staging for fast D2H
 	int host_result_capacity = 0;
-	uint64_t *host_round = nullptr;         // pinned: D2H staging for rounded u16-path coefficients
-	int host_round_capacity = 0;
 	CachedSpectrum cache_a[SPECTRUM_CACHE_WAYS];
 	CachedSpectrum cache_b[SPECTRUM_CACHE_WAYS];
 
@@ -199,14 +179,12 @@ struct CudaConvolutionWorkspace {
 		release_spectrum_cache();
 		cudaFree(da);
 		cudaFree(db);
-		cudaFree(d_round);
 		cudaFree(digits_a);
 		cudaFree(digits_b);
 		cudaFree(fa);
 		cudaFree(fb);
 		da = nullptr;
 		db = nullptr;
-		d_round = nullptr;
 		digits_a = nullptr;
 		digits_b = nullptr;
 		fa = nullptr;
@@ -215,9 +193,6 @@ struct CudaConvolutionWorkspace {
 		cudaFreeHost(host_result);
 		host_result = nullptr;
 		host_result_capacity = 0;
-		cudaFreeHost(host_round);
-		host_round = nullptr;
-		host_round_capacity = 0;
 		host_a.clear();
 		host_b.clear();
 	}
@@ -233,10 +208,6 @@ struct CudaConvolutionWorkspace {
 			return false;
 		}
 		if (cudaMalloc(&db, sizeof(double) * n) != cudaSuccess) {
-			release();
-			return false;
-		}
-		if (cudaMalloc(&d_round, sizeof(uint64_t) * n) != cudaSuccess) {
 			release();
 			return false;
 		}
@@ -318,24 +289,6 @@ struct CudaConvolutionWorkspace {
 		return true;
 	}
 
-	// Pinned staging for the rounded integer coefficients copied D2H on the
-	// u16 path (replaces the double host_result there).
-	bool ensure_host_round(size_t result_size) {
-		if (host_round_capacity >= static_cast<int>(result_size)) {
-			return true;
-		}
-		cudaFreeHost(host_round);
-		host_round = nullptr;
-		host_round_capacity = 0;
-		if (cudaHostAlloc(reinterpret_cast<void **>(&host_round),
-				sizeof(uint64_t) * result_size, cudaHostAllocDefault) != cudaSuccess) {
-			host_round = nullptr;
-			return false;
-		}
-		host_round_capacity = static_cast<int>(result_size);
-		return true;
-	}
-
 	void prepare_host_inputs(size_t a_size, size_t b_size) {
 		host_a.resize(a_size);
 		host_b.resize(b_size);
@@ -400,18 +353,22 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 	return true;
 }
 
-// Carry-propagate already-scaled-and-rounded integer coefficients (see
-// scale_round_u64) into base-2^bits_per_digit digits.
-static bool collect_u16_digits_result(const uint64_t *coeffs,
+static bool collect_u16_digits_result(const double *host_result,
 		size_t result_size,
+		int n,
 		std::vector<uint16_t> &out,
 		unsigned bits_per_digit) {
 	out.clear();
 	out.reserve(result_size + 1);
+	const double scale = 1.0 / static_cast<double>(n);
 	uint64_t carry = 0;
 	const uint64_t base_mask = (uint64_t{1} << bits_per_digit) - 1;
 	for (size_t i = 0; i < result_size; i++) {
-		const uint64_t value = coeffs[i] + carry;
+		uint64_t rounded = 0;
+		if (!round_nonnegative_to_u64(host_result[i] * scale, rounded)) {
+			return false;
+		}
+		const uint64_t value = rounded + carry;
 		out.push_back(static_cast<uint16_t>(value & base_mask));
 		carry = value >> bits_per_digit;
 	}
@@ -425,10 +382,9 @@ static bool collect_u16_digits_result(const uint64_t *coeffs,
 	return true;
 }
 
-// Carry-propagate already-scaled-and-rounded integer coefficients (see
-// scale_round_u64) into limb_bits-wide limbs.
-static bool collect_u16_limb_result(const uint64_t *coeffs,
+static bool collect_u16_limb_result(const double *host_result,
 		size_t result_size,
+		int n,
 		std::vector<uint64_t> &out,
 		unsigned bits_per_digit,
 		unsigned limb_bits) {
@@ -441,6 +397,7 @@ static bool collect_u16_limb_result(const uint64_t *coeffs,
 	const int digits_per_limb = static_cast<int>(limb_bits / bits_per_digit);
 	out.reserve((result_size + static_cast<size_t>(digits_per_limb) - 1) /
 			static_cast<size_t>(digits_per_limb) + 1);
+	const double scale = 1.0 / static_cast<double>(n);
 	uint64_t carry = 0;
 	uint64_t limb = 0;
 	int limb_digit = 0;
@@ -455,7 +412,11 @@ static bool collect_u16_limb_result(const uint64_t *coeffs,
 		}
 	};
 	for (size_t i = 0; i < result_size; i++) {
-		const uint64_t value = coeffs[i] + carry;
+		uint64_t rounded = 0;
+		if (!round_nonnegative_to_u64(host_result[i] * scale, rounded)) {
+			return false;
+		}
+		const uint64_t value = rounded + carry;
 		append_digit(value & base_mask);
 		carry = value >> bits_per_digit;
 	}
@@ -538,28 +499,19 @@ static bool convolve_u16_digits_impl(const std::vector<uint16_t> &a,
 	if (cufftExecZ2D(workspace.inverse_plan, workspace.fa, workspace.da) != CUFFT_SUCCESS) {
 		return false;
 	}
-	// Scale (1/n) and round on the device, then copy back integer coefficients so
-	// the serial host carry loop does no floating-point work.
-	const int round_grid = (static_cast<int>(result_size) + block_size - 1) / block_size;
-	scale_round_u64<<<round_grid, block_size>>>(workspace.da, workspace.d_round,
-			static_cast<int>(result_size), 1.0 / static_cast<double>(n));
-	if (cudaGetLastError() != cudaSuccess) {
+	if (!workspace.ensure_host_result(result_size)) {
 		return false;
 	}
-	if (!workspace.ensure_host_round(result_size)) {
-		return false;
-	}
-	if (cudaMemcpy(workspace.host_round, workspace.d_round, sizeof(uint64_t) * result_size,
-			cudaMemcpyDeviceToHost) != cudaSuccess) {
+	if (cudaMemcpy(workspace.host_result, workspace.da, sizeof(double) * result_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
 		return false;
 	}
 
 	if (limb_out != nullptr) {
-		return collect_u16_limb_result(workspace.host_round, result_size, *limb_out,
+		return collect_u16_limb_result(workspace.host_result, result_size, n, *limb_out,
 				bits_per_digit, limb_bits);
 	}
 	return digit_out != nullptr &&
-			collect_u16_digits_result(workspace.host_round, result_size, *digit_out, bits_per_digit);
+			collect_u16_digits_result(workspace.host_result, result_size, n, *digit_out, bits_per_digit);
 }
 
 bool convolve_u16_digits(const std::vector<uint16_t> &a,
