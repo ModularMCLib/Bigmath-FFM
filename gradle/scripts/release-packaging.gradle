@@ -1,0 +1,51 @@
+def releaseClassifiers = [
+		"linux-x86-64"      : "libbigmath_ffm.so",
+		"linux-aarch64"     : "libbigmath_ffm.so",
+		"macos-x86-64"      : "libbigmath_ffm.dylib",
+		"macos-aarch64"     : "libbigmath_ffm.dylib",
+		"windows-x86-64"    : "bigmath_ffm.dll",
+		"windows-aarch64"   : "bigmath_ffm.dll"
+].asImmutable()
+
+tasks.register("releaseJar", Jar) {
+	group = "build"
+	description = "Assemble the release JAR from the six prebuilt native artifacts without running a local native build"
+	dependsOn tasks.named("compileJava")
+	archiveClassifier.set("")
+	destinationDirectory.set(layout.buildDirectory.dir("release"))
+	duplicatesStrategy = DuplicatesStrategy.FAIL
+	preserveFileTimestamps = false
+	reproducibleFileOrder = true
+
+	from(sourceSets.main.output.classesDirs)
+	from(layout.projectDirectory.dir("native")) {
+		into("native")
+		include releaseClassifiers.keySet().collect { classifier -> "${classifier}/**" }
+	}
+	from(layout.projectDirectory.file("LICENSE")) {
+		into("META-INF")
+		rename { "LICENSE.txt" }
+	}
+	from(layout.projectDirectory.file("THIRD_PARTY_NOTICES.md")) {
+		into("META-INF")
+	}
+
+	doFirst {
+		def nativeRoot = layout.projectDirectory.dir("native").asFile
+		def stagedClassifiers = nativeRoot.isDirectory()
+				? nativeRoot.listFiles().findAll { it.isDirectory() }.collect { it.name }.toSet()
+				: [] as Set
+		def missingClassifiers = releaseClassifiers.keySet() - stagedClassifiers
+		if (!missingClassifiers.isEmpty()) {
+			throw new GradleException(
+					"Release JAR is missing native classifiers: ${missingClassifiers.sort()}"
+			)
+		}
+		releaseClassifiers.each { classifier, mainLibrary ->
+			def classifierDir = new File(nativeRoot, classifier)
+			if (!new File(classifierDir, mainLibrary).isFile()) {
+				throw new GradleException("Missing ${classifier}/${mainLibrary}")
+			}
+		}
+	}
+}
