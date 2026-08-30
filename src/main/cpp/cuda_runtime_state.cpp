@@ -14,6 +14,7 @@
 #include <thread>
 
 #ifdef BIGMATH_HAS_CUDA
+#include "cuda_convolution.h"
 #include <cuda_runtime.h>
 #endif
 
@@ -135,6 +136,20 @@ RuntimeState probe_runtime(const RuntimeConfiguration &configuration) {
 		configuration.workspace_max_bytes,
 		fraction_bytes
 	);
+	if (!configure_convolution_workspace_pool(selected, result.workspace_budget_bytes)) {
+		result.available = false;
+		result.active_backend = RuntimeBackend::CPU;
+		calibration_status.store(
+			static_cast<uint32_t>(CalibrationStatus::FAILED),
+			std::memory_order_release
+		);
+		copy_text(
+			result.message,
+			sizeof(result.message),
+			"Failed to configure the CUDA workspace pool"
+		);
+		return result;
+	}
 	copy_text(result.name, sizeof(result.name), properties.name);
 	if (configuration.backend == RuntimeBackend::AUTO) {
 		result.active_backend = RuntimeBackend::CPU;
@@ -334,6 +349,14 @@ int snapshot(BigmathRuntimeSnapshot *out) {
 	out->ntt_transform_mask = current.ntt_transform_mask;
 	out->workspace_capacity = current.workspace_capacity;
 	out->workspace_in_use = current.workspace_in_use;
+#ifdef BIGMATH_HAS_CUDA
+	if (current.available) {
+		out->workspace_budget_bytes = convolution_workspace_budget_bytes();
+		out->workspace_in_use_bytes = convolution_workspace_in_use_bytes();
+		out->workspace_capacity = static_cast<uint32_t>(convolution_workspace_capacity());
+		out->workspace_in_use = static_cast<uint32_t>(convolution_workspace_in_use());
+	}
+#endif
 	out->probe_count = static_cast<uint32_t>(current.probe_count);
 	copy_text(out->device_name, sizeof(out->device_name), current.name);
 	copy_text(out->status_message, sizeof(out->status_message), current.message);
