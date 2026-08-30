@@ -178,6 +178,16 @@ void bigdecimal_backend_mul_into(
 		mpfr_ptr b,
 		const ProductCacheKey *cache_key
 ) {
+	if (out == a || out == b) {
+		mpfr_t result;
+		mpfr_init2(result, mpfr_get_prec(a));
+		if (!gpu_mpfr_mul(result, a, b, cache_key)) {
+			mpfr_mul(result, a, b, MPFR_RNDN);
+		}
+		mpfr_swap(out, result);
+		mpfr_clear(result);
+		return;
+	}
 	if (mpfr_get_prec(out) != mpfr_get_prec(a)) {
 		mpfr_set_prec(out, mpfr_get_prec(a));
 	}
