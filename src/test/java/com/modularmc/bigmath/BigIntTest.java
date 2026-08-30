@@ -5,6 +5,7 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import java.math.BigInteger;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -492,86 +493,96 @@ class BigIntTest {
 	}
 
 	@Test
-	void cudaStatusIsCachedAndQueryable() {
-		int firstProbeCount = BigmathFFM.cudaProbeCount();
-		String firstStatus = BigmathFFM.cudaStatusMessage();
-		String secondStatus = BigmathFFM.cudaStatusMessage();
-		int secondProbeCount = BigmathFFM.cudaProbeCount();
-		assertNotNull(firstStatus);
-		assertEquals(firstStatus, secondStatus);
-		assertEquals(1, firstProbeCount);
-		assertEquals(firstProbeCount, secondProbeCount);
-		assertEquals(BigmathFFM.cudaDeviceCount(), BigmathFFM.cudaDeviceCount());
-		if (BigmathFFM.cudaAvailable()) {
-			assertTrue(BigmathFFM.cudaDeviceCount() > 0);
-			assertFalse(BigmathFFM.cudaDeviceName().isBlank());
-		} else {
-			assertFalse(firstStatus.isBlank());
-		}
+	void runtimeDiagnosticsAndInitializationArePubliclyQueryable() {
+		CompletableFuture<RuntimeDiagnostics> initialization = BigmathRuntime.initializeAsync();
+		assertSame(initialization, BigmathRuntime.initializeAsync());
+		RuntimeDiagnostics diagnostics = initialization.join();
+		assertTrue(diagnostics.nativeAbiVersion() > 0);
+		assertFalse(diagnostics.nativeBuildId().isBlank());
+		assertTrue(diagnostics.cuda().deviceCount() >= 0);
+		assertFalse(diagnostics.cuda().statusMessage().isBlank());
+		assertTrue(diagnostics.cuda().workspaceBudgetBytes() >= 0);
+		assertTrue(diagnostics.cuda().workspaceInUseBytes() >= 0);
+		assertTrue(diagnostics.productCache().bytes() >= 0);
+		assertThrows(
+			IllegalStateException.class,
+			() -> BigmathRuntime.configure(RuntimeOptions.builder().build())
+		);
 	}
 
 	@Test
 	void cudaUnavailableFallsBackToCpuMultiplication() {
-		assumeTrue(!BigmathFFM.cudaAvailable(), BigmathFFM.cudaStatusMessage());
+		RuntimeDiagnostics before = BigmathRuntime.diagnostics();
+		assumeTrue(
+			before.cuda().calibrationStatus() == RuntimeDiagnostics.CalibrationStatus.UNAVAILABLE,
+			before.cuda().statusMessage()
+		);
 		String left = repeatDigits("3141592653", 40000);
 		String right = repeatDigits("2718281828", 40000);
 		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
-		int before = BigmathFFM.cudaMultiplyCount();
 		try (BigInt a = BigInt.fromString(left, 10);
 			BigInt b = BigInt.fromString(right, 10);
 			BigInt c = a.multiply(b)) {
 			assertEquals(expected.toString(), c.toString());
 		}
-		assertEquals(before, BigmathFFM.cudaMultiplyCount());
+		assertEquals(RuntimeOptions.CudaBackend.CPU, BigmathRuntime.diagnostics().cuda().activeBackend());
 	}
 
 	@Test
 	@EnabledIfSystemProperty(named = "bigmath.cuda.tests", matches = "true")
 	void cudaLargeMultiplicationMatchesBigIntegerWhenEnabled() {
-		assumeTrue(BigmathFFM.cudaAvailable(), BigmathFFM.cudaStatusMessage());
+		RuntimeDiagnostics diagnostics = BigmathRuntime.initializeAsync().join();
+		assumeTrue(
+			diagnostics.cuda().calibrationStatus() == RuntimeDiagnostics.CalibrationStatus.READY,
+			diagnostics.cuda().statusMessage()
+		);
 		String left = repeatDigits("1234567890", 80000);
 		String right = repeatDigits("9876543210", 80000);
 		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
-		int before = BigmathFFM.cudaMultiplyCount();
 		try (BigInt a = BigInt.fromString(left, 10);
 			BigInt b = BigInt.fromString(right, 10);
 			BigInt c = a.multiply(b)) {
 			assertEquals(expected.toString(), c.toString());
 		}
-		assertTrue(BigmathFFM.cudaMultiplyCount() > before, BigmathFFM.cudaStatusMessage());
 	}
 
 	@Test
 	@EnabledIfSystemProperty(named = "bigmath.cuda.tests", matches = "true")
 	void cudaProductCacheDoesNotReuseMutatedOperands() {
-		assumeTrue(BigmathFFM.cudaAvailable(), BigmathFFM.cudaStatusMessage());
+		RuntimeDiagnostics diagnostics = BigmathRuntime.initializeAsync().join();
+		assumeTrue(
+			diagnostics.cuda().calibrationStatus() == RuntimeDiagnostics.CalibrationStatus.READY,
+			diagnostics.cuda().statusMessage()
+		);
 		String left = repeatDigits("1234567890", 80000);
 		String changedLeft = repeatDigits("2234567890", 80000);
 		String right = repeatDigits("9876543210", 80000);
 		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
 		BigInteger changedExpected = new BigInteger(changedLeft).multiply(new BigInteger(right));
-		int before = BigmathFFM.cudaMultiplyCount();
+		RuntimeDiagnostics.ProductCacheDiagnostics before = diagnostics.productCache();
 		try (BigInt a = BigInt.fromString(left, 10);
 			BigInt b = BigInt.fromString(right, 10)) {
 			try (BigInt first = a.multiply(b)) {
 				assertEquals(expected.toString(), first.toString());
 			}
-			int afterFirst = BigmathFFM.cudaMultiplyCount();
-			assertTrue(afterFirst > before, BigmathFFM.cudaStatusMessage());
+			RuntimeDiagnostics.ProductCacheDiagnostics afterFirst = BigmathRuntime.diagnostics().productCache();
+			assertTrue(afterFirst.misses() > before.misses());
 			try (BigInt admitted = a.multiply(b)) {
 				assertEquals(expected.toString(), admitted.toString());
 			}
-			int afterAdmission = BigmathFFM.cudaMultiplyCount();
-			assertTrue(afterAdmission > afterFirst, BigmathFFM.cudaStatusMessage());
+			RuntimeDiagnostics.ProductCacheDiagnostics afterAdmission =
+				BigmathRuntime.diagnostics().productCache();
+			assertTrue(afterAdmission.admissions() > afterFirst.admissions());
 			try (BigInt cached = a.multiply(b)) {
 				assertEquals(expected.toString(), cached.toString());
 			}
-			assertEquals(afterAdmission, BigmathFFM.cudaMultiplyCount());
+			RuntimeDiagnostics.ProductCacheDiagnostics afterHit = BigmathRuntime.diagnostics().productCache();
+			assertTrue(afterHit.hits() > afterAdmission.hits());
 			a.set(changedLeft, 10);
 			try (BigInt changed = a.multiply(b)) {
 				assertEquals(changedExpected.toString(), changed.toString());
 			}
-			assertTrue(BigmathFFM.cudaMultiplyCount() > afterAdmission, BigmathFFM.cudaStatusMessage());
+			assertTrue(BigmathRuntime.diagnostics().productCache().misses() > afterHit.misses());
 		}
 	}
 
