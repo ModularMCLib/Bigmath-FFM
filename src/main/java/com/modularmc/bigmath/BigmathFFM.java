@@ -60,12 +60,20 @@ public final class BigmathFFM {
 
 	static final Os CURRENT_OS = detectOs();
 	static final Arch CURRENT_ARCH = detectArch();
+	static final int SUPPORTED_ABI_VERSION = 2;
+	static final long CAPABILITY_INT128 = 1L;
+	static final long CAPABILITY_BIGINT = 1L << 1;
+	static final long CAPABILITY_BIGDECI = 1L << 2;
+	static final long CAPABILITY_CUDA = 1L << 3;
 	static final BigmathFFM INSTANCE = new BigmathFFM();
 
 	final Arena arena = Arena.ofAuto();
 	final Linker linker = Linker.nativeLinker();
 	final SymbolLookup lookup;
 	final Map<DowncallKey, MethodHandle> downcallCache = new ConcurrentHashMap<>();
+	final int nativeAbiVersion;
+	final String nativeBuildId;
+	final long nativeCapabilities;
 	final MethodHandle cudaAvailableHandle;
 	final MethodHandle cudaDeviceCountHandle;
 	final MethodHandle cudaProbeCountHandle;
@@ -76,6 +84,27 @@ public final class BigmathFFM {
 
 	BigmathFFM() {
 		this.lookup = loadLibrary();
+		MethodHandle abiVersionHandle = requiredMetadataDowncall(
+			"bigmath_abi_version",
+			FunctionDescriptors.ABI_VERSION
+		);
+		MethodHandle buildIdHandle = requiredMetadataDowncall(
+			"bigmath_build_id",
+			FunctionDescriptors.ABI_STRING
+		);
+		MethodHandle capabilitiesHandle = requiredMetadataDowncall(
+			"bigmath_capabilities",
+			FunctionDescriptors.ABI_CAPABILITIES
+		);
+		this.nativeAbiVersion = invokeMetadataInt(abiVersionHandle);
+		if (nativeAbiVersion != SUPPORTED_ABI_VERSION) {
+			throw new LinkageError(
+				"Incompatible Bigmath native ABI: Java requires v" + SUPPORTED_ABI_VERSION +
+					", but the loaded library reports v" + nativeAbiVersion
+			);
+		}
+		this.nativeBuildId = invokeMetadataString(buildIdHandle);
+		this.nativeCapabilities = invokeMetadataLong(capabilitiesHandle);
 		this.cudaAvailableHandle = optionalDowncall("bigmath_cuda_available", FunctionDescriptors.CUDA_INT);
 		this.cudaDeviceCountHandle = optionalDowncall("bigmath_cuda_device_count", FunctionDescriptors.CUDA_INT);
 		this.cudaProbeCountHandle = optionalDowncall("bigmath_cuda_probe_count", FunctionDescriptors.CUDA_INT);
@@ -85,6 +114,70 @@ public final class BigmathFFM {
 	}
 
 	record DowncallKey(String name, FunctionDescriptor descriptor) {}
+
+	MethodHandle requiredMetadataDowncall(String name, FunctionDescriptor descriptor) {
+		return lookup.find(name)
+			.map(symbol -> linker.downcallHandle(symbol, descriptor))
+			.orElseThrow(() -> new LinkageError(
+				"Loaded Bigmath native library does not expose ABI v2 metadata symbol: " + name
+			));
+	}
+
+	int invokeMetadataInt(MethodHandle handle) {
+		try {
+			return (int) handle.invokeExact();
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new LinkageError("Failed to query Bigmath native ABI version", t);
+		}
+	}
+
+	long invokeMetadataLong(MethodHandle handle) {
+		try {
+			return (long) handle.invokeExact();
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new LinkageError("Failed to query Bigmath native capabilities", t);
+		}
+	}
+
+	String invokeMetadataString(MethodHandle handle) {
+		try {
+			MemorySegment value = (MemorySegment) handle.invokeExact();
+			if (value.equals(MemorySegment.NULL)) {
+				throw new LinkageError("Bigmath native build ID is null");
+			}
+			return value.reinterpret(Long.MAX_VALUE).getString(0);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new LinkageError("Failed to query Bigmath native build ID", t);
+		}
+	}
+
+	static boolean hasCapability(long capability) {
+		return (getInstance().nativeCapabilities & capability) != 0;
+	}
+
+	static void requireBigIntCapability() {
+		requireCapability(CAPABILITY_BIGINT, "BigInt");
+	}
+
+	static void requireBigDeciCapability() {
+		requireCapability(CAPABILITY_BIGDECI, "BigDeci");
+	}
+
+	static void requireCapability(long capability, String feature) {
+		BigmathFFM runtime = getInstance();
+		if ((runtime.nativeCapabilities & capability) == 0) {
+			throw new IllegalStateException(
+				feature + " is unavailable because native build " + runtime.nativeBuildId +
+					" does not include GMP/MPFR support"
+			);
+		}
+	}
 
 	enum Os {
 		LINUX, MACOS, WINDOWS

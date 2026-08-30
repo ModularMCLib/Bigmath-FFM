@@ -6,6 +6,21 @@ import static org.junit.jupiter.api.Assertions.*;
 class BigDeciTest {
 
 	@Test
+	void closeIsIdempotentAndRejectsFurtherUse() {
+		BigDeci value = BigDeci.fromDouble(1.25, 64);
+		value.close();
+		value.close();
+		assertThrows(IllegalStateException.class, value::toString);
+	}
+
+	@Test
+	void constantsRejectCloseAndMutation() {
+		assertThrows(UnsupportedOperationException.class, BigDeci.ZERO::close);
+		assertThrows(UnsupportedOperationException.class, () -> BigDeci.ONE.set(2.0));
+		assertEquals(1.0, BigDeci.ONE.toDouble(), 0.0);
+	}
+
+	@Test
 	void fromDouble() {
 		try (BigDeci bd = BigDeci.fromDouble(3.14, 64)) {
 			assertEquals(3.14, bd.toDouble(), 1e-10);

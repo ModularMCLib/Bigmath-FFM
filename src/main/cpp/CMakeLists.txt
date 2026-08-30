@@ -5,6 +5,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 option(USE_GMP "Build with GMP/MPFR native bigint/bigdecimal support" ON)
+set(BIGMATH_BUILD_ID "development" CACHE STRING "Native build identifier exposed through ABI v2")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -179,13 +180,19 @@ endif()
 # Always add all sources so CLion indexes every file
 add_library(bigmath_ffm SHARED
 	bigmath_ffm.cpp
+	handles/native_handles.cpp
 	bigint.cpp
 	bigdecimal.cpp
 	int128.cpp
 	algos.cpp
 	cuda_runtime_state.cpp
 )
+set_target_properties(bigmath_ffm PROPERTIES
+	CXX_VISIBILITY_PRESET hidden
+	VISIBILITY_INLINES_HIDDEN YES
+)
 target_include_directories(bigmath_ffm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(bigmath_ffm PRIVATE BIGMATH_BUILD_ID="${BIGMATH_BUILD_ID}")
 
 if(BIGMATH_ENABLE_CUDA AND BIGMATH_CUDA_SUPPORTED_PLATFORM)
 	target_sources(bigmath_ffm PRIVATE cuda_convolution.cu cuda_ntt.cu)
