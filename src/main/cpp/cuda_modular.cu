@@ -657,7 +657,7 @@ struct ResidentBuffers {
 			cudaMemcpyHostToDevice,
 			stream
 		) == cudaSuccess && cudaMemsetAsync(
-			block + static_cast<size_t>(stride) * 5,
+			block + static_cast<size_t>(stride) * 5 + exponent_digits,
 			0,
 			static_cast<size_t>(bytes) - initial_bytes,
 			stream
