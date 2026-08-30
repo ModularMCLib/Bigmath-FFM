@@ -13,7 +13,6 @@
 
 #ifdef _WIN32
 #define NOMINMAX
-#include <io.h>
 #include <windows.h>
 #else
 #include <fcntl.h>
@@ -199,46 +198,83 @@ bool decode(
 	return true;
 }
 
-bool write_all(std::FILE *file, const std::vector<uint8_t> &bytes) {
-	return bytes.empty() || std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
-}
-
 bool write_atomically(
 		const std::filesystem::path &data_path,
 		const std::vector<uint8_t> &bytes
 ) {
 	std::filesystem::path temporary = data_path;
 	temporary += ".tmp";
-	std::FILE *file = nullptr;
 #ifdef _WIN32
-	if (_wfopen_s(&file, temporary.c_str(), L"wb") != 0 || file == nullptr) return false;
+	HANDLE file = CreateFileW(
+		temporary.c_str(),
+		GENERIC_WRITE,
+		0,
+		nullptr,
+		CREATE_ALWAYS,
+		FILE_ATTRIBUTE_NORMAL,
+		nullptr
+	);
+	if (file == INVALID_HANDLE_VALUE) {
+		std::fprintf(
+			stderr,
+			"Bigmath CUDA calibration cache open failed with Windows error %lu\n",
+			static_cast<unsigned long>(GetLastError())
+		);
+		return false;
+	}
+	size_t offset = 0;
+	bool success = true;
+	while (offset < bytes.size()) {
+		const DWORD requested = static_cast<DWORD>(std::min<size_t>(
+			bytes.size() - offset,
+			static_cast<size_t>(std::numeric_limits<DWORD>::max())
+		));
+		DWORD written = 0;
+		if (!WriteFile(file, bytes.data() + offset, requested, &written, nullptr) || written == 0) {
+			success = false;
+			break;
+		}
+		offset += written;
+	}
+	if (success) success = FlushFileBuffers(file) != 0;
+	if (!CloseHandle(file)) success = false;
+	if (!success) {
+		const DWORD error = GetLastError();
+		DeleteFileW(temporary.c_str());
+		std::fprintf(
+			stderr,
+			"Bigmath CUDA calibration cache write failed with Windows error %lu\n",
+			static_cast<unsigned long>(error)
+		);
+		return false;
+	}
+	if (!MoveFileExW(
+			temporary.c_str(),
+			data_path.c_str(),
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH
+	)) {
+		const DWORD error = GetLastError();
+		DeleteFileW(temporary.c_str());
+		std::fprintf(
+			stderr,
+			"Bigmath CUDA calibration cache replace failed with Windows error %lu\n",
+			static_cast<unsigned long>(error)
+		);
+		return false;
+	}
 #else
-	file = std::fopen(temporary.c_str(), "wb");
+	std::FILE *file = std::fopen(temporary.c_str(), "wb");
 	if (file == nullptr) return false;
-#endif
-	bool success = write_all(file, bytes) && std::fflush(file) == 0;
-#ifdef _WIN32
-	if (success) success = _commit(_fileno(file)) == 0;
-#else
+	bool success = (bytes.empty() ||
+		std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size()) &&
+		std::fflush(file) == 0;
 	if (success) success = fsync(fileno(file)) == 0;
-#endif
 	if (std::fclose(file) != 0) success = false;
 	if (!success) {
 		std::error_code ignored;
 		std::filesystem::remove(temporary, ignored);
 		return false;
 	}
-
-#ifdef _WIN32
-	if (!MoveFileExW(
-			temporary.c_str(),
-			data_path.c_str(),
-			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH
-	)) {
-		DeleteFileW(temporary.c_str());
-		return false;
-	}
-#else
 	if (std::rename(temporary.c_str(), data_path.c_str()) != 0) {
 		std::remove(temporary.c_str());
 		return false;
