@@ -1,5 +1,6 @@
 dependencies {
 	compileOnly libs.lombok
+	compileOnly libs.jspecify
 	annotationProcessor libs.lombok
 
 	jmhImplementation libs.jmh.core
