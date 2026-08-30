@@ -127,7 +127,10 @@ bool quantity_from_twos_complement(
 	out.negative = (bytes[0] & 0x80u) != 0;
 	out.scale = scale;
 	out.digits = magnitude_from_twos_complement(bytes, size, out.negative).decimal();
-	if (out.digits == "0") out.negative = false;
+	if (out.digits == "0") {
+		out.negative = false;
+		out.scale = 0;
+	}
 	return true;
 }
 
