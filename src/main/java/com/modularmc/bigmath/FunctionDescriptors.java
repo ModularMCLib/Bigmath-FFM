@@ -219,7 +219,10 @@ final class FunctionDescriptors {
 	);
 
 	static final FunctionDescriptor RUNTIME_INT = FunctionDescriptor.of(ValueLayout.JAVA_INT);
-	static final FunctionDescriptor RUNTIME_LONG = FunctionDescriptor.of(ValueLayout.JAVA_LONG);
+	static final FunctionDescriptor RUNTIME_SNAPSHOT = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT,
+			ValueLayout.ADDRESS
+	);
 
 	// --- BigDeci ---
 

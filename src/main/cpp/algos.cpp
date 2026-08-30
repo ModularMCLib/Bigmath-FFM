@@ -256,7 +256,8 @@ void modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
 	// so engage only at >= 2^19 bits ~= 158k decimal digits.
 	static constexpr mp_bitcnt_t MODPOW_BIT_THRESHOLD = 524288;
 	if (mpz_sgn(mod) <= 0 || mpz_sgn(exp) < 0 || mpz_cmp_ui(mod, 1) == 0 ||
-			mpz_sizeinbase(mod, 2) < MODPOW_BIT_THRESHOLD) {
+			mpz_sizeinbase(mod, 2) < MODPOW_BIT_THRESHOLD ||
+			!cuda::is_available() || !cuda::calibration_ready()) {
 		mpz_powm(out, base, exp, mod);
 		return;
 	}
@@ -576,6 +577,7 @@ static caching::ProductBackend selected_product_backend(mpz_ptr a, mpz_ptr b) {
 	if (bits_a < CUDA_BIT_THRESHOLD || bits_b < CUDA_BIT_THRESHOLD) {
 		return caching::ProductBackend::CPU_GMP;
 	}
+	if (!cuda::calibration_ready()) return caching::ProductBackend::CPU_GMP;
 #if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
 	if (cuda_ntt_enabled()) return caching::ProductBackend::CUDA_NTT;
 #endif
@@ -601,6 +603,10 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 	const mp_bitcnt_t bits_a = mpz_sizeinbase(abs_a, 2);
 	const mp_bitcnt_t bits_b = mpz_sizeinbase(abs_b, 2);
 	if (bits_a < CUDA_BIT_THRESHOLD || bits_b < CUDA_BIT_THRESHOLD) {
+		return false;
+	}
+	if (!cuda::calibration_ready()) {
+		cuda::record_cpu_fallback();
 		return false;
 	}
 

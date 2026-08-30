@@ -33,7 +33,7 @@ static bool gpu_mpfr_mul(
 	return false;
 #else
 	static constexpr mpfr_prec_t GPU_MUL_PREC_THRESHOLD = 262144;  // ~79k decimal digits
-	if (!bigmath::cuda::is_available() ||
+	if (!bigmath::cuda::is_available() || !bigmath::cuda::calibration_ready() ||
 			!mpfr_regular_p(a) || !mpfr_regular_p(b) ||
 			mpfr_get_prec(a) < GPU_MUL_PREC_THRESHOLD ||
 			mpfr_get_prec(b) < GPU_MUL_PREC_THRESHOLD) {

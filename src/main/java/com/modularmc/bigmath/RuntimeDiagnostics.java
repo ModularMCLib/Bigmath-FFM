@@ -41,8 +41,8 @@ public record RuntimeDiagnostics(
 			CalibrationStatus calibrationStatus,
 			RuntimeOptions.CudaBackend activeBackend,
 			boolean nttEnabled,
-			long balancedThresholdBits,
-			long squareThresholdBits,
+			int nttTransformMask,
+			DispatchThresholds thresholds,
 			long workspaceBudgetBytes,
 			long workspaceInUseBytes,
 			int workspaceCapacity,
@@ -53,7 +53,17 @@ public record RuntimeDiagnostics(
 			Objects.requireNonNull(statusMessage, "statusMessage");
 			Objects.requireNonNull(calibrationStatus, "calibrationStatus");
 			Objects.requireNonNull(activeBackend, "activeBackend");
+			Objects.requireNonNull(thresholds, "thresholds");
 		}
+	}
+
+	public record DispatchThresholds(
+			long balancedBits,
+			long ratio2Bits,
+			long ratio8Bits,
+			long ratio64Bits,
+			long squareBits
+	) {
 	}
 
 	public record ProductCacheDiagnostics(
