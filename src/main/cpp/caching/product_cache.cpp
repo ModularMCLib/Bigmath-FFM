@@ -1,5 +1,6 @@
 #include "product_cache.h"
 
+#include <algorithm>
 #include <array>
 #include <memory>
 #include <mutex>
@@ -34,6 +35,7 @@ class ProductCache {
 public:
 	ProductCacheLookup lookup(const ProductCacheKey &key) {
 		std::lock_guard lock(mutex_);
+		if (!enabled_) return ProductCacheLookup{};
 		const uint64_t use_tick = next_tick();
 		for (CachedProduct &entry : results_) {
 			if (entry.ready && entry.key == key) {
@@ -66,12 +68,16 @@ public:
 			std::vector<uint64_t> packed_limbs,
 			bool admitted
 	) {
-		if (!admitted || !product_result_fits(packed_limbs.capacity())) {
+		if (!admitted || !accepts(packed_limbs.capacity())) {
 			return;
 		}
 		const size_t result_bytes = packed_limbs.capacity() * sizeof(uint64_t);
 		auto shared_limbs = std::make_shared<const std::vector<uint64_t>>(std::move(packed_limbs));
 		std::lock_guard lock(mutex_);
+		if (!enabled_ || max_results_ == 0 ||
+				result_bytes > max_bytes_) {
+			return;
+		}
 		const uint64_t use_tick = next_tick();
 		for (CachedProduct &entry : results_) {
 			if (entry.ready && entry.key == key) {
@@ -80,8 +86,7 @@ public:
 			}
 		}
 
-		while (result_count_ >= MAX_RESULTS ||
-				bytes_ > PRODUCT_CACHE_MAX_RESULT_BYTES - result_bytes) {
+		while (result_count_ >= max_results_ || bytes_ > max_bytes_ - result_bytes) {
 			if (!evict_lru()) {
 				return;
 			}
@@ -106,6 +111,23 @@ public:
 	ProductCacheMetrics metrics() const {
 		std::lock_guard lock(mutex_);
 		return metrics_;
+	}
+
+	bool accepts(size_t limb_count) const {
+		std::lock_guard lock(mutex_);
+		return enabled_ && max_results_ != 0 && limb_count <= max_bytes_ / sizeof(uint64_t);
+	}
+
+	void configure(bool enabled, size_t max_entries, size_t max_bytes) {
+		std::lock_guard lock(mutex_);
+		enabled_ = enabled;
+		max_results_ = std::min(max_entries, MAX_RESULTS);
+		max_bytes_ = max_bytes;
+		for (CachedProduct &entry : results_) entry = CachedProduct{};
+		for (AdmissionCandidate &candidate : candidates_) candidate = AdmissionCandidate{};
+		result_count_ = 0;
+		bytes_ = 0;
+		metrics_.bytes = 0;
 	}
 
 	void record_bypass() {
@@ -152,6 +174,9 @@ private:
 	std::array<CachedProduct, MAX_RESULTS> results_{};
 	std::array<AdmissionCandidate, ADMISSION_ENTRIES> candidates_{};
 	uint64_t tick_ = 0;
+	bool enabled_ = true;
+	size_t max_results_ = MAX_RESULTS;
+	size_t max_bytes_ = PRODUCT_CACHE_MAX_RESULT_BYTES;
 	size_t result_count_ = 0;
 	size_t bytes_ = 0;
 	ProductCacheMetrics metrics_{};
@@ -186,6 +211,14 @@ ProductCacheLookup lookup_product(const ProductCacheKey &key) {
 		cache().record_bypass();
 		return ProductCacheLookup{};
 	}
+}
+
+bool product_result_fits(size_t limb_count) {
+	return cache().accepts(limb_count);
+}
+
+void configure_product_cache(bool enabled, size_t max_entries, size_t max_bytes) {
+	cache().configure(enabled, max_entries, max_bytes);
 }
 
 void store_product(

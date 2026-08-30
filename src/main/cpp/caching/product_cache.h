@@ -23,9 +23,8 @@ constexpr uint64_t with_product_backend(uint64_t config, ProductBackend backend)
 	return (config & ~BACKEND_MASK) | (static_cast<uint64_t>(backend) << 8);
 }
 
-constexpr bool product_result_fits(size_t limb_count) {
-	return limb_count <= PRODUCT_CACHE_MAX_RESULT_BYTES / sizeof(uint64_t);
-}
+bool product_result_fits(size_t limb_count);
+void configure_product_cache(bool enabled, size_t max_entries, size_t max_bytes);
 
 struct ProductOperandKey {
 	uint64_t id;
