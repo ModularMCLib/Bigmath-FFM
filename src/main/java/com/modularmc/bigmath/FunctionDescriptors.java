@@ -16,6 +16,87 @@ import java.lang.foreign.ValueLayout;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 final class FunctionDescriptors {
 
+	// --- Native ABI v2 ---
+
+	static final FunctionDescriptor ABI_VERSION = FunctionDescriptor.of(ValueLayout.JAVA_INT);
+	static final FunctionDescriptor ABI_STRING = FunctionDescriptor.of(ValueLayout.ADDRESS);
+	static final FunctionDescriptor ABI_CAPABILITIES = FunctionDescriptor.of(ValueLayout.JAVA_LONG);
+
+	static final FunctionDescriptor HANDLE_FROM_LONG = FunctionDescriptor.of(
+			ValueLayout.ADDRESS, ValueLayout.JAVA_LONG
+	);
+	static final FunctionDescriptor HANDLE_FROM_DOUBLE_INT = FunctionDescriptor.of(
+			ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_INT
+	);
+	static final FunctionDescriptor HANDLE_FROM_ADDRESS_INT = FunctionDescriptor.of(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
+	);
+	static final FunctionDescriptor HANDLE_FROM_BYTES = FunctionDescriptor.of(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG
+	);
+	static final FunctionDescriptor HANDLE_UNARY = FunctionDescriptor.of(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+	static final FunctionDescriptor HANDLE_BINARY = FunctionDescriptor.of(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+	static final FunctionDescriptor HANDLE_TERNARY = FunctionDescriptor.of(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+	static final FunctionDescriptor HANDLE_ADDRESS_LONG = FunctionDescriptor.of(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG
+	);
+	static final FunctionDescriptor HANDLE_MUTATE = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+	static final FunctionDescriptor HANDLE_MUTATE_LONG = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG
+	);
+	static final FunctionDescriptor HANDLE_MUTATE_DOUBLE = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE
+	);
+	static final FunctionDescriptor HANDLE_MUTATE_ADDRESS_INT = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
+	);
+	static final FunctionDescriptor HANDLE_MUTATE_BINARY = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+	static final FunctionDescriptor HANDLE_INT_UNARY = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT, ValueLayout.ADDRESS
+	);
+	static final FunctionDescriptor HANDLE_INT_BINARY = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+	static final FunctionDescriptor HANDLE_INT_ADDRESS_INT = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
+	);
+	static final FunctionDescriptor HANDLE_LONG_UNARY = FunctionDescriptor.of(
+			ValueLayout.JAVA_LONG, ValueLayout.ADDRESS
+	);
+	static final FunctionDescriptor HANDLE_DOUBLE_UNARY = FunctionDescriptor.of(
+			ValueLayout.JAVA_DOUBLE, ValueLayout.ADDRESS
+	);
+	static final FunctionDescriptor HANDLE_STRING = FunctionDescriptor.of(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+	static final FunctionDescriptor HANDLE_STRING_RADIX = FunctionDescriptor.of(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
+	);
+	static final FunctionDescriptor HANDLE_FORMAT = FunctionDescriptor.of(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS
+	);
+	static final FunctionDescriptor HANDLE_DECIMAL_FORMAT = FunctionDescriptor.of(
+			ValueLayout.ADDRESS,
+			ValueLayout.ADDRESS,
+			ValueLayout.JAVA_INT,
+			ValueLayout.JAVA_INT,
+			ValueLayout.ADDRESS
+	);
+	static final FunctionDescriptor HANDLE_EXPORT_BYTES = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG
+	);
+	static final FunctionDescriptor HANDLE_FREE = FunctionDescriptor.ofVoid(ValueLayout.ADDRESS);
+
 	// --- BigInt ---
 
 	/** {@code void bigint_from_long(void** out, long value)} */

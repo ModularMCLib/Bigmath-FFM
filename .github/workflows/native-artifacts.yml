@@ -96,6 +96,7 @@ jobs:
           cmake -S src/main/cpp -B build/native -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=build/native \
+            -DBIGMATH_BUILD_ID='${{ github.sha }}' \
             -DUSE_GMP=ON \
             -DBIGMATH_ENABLE_CUDA=OFF
           cmake --build build/native --target install --parallel
@@ -111,6 +112,7 @@ jobs:
           cmake -S src/main/cpp -B build/native -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_INSTALL_PREFIX=build/native `
+            "-DBIGMATH_BUILD_ID=${{ github.sha }}" `
             "-DCMAKE_PREFIX_PATH=$prefix" `
             -DUSE_GMP=ON `
             -DBIGMATH_ENABLE_CUDA=OFF

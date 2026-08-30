@@ -1,4 +1,5 @@
 #include "bigmath_ffm.h"
+#include "handles/native_backend.h"
 #include "algos.h"
 #include <algorithm>
 #include <cstdlib>
@@ -116,7 +117,7 @@ static bool should_use_gmp_pow_ui(mpz_ptr base, uint64_t exp) {
 	return base_bits <= GMP_POW_BIT_THRESHOLD / static_cast<mp_bitcnt_t>(exp);
 }
 
-void bigint_from_long(mpz_ptr *out, int64_t val) {
+void bigint_backend_from_long(mpz_ptr *out, int64_t val) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	if (val >= static_cast<int64_t>(std::numeric_limits<long>::min())
@@ -128,49 +129,49 @@ void bigint_from_long(mpz_ptr *out, int64_t val) {
 	mpz_set_int64(*out, val);
 }
 
-void bigint_from_string(mpz_ptr *out, const char *str, int radix) {
+void bigint_backend_from_string(mpz_ptr *out, const char *str, int radix) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init_set_str(*out, str, radix);
 }
 
-void bigint_init(mpz_ptr *out) {
+void bigint_backend_init(mpz_ptr *out) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 }
 
-void bigint_clear(mpz_ptr a) {
-	bigint_free(a);
+void bigint_backend_clear(mpz_ptr a) {
+	bigint_backend_free(a);
 }
 
-void bigint_set(mpz_ptr out, mpz_ptr a) {
+void bigint_backend_set(mpz_ptr out, mpz_ptr a) {
 	mpz_set(out, a);
 }
 
-void bigint_set_long(mpz_ptr out, int64_t val) {
+void bigint_backend_set_long(mpz_ptr out, int64_t val) {
 	mpz_set_int64(out, val);
 }
 
-void bigint_set_string(mpz_ptr out, const char *str, int radix) {
+void bigint_backend_set_string(mpz_ptr out, const char *str, int radix) {
 	mpz_set_str(out, str, radix);
 }
 
-void bigint_add(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_add(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 	mpz_add(*out, a, b);
 }
 
-void bigint_sub(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_sub(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 	mpz_sub(*out, a, b);
 }
 
-void bigint_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	int alen = mpz_size(a);
@@ -183,7 +184,7 @@ void bigint_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	bigmath::accelerated_mul(*out, a, b);
 }
 
-void bigint_mul_gmp(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_mul_gmp(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	int alen = mpz_size(a);
@@ -196,41 +197,41 @@ void bigint_mul_gmp(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	mpz_mul(*out, a, b);
 }
 
-void bigint_mul_cpu(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
-	bigint_mul_gmp(out, a, b);
+void bigint_backend_mul_cpu(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	bigint_backend_mul_gmp(out, a, b);
 }
 
-void bigint_div(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_div(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 	mpz_tdiv_q(*out, a, b);
 }
 
-void bigint_mod(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_mod(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 	mpz_tdiv_r(*out, a, b);
 }
 
-void bigint_add_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_add_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	mpz_add(out, a, b);
 }
 
-void bigint_mul_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_mul_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	bigmath::accelerated_mul(out, a, b);
 }
 
-void bigint_div_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_div_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	mpz_tdiv_q(out, a, b);
 }
 
-void bigint_sqrt_into(mpz_ptr out, mpz_ptr a) {
+void bigint_backend_sqrt_into(mpz_ptr out, mpz_ptr a) {
 	mpz_sqrt(out, a);
 }
 
-void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
+void bigint_backend_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
@@ -254,7 +255,7 @@ void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
 	bigmath::fast_pow(*out, a, exp);
 }
 
-void bigint_powm(mpz_ptr *out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
+void bigint_backend_powm(mpz_ptr *out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
@@ -262,36 +263,36 @@ void bigint_powm(mpz_ptr *out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
 }
 
 // Pure-GMP reference (mpz_powm); correctness oracle for the Barrett/GPU modpow.
-void bigint_powm_gmp(mpz_ptr *out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
+void bigint_backend_powm_gmp(mpz_ptr *out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 	mpz_powm(*out, base, exp, mod);
 }
 
-void bigint_neg(mpz_ptr *out, mpz_ptr a) {
+void bigint_backend_neg(mpz_ptr *out, mpz_ptr a) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 	mpz_neg(*out, a);
 }
 
-void bigint_abs(mpz_ptr *out, mpz_ptr a) {
+void bigint_backend_abs(mpz_ptr *out, mpz_ptr a) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 	mpz_abs(*out, a);
 }
 
-int bigint_cmp(mpz_ptr a, mpz_ptr b) {
+int bigint_backend_cmp(mpz_ptr a, mpz_ptr b) {
 	return mpz_cmp(a, b);
 }
 
-int bigint_sign(mpz_ptr a) {
+int bigint_backend_sign(mpz_ptr a) {
 	return mpz_sgn(a);
 }
 
-int64_t bigint_to_long(mpz_ptr a) {
+int64_t bigint_backend_to_long(mpz_ptr a) {
 	if (mpz_sgn(a) == 0) {
 		return 0;
 	}
@@ -309,15 +310,15 @@ int64_t bigint_to_long(mpz_ptr a) {
 	return -static_cast<int64_t>(magnitude);
 }
 
-double bigint_to_double(mpz_ptr a) {
+double bigint_backend_to_double(mpz_ptr a) {
 	return mpz_get_d(a);
 }
 
-char *bigint_to_string(mpz_ptr a, int radix) {
+char *bigint_backend_to_string(mpz_ptr a, int radix) {
 	return mpz_get_str(nullptr, radix, a);
 }
 
-char *bigint_format(mpz_ptr a, int group_size, const char *group_sep) {
+char *bigint_backend_format(mpz_ptr a, int group_size, const char *group_sep) {
 	if (group_size <= 0 || group_sep == nullptr || *group_sep == '\0') {
 		return mpz_get_str(nullptr, 10, a);
 	}
@@ -376,39 +377,39 @@ char *bigint_format(mpz_ptr a, int group_size, const char *group_sep) {
 	return out;
 }
 
-void bigint_free_string(char *s) {
+void bigint_backend_free_string(char *s) {
 	free(s);
 }
 
-void bigint_free(mpz_ptr a) {
+void bigint_backend_free(mpz_ptr a) {
 	if (a) {
 		mpz_clear(a);
 		free(a);
 	}
 }
 
-void bigint_gcd(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_gcd(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 	mpz_gcd(*out, a, b);
 }
 
-void bigint_lcm(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_lcm(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 	mpz_lcm(*out, a, b);
 }
 
-void bigint_sqrt(mpz_ptr *out, mpz_ptr a) {
+void bigint_backend_sqrt(mpz_ptr *out, mpz_ptr a) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 	mpz_sqrt(*out, a);
 }
 
-void bigint_and(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_and(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	if (!mpz_and_nonnegative_fast(*out, a, b)) {
@@ -417,7 +418,7 @@ void bigint_and(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	}
 }
 
-void bigint_or(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_or(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	if (!mpz_ior_nonnegative_fast(*out, a, b)) {
@@ -426,7 +427,7 @@ void bigint_or(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	}
 }
 
-void bigint_xor(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_xor(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	if (!mpz_xor_nonnegative_fast(*out, a, b)) {
@@ -435,32 +436,32 @@ void bigint_xor(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	}
 }
 
-void bigint_shl(mpz_ptr *out, mpz_ptr a, uint64_t bits) {
+void bigint_backend_shl(mpz_ptr *out, mpz_ptr a, uint64_t bits) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 	mpz_mul_2exp(*out, a, static_cast<mp_bitcnt_t>(bits));
 }
 
-void bigint_shr(mpz_ptr *out, mpz_ptr a, uint64_t bits) {
+void bigint_backend_shr(mpz_ptr *out, mpz_ptr a, uint64_t bits) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 	mpz_tdiv_q_2exp(*out, a, static_cast<mp_bitcnt_t>(bits));
 }
 
-int bigint_is_probably_prime(mpz_ptr a, int reps) {
+int bigint_backend_is_probably_prime(mpz_ptr a, int reps) {
 	return mpz_probab_prime_p(a, reps);
 }
 
-void bigint_factorial(mpz_ptr *out, uint64_t n) {
+void bigint_backend_factorial(mpz_ptr *out, uint64_t n) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
 	mpz_fac_ui(*out, n);
 }
 
-void bigint_next_prime(mpz_ptr *out, mpz_ptr a) {
+void bigint_backend_next_prime(mpz_ptr *out, mpz_ptr a) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	mpz_init(*out);
@@ -469,46 +470,46 @@ void bigint_next_prime(mpz_ptr *out, mpz_ptr a) {
 
 #else
 
-void bigint_from_long(mpz_ptr *out, int64_t) { *out = nullptr; }
-void bigint_from_string(mpz_ptr *out, const char *, int) { *out = nullptr; }
-void bigint_init(mpz_ptr *out) { *out = nullptr; }
-void bigint_clear(mpz_ptr) { }
-void bigint_set(mpz_ptr, mpz_ptr) { }
-void bigint_set_long(mpz_ptr, int64_t) { }
-void bigint_set_string(mpz_ptr, const char *, int) { }
-void bigint_add(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_sub(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_mul(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_mul_cpu(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_mul_gmp(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_div(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_mod(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_add_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
-void bigint_mul_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
-void bigint_div_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
-void bigint_sqrt_into(mpz_ptr, mpz_ptr) { }
-void bigint_pow(mpz_ptr *out, mpz_ptr, uint64_t) { *out = nullptr; }
-void bigint_powm(mpz_ptr *out, mpz_ptr, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_powm_gmp(mpz_ptr *out, mpz_ptr, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_neg(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
-void bigint_abs(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
-int  bigint_cmp(mpz_ptr, mpz_ptr) { return 0; }
-int  bigint_sign(mpz_ptr) { return 0; }
-int64_t bigint_to_long(mpz_ptr) { return 0; }
-double bigint_to_double(mpz_ptr) { return 0.0; }
+void bigint_backend_from_long(mpz_ptr *out, int64_t) { *out = nullptr; }
+void bigint_backend_from_string(mpz_ptr *out, const char *, int) { *out = nullptr; }
+void bigint_backend_init(mpz_ptr *out) { *out = nullptr; }
+void bigint_backend_clear(mpz_ptr) { }
+void bigint_backend_set(mpz_ptr, mpz_ptr) { }
+void bigint_backend_set_long(mpz_ptr, int64_t) { }
+void bigint_backend_set_string(mpz_ptr, const char *, int) { }
+void bigint_backend_add(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_sub(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_mul(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_mul_cpu(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_mul_gmp(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_div(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_mod(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_add_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
+void bigint_backend_mul_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
+void bigint_backend_div_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
+void bigint_backend_sqrt_into(mpz_ptr, mpz_ptr) { }
+void bigint_backend_pow(mpz_ptr *out, mpz_ptr, uint64_t) { *out = nullptr; }
+void bigint_backend_powm(mpz_ptr *out, mpz_ptr, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_powm_gmp(mpz_ptr *out, mpz_ptr, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_neg(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
+void bigint_backend_abs(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
+int  bigint_backend_cmp(mpz_ptr, mpz_ptr) { return 0; }
+int  bigint_backend_sign(mpz_ptr) { return 0; }
+int64_t bigint_backend_to_long(mpz_ptr) { return 0; }
+double bigint_backend_to_double(mpz_ptr) { return 0.0; }
 
-void bigint_free_string(char *) { }
-void bigint_free(mpz_ptr) { }
-void bigint_gcd(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_lcm(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_sqrt(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
-void bigint_and(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_or(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_xor(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_shl(mpz_ptr *out, mpz_ptr, uint64_t) { *out = nullptr; }
-void bigint_shr(mpz_ptr *out, mpz_ptr, uint64_t) { *out = nullptr; }
-int  bigint_is_probably_prime(mpz_ptr, int) { return 0; }
-void bigint_factorial(mpz_ptr *out, uint64_t) { *out = nullptr; }
-void bigint_next_prime(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
+void bigint_backend_free_string(char *) { }
+void bigint_backend_free(mpz_ptr) { }
+void bigint_backend_gcd(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_lcm(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_sqrt(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
+void bigint_backend_and(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_or(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_xor(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_shl(mpz_ptr *out, mpz_ptr, uint64_t) { *out = nullptr; }
+void bigint_backend_shr(mpz_ptr *out, mpz_ptr, uint64_t) { *out = nullptr; }
+int  bigint_backend_is_probably_prime(mpz_ptr, int) { return 0; }
+void bigint_backend_factorial(mpz_ptr *out, uint64_t) { *out = nullptr; }
+void bigint_backend_next_prime(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
 
 #endif /* BIGMATH_NO_GMP */
