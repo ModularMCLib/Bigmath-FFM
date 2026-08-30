@@ -239,6 +239,11 @@ static bool try_resident_modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr 
 			modulus_digits > static_cast<size_t>((cuda::NTT_MAX_TRANSFORM_SIZE - 4) / 2)) {
 		return false;
 	}
+	int transform_size = 1;
+	const size_t required_transform = modulus_digits * 2 + 3;
+	while (static_cast<size_t>(transform_size) < required_transform) transform_size <<= 1;
+	const cuda::ModularOperationCosts costs =
+		cuda::modular_operation_costs(transform_size);
 
 	mpz_t reduced_base;
 	mpz_t radix;
@@ -305,6 +310,8 @@ static bool try_resident_modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr 
 			constant_digits,
 			identity_digits,
 			reduction,
+			costs.multiply_nanos,
+			costs.square_nanos,
 			dispatch.max_queue_wait_nanos,
 			result_digits
 		);

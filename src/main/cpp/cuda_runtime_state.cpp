@@ -450,6 +450,29 @@ DispatchDecision choose_dispatch(const DispatchRequest &request) {
 	return decision;
 }
 
+ModularOperationCosts modular_operation_costs(int transform_size) {
+	ModularOperationCosts costs;
+	if (!calibration_ready() || transform_size <= 0) return costs;
+	int logarithm = 0;
+	int candidate = transform_size;
+	while (candidate > 1 && (candidate & 1) == 0) {
+		candidate >>= 1;
+		logarithm++;
+	}
+	if (candidate != 1 ||
+			logarithm >= static_cast<int>(bigmath::runtime::CUDA_TRANSFORM_BUCKETS)) {
+		return costs;
+	}
+	std::lock_guard lock(state_mutex);
+	const bigmath::runtime::DispatchProfileCell &multiply =
+		state.calibration.cells[0][static_cast<size_t>(logarithm)];
+	const bigmath::runtime::DispatchProfileCell &square =
+		state.calibration.cells[4][static_cast<size_t>(logarithm)];
+	if (multiply.ntt_nanos != 0) costs.multiply_nanos = multiply.ntt_nanos;
+	if (square.ntt_nanos != 0) costs.square_nanos = square.ntt_nanos;
+	return costs;
+}
+
 int device_count() {
 	return probe_state_snapshot().count;
 }

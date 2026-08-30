@@ -973,13 +973,18 @@ size_t window_start(
 	return start;
 }
 
-uint64_t window_operation_count(
+long double window_operation_cost(
 		const std::vector<uint16_t> &exponent,
 		size_t bits,
-		unsigned width
+		unsigned width,
+		uint64_t multiply_nanos,
+		uint64_t square_nanos
 ) {
 	const uint64_t entries = UINT64_C(1) << (width - 1);
-	uint64_t operations = width == 1 ? 0 : entries;
+	long double cost = width == 1
+		? 0.0L
+		: static_cast<long double>(square_nanos) +
+			static_cast<long double>(entries - 1) * multiply_nanos;
 	size_t position = bits;
 	while (position > 0) {
 		if (!exponent_bit(exponent, position - 1)) {
@@ -987,22 +992,36 @@ uint64_t window_operation_count(
 			continue;
 		}
 		position = window_start(exponent, position, width);
-		operations++;
+		cost += multiply_nanos;
 	}
-	return operations;
+	return cost;
 }
 
 unsigned select_window_width(
 		const std::vector<uint16_t> &exponent,
-		size_t bits
+		size_t bits,
+		uint64_t multiply_nanos,
+		uint64_t square_nanos
 ) {
 	unsigned selected = 1;
-	uint64_t selected_operations = window_operation_count(exponent, bits, selected);
+	long double selected_cost = window_operation_cost(
+		exponent,
+		bits,
+		selected,
+		multiply_nanos,
+		square_nanos
+	);
 	for (unsigned width = 2; width <= 6; width++) {
-		const uint64_t operations = window_operation_count(exponent, bits, width);
-		if (operations < selected_operations) {
+		const long double cost = window_operation_cost(
+			exponent,
+			bits,
+			width,
+			multiply_nanos,
+			square_nanos
+		);
+		if (cost < selected_cost) {
 			selected = width;
-			selected_operations = operations;
+			selected_cost = cost;
 		}
 	}
 	return selected;
@@ -1046,6 +1065,8 @@ bool resident_modpow_u16(
 		const std::vector<uint16_t> &reduction_constant,
 		const std::vector<uint16_t> &identity,
 		ResidentReduction reduction,
+		uint64_t multiply_nanos,
+		uint64_t square_nanos,
 		uint64_t max_queue_wait_nanos,
 		std::vector<uint16_t> &result
 ) {
@@ -1066,7 +1087,12 @@ bool resident_modpow_u16(
 		return false;
 	}
 	const size_t bits = exponent_bit_length(exponent);
-	const unsigned window_width = select_window_width(exponent, bits);
+	const unsigned window_width = select_window_width(
+		exponent,
+		bits,
+		std::max<uint64_t>(1, multiply_nanos),
+		std::max<uint64_t>(1, square_nanos)
+	);
 	const int window_entries = 1 << (window_width - 1);
 
 	ModularWorkspacePool::Lease lease = workspace_pool().acquire(

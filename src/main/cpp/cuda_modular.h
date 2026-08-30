@@ -34,6 +34,8 @@ bool resident_modpow_u16(
 	const std::vector<uint16_t> &reduction_constant,
 	const std::vector<uint16_t> &identity,
 	ResidentReduction reduction,
+	uint64_t multiply_nanos,
+	uint64_t square_nanos,
 	uint64_t max_queue_wait_nanos,
 	std::vector<uint16_t> &result
 );
