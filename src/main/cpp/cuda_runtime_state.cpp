@@ -15,6 +15,7 @@
 
 #ifdef BIGMATH_HAS_CUDA
 #include "cuda_convolution.h"
+#include "cuda_ntt.h"
 #include <cuda_runtime.h>
 #endif
 
@@ -136,7 +137,8 @@ RuntimeState probe_runtime(const RuntimeConfiguration &configuration) {
 		configuration.workspace_max_bytes,
 		fraction_bytes
 	);
-	if (!configure_convolution_workspace_pool(selected, result.workspace_budget_bytes)) {
+	if (!configure_convolution_workspace_pool(selected, result.workspace_budget_bytes) ||
+			!configure_ntt_workspace_pool(selected)) {
 		result.available = false;
 		result.active_backend = RuntimeBackend::CPU;
 		calibration_status.store(
@@ -352,9 +354,14 @@ int snapshot(BigmathRuntimeSnapshot *out) {
 #ifdef BIGMATH_HAS_CUDA
 	if (current.available) {
 		out->workspace_budget_bytes = convolution_workspace_budget_bytes();
-		out->workspace_in_use_bytes = convolution_workspace_in_use_bytes();
-		out->workspace_capacity = static_cast<uint32_t>(convolution_workspace_capacity());
-		out->workspace_in_use = static_cast<uint32_t>(convolution_workspace_in_use());
+		out->workspace_in_use_bytes =
+			convolution_workspace_in_use_bytes() + ntt_workspace_in_use_bytes();
+		out->workspace_capacity = static_cast<uint32_t>(
+			convolution_workspace_capacity() + ntt_workspace_capacity()
+		);
+		out->workspace_in_use = static_cast<uint32_t>(
+			convolution_workspace_in_use() + ntt_workspace_in_use()
+		);
 	}
 #endif
 	out->probe_count = static_cast<uint32_t>(current.probe_count);
