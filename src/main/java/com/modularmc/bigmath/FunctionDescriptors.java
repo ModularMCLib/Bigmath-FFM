@@ -321,11 +321,6 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS, ValueLayout.JAVA_LONG
 	);
 
-	/** {@code void int128_from_string(int128_t* out, const char* str, int radix)} */
-	static final FunctionDescriptor INT128_FROM_STRING = FunctionDescriptor.ofVoid(
-			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
-	);
-
 	/** {@code void int128_op(int128_t* out, int128_t* a, int128_t* b)} — add/sub/mul/div/mod */
 	static final FunctionDescriptor INT128_BINARY = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
