@@ -748,9 +748,9 @@ void accelerated_mul(
 void binary_gcd(mpz_ptr, mpz_ptr, mpz_ptr) {}
 void fast_pow(mpz_ptr, mpz_ptr, uint64_t) {}
 void product_tree_factorial(mpz_ptr, uint64_t) {}
-void fft_multiply(mpz_ptr, mpz_ptr, mpz_ptr) {}
-void fft_multiply_into(mpz_ptr, mpz_ptr, mpz_ptr) {}
-void accelerated_mul(mpz_ptr, mpz_ptr, mpz_ptr) {}
+void fft_multiply(mpz_ptr, mpz_ptr, mpz_ptr, const caching::ProductCacheKey *) {}
+void fft_multiply_into(mpz_ptr, mpz_ptr, mpz_ptr, const caching::ProductCacheKey *) {}
+void accelerated_mul(mpz_ptr, mpz_ptr, mpz_ptr, const caching::ProductCacheKey *) {}
 void modpow(mpz_ptr, mpz_ptr, mpz_ptr, mpz_ptr) {}
 #endif // BIGMATH_NO_GMP
 

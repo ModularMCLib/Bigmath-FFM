@@ -29,6 +29,7 @@ static bool gpu_mpfr_mul(
 	(void)out;
 	(void)a;
 	(void)b;
+	(void)cache_key;
 	return false;
 #else
 	static constexpr mpfr_prec_t GPU_MUL_PREC_THRESHOLD = 262144;  // ~79k decimal digits
