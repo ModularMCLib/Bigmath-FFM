@@ -5,7 +5,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 option(USE_GMP "Build with GMP/MPFR native bigint/bigdecimal support" ON)
-set(BIGMATH_BUILD_ID "development" CACHE STRING "Native build identifier exposed through ABI v2")
+set(BIGMATH_BUILD_ID "development" CACHE STRING "Native build identifier exposed through runtime metadata")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -187,6 +187,7 @@ add_library(bigmath_ffm SHARED
 	formatting/number_renderer.cpp
 	handles/native_handles.cpp
 	runtime/cuda_calibration.cpp
+	runtime/cuda_calibration_cache.cpp
 	runtime/cuda_workspace_budget.cpp
 	bigint.cpp
 	bigdecimal.cpp

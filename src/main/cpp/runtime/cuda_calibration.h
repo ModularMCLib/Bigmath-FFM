@@ -28,13 +28,14 @@ struct DispatchProfileCell {
 
 struct CudaCalibrationProfile {
 	bool completed = false;
+	bool loaded_from_cache = false;
 	std::array<std::array<DispatchProfileCell, CUDA_TRANSFORM_BUCKETS>, CUDA_DISPATCH_SHAPES> cells{};
 	std::array<uint64_t, 4> threshold_bits = {UINT64_MAX, UINT64_MAX, UINT64_MAX, UINT64_MAX};
 	uint64_t square_threshold_bits = UINT64_MAX;
 	uint32_t ntt_transform_mask = 0;
 };
 
-CudaCalibrationProfile calibrate_cuda(uint64_t budget_millis);
+CudaCalibrationProfile calibrate_cuda(uint64_t budget_millis, uint64_t workspace_budget_bytes);
 
 }
 

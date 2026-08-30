@@ -112,7 +112,8 @@ jobs:
         shell: bash
         run: |
           chmod +x gradlew .github/scripts/stage-native-runtime-unix.sh
-          ./gradlew buildNative -PbigmathEnableCuda=true '-PbigmathCudaArch=75;80;86;89;90'
+          ./gradlew buildNative -PbigmathEnableCuda=true '-PbigmathCudaArch=75;80;86;89;90' \
+            '-PbigmathBuildId=${{ github.sha }}'
           .github/scripts/stage-native-runtime-unix.sh \
             '${{ matrix.platform }}' '${{ matrix.classifier }}' '${{ matrix.main_library }}'
 
@@ -120,7 +121,8 @@ jobs:
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          .\gradlew.bat buildNative -PbigmathEnableCuda=true '-PbigmathCudaArch=75;80;86;89;90'
+          .\gradlew.bat buildNative -PbigmathEnableCuda=true '-PbigmathCudaArch=75;80;86;89;90' `
+            '-PbigmathBuildId=${{ github.sha }}'
           if ($LASTEXITCODE -ne 0) { throw "Gradle buildNative failed with exit code $LASTEXITCODE" }
           .github/scripts/stage-native-runtime-windows.ps1 `
             -Label '${{ matrix.classifier }}' -Triplet '${{ matrix.vcpkg_triplet }}'

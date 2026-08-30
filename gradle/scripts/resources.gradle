@@ -232,6 +232,7 @@ def cmakeConfigure = tasks.register('cmakeConfigure', Exec) {
 				"-DCMAKE_MAKE_PROGRAM=${ninjaExecutable.absolutePath.replace('\\', '/')}",
 				"-DCMAKE_BUILD_TYPE=${project.findProperty('buildType') ?: 'Release'}",
 				"-DCMAKE_INSTALL_PREFIX=${cmakeBuildDir}",
+				"-DBIGMATH_BUILD_ID=${project.findProperty('bigmathBuildId') ?: 'development'}",
 				"-DUSE_GMP=ON"
 		]
 		if (cmakePrefixPath) {

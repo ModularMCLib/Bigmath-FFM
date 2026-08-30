@@ -1,4 +1,5 @@
 #include "cuda_calibration.h"
+#include "cuda_calibration_cache.h"
 
 #include "../algos.h"
 #include "../bigmath_ffm.h"
@@ -7,10 +8,27 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdio>
+#include <cstring>
 #include <cstdint>
+#include <exception>
+#include <iomanip>
 #include <limits>
+#include <memory>
+#include <sstream>
+#include <string>
 #include <utility>
 #include <vector>
+
+#if defined(BIGMATH_HAS_CUDA)
+#include <cuda_runtime.h>
+#endif
+
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+#include <intrin.h>
+#elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+#include <cpuid.h>
+#endif
 
 namespace bigmath::runtime {
 namespace {
@@ -25,6 +43,80 @@ constexpr std::array<uint64_t, 4> RATIOS = {1, 2, 8, 64};
 constexpr int WINDOWS = 3;
 
 #if defined(BIGMATH_HAS_CUDA) && defined(BIGMATH_HAS_GMP)
+
+std::string cpu_identity() {
+	std::array<char, 49> brand{};
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+	int registers[4]{};
+	__cpuid(registers, static_cast<int>(UINT32_C(0x80000000)));
+	const uint32_t maximum = static_cast<uint32_t>(registers[0]);
+	if (maximum >= UINT32_C(0x80000004)) {
+		for (uint32_t leaf = UINT32_C(0x80000002); leaf <= UINT32_C(0x80000004); leaf++) {
+			__cpuid(registers, static_cast<int>(leaf));
+			std::memcpy(
+				brand.data() + static_cast<size_t>(leaf - UINT32_C(0x80000002)) * 16,
+				registers,
+				16
+			);
+		}
+	}
+#elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+	const unsigned maximum = __get_cpuid_max(UINT32_C(0x80000000), nullptr);
+	if (maximum >= UINT32_C(0x80000004)) {
+		for (unsigned leaf = UINT32_C(0x80000002); leaf <= UINT32_C(0x80000004); leaf++) {
+			unsigned eax = 0;
+			unsigned ebx = 0;
+			unsigned ecx = 0;
+			unsigned edx = 0;
+			__cpuid(leaf, eax, ebx, ecx, edx);
+			const std::array<unsigned, 4> registers = {eax, ebx, ecx, edx};
+			std::memcpy(
+				brand.data() + static_cast<size_t>(leaf - UINT32_C(0x80000002)) * 16,
+				registers.data(),
+				16
+			);
+		}
+	}
+#endif
+	std::string result(brand.data());
+	const size_t start = result.find_first_not_of(' ');
+	if (start == std::string::npos) return "unknown";
+	const size_t end = result.find_last_not_of(' ');
+	return result.substr(start, end - start + 1);
+}
+
+std::string calibration_cache_key(uint64_t budget_millis, uint64_t workspace_budget_bytes) {
+	int device = -1;
+	if (cudaGetDevice(&device) != cudaSuccess || device < 0) return {};
+	cudaDeviceProp properties{};
+	if (cudaGetDeviceProperties(&properties, device) != cudaSuccess) return {};
+	int driver_version = 0;
+	int runtime_version = 0;
+	if (cudaDriverGetVersion(&driver_version) != cudaSuccess ||
+			cudaRuntimeGetVersion(&runtime_version) != cudaSuccess) {
+		return {};
+	}
+
+	std::ostringstream key;
+	key << "schema=1"
+		<< "\nabi=" << bigmath_abi_version()
+		<< "\nbuild=" << bigmath_build_id()
+		<< "\ndevice=";
+	key << std::hex << std::setfill('0');
+	for (char byte : properties.uuid.bytes) {
+		key << std::setw(2) << static_cast<unsigned>(static_cast<unsigned char>(byte));
+	}
+	key << std::dec
+		<< "\ncompute=" << properties.major << '.' << properties.minor
+		<< "\ndriver=" << driver_version
+		<< "\nruntime=" << runtime_version
+		<< "\ncpu=" << cpu_identity()
+		<< "\ngmp=" << gmp_version
+		<< "\nmpfr=" << mpfr_get_version()
+		<< "\nbudgetMillis=" << budget_millis
+		<< "\nworkspaceBytes=" << workspace_budget_bytes;
+	return key.str();
+}
 
 class ScopedMpz {
 public:
@@ -175,12 +267,28 @@ bool measure_case(
 
 }
 
-CudaCalibrationProfile calibrate_cuda(uint64_t budget_millis) {
+CudaCalibrationProfile calibrate_cuda(uint64_t budget_millis, uint64_t workspace_budget_bytes) {
 	CudaCalibrationProfile profile;
 #if !defined(BIGMATH_HAS_CUDA) || !defined(BIGMATH_HAS_GMP)
 	(void)budget_millis;
+	(void)workspace_budget_bytes;
 	return profile;
 #else
+	std::unique_ptr<CudaCalibrationCache> cache;
+	try {
+		const std::string key = calibration_cache_key(budget_millis, workspace_budget_bytes);
+		if (!key.empty()) {
+			cache = std::make_unique<CudaCalibrationCache>(key);
+			if (cache->load(profile)) return profile;
+		}
+	} catch (const std::exception &exception) {
+		std::fprintf(stderr, "Bigmath CUDA calibration cache unavailable: %s\n", exception.what());
+		cache.reset();
+	} catch (...) {
+		std::fprintf(stderr, "Bigmath CUDA calibration cache unavailable\n");
+		cache.reset();
+	}
+
 	const uint64_t bounded_millis = std::min<uint64_t>(budget_millis, 60000);
 	const auto deadline = Clock::now() + std::chrono::milliseconds(bounded_millis);
 	bool measured = false;
@@ -223,6 +331,15 @@ CudaCalibrationProfile calibrate_cuda(uint64_t budget_millis) {
 		}
 	}
 	profile.completed = measured;
+	if (profile.completed && cache != nullptr) {
+		try {
+			cache->store(profile);
+		} catch (const std::exception &exception) {
+			std::fprintf(stderr, "Bigmath CUDA calibration cache write failed: %s\n", exception.what());
+		} catch (...) {
+			std::fprintf(stderr, "Bigmath CUDA calibration cache write failed\n");
+		}
+	}
 	return profile;
 #endif
 }

@@ -206,7 +206,10 @@ void run_initialization() {
 		state_changed.notify_all();
 		try {
 			bigmath::runtime::CudaCalibrationProfile profile =
-				bigmath::runtime::calibrate_cuda(configuration.calibration_millis);
+				bigmath::runtime::calibrate_cuda(
+					configuration.calibration_millis,
+					initialized.workspace_budget_bytes
+				);
 			{
 				std::lock_guard lock(state_mutex);
 				state.calibration = profile;
@@ -224,7 +227,9 @@ void run_initialization() {
 					std::snprintf(
 						state.message,
 						sizeof(state.message),
-						"CUDA calibration completed for device %d: %s",
+						profile.loaded_from_cache
+							? "CUDA calibration loaded from cache for device %d: %s"
+							: "CUDA calibration completed for device %d: %s",
 						state.selected_device,
 						state.name
 					);
