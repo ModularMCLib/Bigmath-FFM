@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 #ifdef BIGMATH_HAS_CUDA
@@ -359,152 +360,12 @@ static size_t abs_limb_count(mpz_ptr value) {
 	return static_cast<size_t>(signed_limb_count < 0 ? -signed_limb_count : signed_limb_count);
 }
 
-static void copy_abs_limbs(mpz_ptr value, std::vector<mp_limb_t> &out) {
-	const size_t count = abs_limb_count(value);
-	out.resize(count);
-	if (count > 0) {
-		std::memcpy(out.data(), value->_mp_d, sizeof(mp_limb_t) * count);
-	}
-}
-
 static void copy_abs_u64_limbs(mpz_ptr value, std::vector<uint64_t> &out) {
 	const size_t count = abs_limb_count(value);
 	out.resize(count);
 	for (size_t i = 0; i < count; i++) {
 		out[i] = static_cast<uint64_t>(value->_mp_d[i]);
 	}
-}
-
-struct CachedProductOperand {
-	size_t limb_count = 0;
-	mp_limb_t first = 0;
-	mp_limb_t middle = 0;
-	mp_limb_t last = 0;
-	std::vector<mp_limb_t> limbs;
-
-	bool matches(mpz_ptr value) const {
-		const size_t count = abs_limb_count(value);
-		if (limb_count != count || limbs.size() != count) {
-			return false;
-		}
-		if (count == 0) {
-			return true;
-		}
-		const mp_limb_t *data = value->_mp_d;
-		if (first != data[0] ||
-				middle != data[count / 2] ||
-				last != data[count - 1]) {
-			return false;
-		}
-		return std::memcmp(limbs.data(), data, sizeof(mp_limb_t) * count) == 0;
-	}
-
-	void store(mpz_ptr value) {
-		copy_abs_limbs(value, limbs);
-		limb_count = limbs.size();
-		if (limb_count == 0) {
-			first = 0;
-			middle = 0;
-			last = 0;
-			return;
-		}
-		first = limbs[0];
-		middle = limbs[limb_count / 2];
-		last = limbs[limb_count - 1];
-	}
-};
-
-struct CachedProduct {
-	bool ready = false;
-	uint64_t last_used = 0;
-	CachedProductOperand left;
-	CachedProductOperand right;
-	std::vector<uint64_t> packed_limbs;
-
-	bool matches(mpz_ptr a, mpz_ptr b) const {
-		if (!ready) {
-			return false;
-		}
-		return (left.matches(a) && right.matches(b)) ||
-				(left.matches(b) && right.matches(a));
-	}
-
-	void store(mpz_ptr a, mpz_ptr b, const std::vector<uint64_t> &result, uint64_t use_tick) {
-		left.store(a);
-		right.store(b);
-		packed_limbs = result;
-		last_used = use_tick;
-		ready = true;
-	}
-
-	void store(mpz_ptr a, mpz_ptr b, mpz_ptr result, uint64_t use_tick) {
-		left.store(a);
-		right.store(b);
-		copy_abs_u64_limbs(result, packed_limbs);
-		last_used = use_tick;
-		ready = true;
-	}
-};
-
-static constexpr int PRODUCT_CACHE_WAYS = 16;
-
-struct ProductCache {
-	CachedProduct entries[PRODUCT_CACHE_WAYS];
-	uint64_t tick = 0;
-
-	uint64_t next_tick() {
-		tick++;
-		if (tick == 0) {
-			tick = 1;
-		}
-		return tick;
-	}
-
-	const std::vector<uint64_t> *find(mpz_ptr a, mpz_ptr b) {
-		const uint64_t use_tick = next_tick();
-		for (int i = 0; i < PRODUCT_CACHE_WAYS; i++) {
-			if (entries[i].matches(a, b)) {
-				entries[i].last_used = use_tick;
-				return &entries[i].packed_limbs;
-			}
-		}
-		return nullptr;
-	}
-
-	void store(mpz_ptr a, mpz_ptr b, const std::vector<uint64_t> &result) {
-		const uint64_t use_tick = next_tick();
-		int target = 0;
-		for (int i = 0; i < PRODUCT_CACHE_WAYS; i++) {
-			if (!entries[i].ready) {
-				target = i;
-				break;
-			}
-			if (entries[i].last_used < entries[target].last_used) {
-				target = i;
-			}
-		}
-		entries[target].store(a, b, result, use_tick);
-	}
-
-	void store(mpz_ptr a, mpz_ptr b, mpz_ptr result) {
-		const uint64_t use_tick = next_tick();
-		int target = 0;
-		for (int i = 0; i < PRODUCT_CACHE_WAYS; i++) {
-			if (!entries[i].ready) {
-				target = i;
-				break;
-			}
-			if (entries[i].last_used < entries[target].last_used) {
-				target = i;
-			}
-		}
-		entries[target].store(a, b, result, use_tick);
-	}
-};
-
-static ProductCache &product_cache() {
-	thread_local ProductCache cache;
-	return cache;
 }
 
 struct CudaMultiplyHostWorkspace {
@@ -730,7 +591,6 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 		const std::vector<uint16_t> &bd = abs_a == abs_b ? ad : workspace.bd.load(abs_b, bits_b, 16);
 		if (cuda::convolve_ntt_u16_to_limbs(ad, bd, workspace.packed_limbs, 16, GMP_NUMB_BITS)) {
 			write_u64_limbs_to_mpz(out, workspace.packed_limbs);
-			product_cache().store(abs_a, abs_b, workspace.packed_limbs);
 			cuda::record_multiply();
 			return true;
 		}
@@ -748,7 +608,6 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 				continue;
 			}
 			write_u64_limbs_to_mpz(out, workspace.packed_limbs);
-			product_cache().store(abs_a, abs_b, workspace.packed_limbs);
 			cuda::record_multiply();
 			return true;
 		}
@@ -759,9 +618,6 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 			continue;
 		}
 		write_u16_digits_to_mpz(out, workspace.conv, bits_per_digit);
-#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
-		product_cache().store(abs_a, abs_b, out);
-#endif
 		cuda::record_multiply();
 		return true;
 	}
@@ -769,7 +625,29 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 #endif
 }
 
-static void fft_multiply_impl(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+static void store_product_result(
+		const caching::ProductCacheKey *cache_key,
+		bool admitted,
+		mpz_ptr result
+) {
+#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
+	if (cache_key == nullptr || !admitted) return;
+	std::vector<uint64_t> packed_limbs;
+	copy_abs_u64_limbs(result, packed_limbs);
+	caching::store_product(*cache_key, std::move(packed_limbs), true);
+#else
+	(void)cache_key;
+	(void)admitted;
+	(void)result;
+#endif
+}
+
+static void fft_multiply_impl(
+		mpz_ptr out,
+		mpz_ptr a,
+		mpz_ptr b,
+		const caching::ProductCacheKey *cache_key
+) {
 	int alen = mpz_size(a);
 	int blen = mpz_size(b);
 	if (alen == 0 || blen == 0) { mpz_set_ui(out, 0); return; }
@@ -795,17 +673,23 @@ static void fft_multiply_impl(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 		clear_abs_b = true;
 	}
 
+	bool admit_product = false;
 #if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
-	if (const std::vector<uint64_t> *cached_limbs = product_cache().find(abs_a, abs_b)) {
-		write_u64_limbs_to_mpz(out, *cached_limbs);
-		if (clear_abs_a) mpz_clear(abs_a_storage);
-		if (clear_abs_b) mpz_clear(abs_b_storage);
-		if (a_neg != b_neg) mpz_neg(out, out);
-		return;
+	if (cache_key != nullptr) {
+		caching::ProductCacheLookup lookup = caching::lookup_product(*cache_key);
+		admit_product = lookup.admit;
+		if (lookup.hit) {
+			write_u64_limbs_to_mpz(out, lookup.packed_limbs);
+			if (clear_abs_a) mpz_clear(abs_a_storage);
+			if (clear_abs_b) mpz_clear(abs_b_storage);
+			if (a_neg != b_neg) mpz_neg(out, out);
+			return;
+		}
 	}
 #endif
 
 	if (cuda_multiply(out, abs_a, abs_b)) {
+		store_product_result(cache_key, admit_product, out);
 		if (clear_abs_a) mpz_clear(abs_a_storage);
 		if (clear_abs_b) mpz_clear(abs_b_storage);
 		if (a_neg != b_neg) mpz_neg(out, out);
@@ -813,34 +697,47 @@ static void fft_multiply_impl(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	}
 
 	mpz_mul(out, a, b);
-#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
-	product_cache().store(abs_a, abs_b, out);
-#endif
+	store_product_result(cache_key, admit_product, out);
 	if (clear_abs_a) mpz_clear(abs_a_storage);
 	if (clear_abs_b) mpz_clear(abs_b_storage);
 }
 
-void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
-	fft_multiply_impl(out, a, b);
+void fft_multiply(
+		mpz_ptr out,
+		mpz_ptr a,
+		mpz_ptr b,
+		const caching::ProductCacheKey *cache_key
+) {
+	fft_multiply_impl(out, a, b, cache_key);
 }
 
-void fft_multiply_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+void fft_multiply_into(
+		mpz_ptr out,
+		mpz_ptr a,
+		mpz_ptr b,
+		const caching::ProductCacheKey *cache_key
+) {
 	if (out == a || out == b) {
 		mpz_t tmp;
 		mpz_init(tmp);
-		fft_multiply_impl(tmp, a, b);
+		fft_multiply_impl(tmp, a, b, cache_key);
 		mpz_set(out, tmp);
 		mpz_clear(tmp);
 		return;
 	}
-	fft_multiply_impl(out, a, b);
+	fft_multiply_impl(out, a, b, cache_key);
 }
 
-void accelerated_mul(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+void accelerated_mul(
+		mpz_ptr out,
+		mpz_ptr a,
+		mpz_ptr b,
+		const caching::ProductCacheKey *cache_key
+) {
 	int alen = mpz_size(a);
 	int blen = mpz_size(b);
 	if (alen + blen >= NTT_THRESHOLD) {
-		fft_multiply_into(out, a, b);
+		fft_multiply_into(out, a, b, cache_key);
 	} else {
 		mpz_mul(out, a, b);
 	}

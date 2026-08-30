@@ -19,7 +19,12 @@
 // caller falls back to mpfr_mul) for non-regular operands, when CUDA is
 // unavailable, or below the precision where the GPU beats CPU GMP and the
 // get/set_z overhead pays off.
-static bool gpu_mpfr_mul(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b) {
+static bool gpu_mpfr_mul(
+		mpfr_ptr out,
+		mpfr_ptr a,
+		mpfr_ptr b,
+		const ProductCacheKey *cache_key
+) {
 #ifndef BIGMATH_HAS_CUDA
 	(void)out;
 	(void)a;
@@ -39,7 +44,7 @@ static bool gpu_mpfr_mul(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b) {
 	mpz_init(zp);
 	const mpfr_exp_t ea = mpfr_get_z_2exp(za, a);   // a = za * 2^ea
 	const mpfr_exp_t eb = mpfr_get_z_2exp(zb, b);   // b = zb * 2^eb
-	bigmath::accelerated_mul(zp, za, zb);           // exact significand product (GPU)
+	bigmath::accelerated_mul(zp, za, zb, cache_key); // exact significand product (GPU)
 	mpfr_set_z_2exp(out, zp, ea + eb, MPFR_RNDN);   // single correct rounding to out's prec
 	mpz_clear(za);
 	mpz_clear(zb);
@@ -129,11 +134,16 @@ void bigdecimal_backend_sub(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
 	mpfr_sub(*out, a, b, MPFR_RNDN);
 }
 
-void bigdecimal_backend_mul(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
+void bigdecimal_backend_mul(
+		mpfr_ptr *out,
+		mpfr_ptr a,
+		mpfr_ptr b,
+		const ProductCacheKey *cache_key
+) {
 	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
 	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
-	if (!gpu_mpfr_mul(*out, a, b)) {
+	if (!gpu_mpfr_mul(*out, a, b, cache_key)) {
 		mpfr_mul(*out, a, b, MPFR_RNDN);
 	}
 }
@@ -161,11 +171,16 @@ void bigdecimal_backend_add_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b) {
 	mpfr_add(out, a, b, MPFR_RNDN);
 }
 
-void bigdecimal_backend_mul_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b) {
+void bigdecimal_backend_mul_into(
+		mpfr_ptr out,
+		mpfr_ptr a,
+		mpfr_ptr b,
+		const ProductCacheKey *cache_key
+) {
 	if (mpfr_get_prec(out) != mpfr_get_prec(a)) {
 		mpfr_set_prec(out, mpfr_get_prec(a));
 	}
-	if (!gpu_mpfr_mul(out, a, b)) {
+	if (!gpu_mpfr_mul(out, a, b, cache_key)) {
 		mpfr_mul(out, a, b, MPFR_RNDN);
 	}
 }
@@ -394,11 +409,11 @@ void bigdecimal_backend_set_double(mpfr_ptr, double) { }
 void bigdecimal_backend_set_string(mpfr_ptr, const char *, int) { }
 void bigdecimal_backend_add(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_backend_sub(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
-void bigdecimal_backend_mul(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_backend_mul(mpfr_ptr *out, mpfr_ptr, mpfr_ptr, const ProductCacheKey *) { *out = nullptr; }
 void bigdecimal_backend_mul_mpfr(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_backend_div(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_backend_add_into(mpfr_ptr, mpfr_ptr, mpfr_ptr) { }
-void bigdecimal_backend_mul_into(mpfr_ptr, mpfr_ptr, mpfr_ptr) { }
+void bigdecimal_backend_mul_into(mpfr_ptr, mpfr_ptr, mpfr_ptr, const ProductCacheKey *) { }
 void bigdecimal_backend_div_into(mpfr_ptr, mpfr_ptr, mpfr_ptr) { }
 void bigdecimal_backend_sqrt_into(mpfr_ptr, mpfr_ptr) { }
 void bigdecimal_backend_neg(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }

@@ -1,7 +1,10 @@
 #ifndef BIGMATH_NATIVE_BACKEND_H
 #define BIGMATH_NATIVE_BACKEND_H
 
+#include "../caching/product_cache.h"
 #include "../bigmath_ffm.h"
+
+using bigmath::caching::ProductCacheKey;
 
 struct BigIntHandle {
 	uint64_t id;
@@ -28,13 +31,13 @@ void bigint_backend_set_long(mpz_ptr out, int64_t val);
 void bigint_backend_set_string(mpz_ptr out, const char *str, int radix);
 void bigint_backend_add(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 void bigint_backend_sub(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
-void bigint_backend_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
+void bigint_backend_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b, const ProductCacheKey *cache_key);
 void bigint_backend_mul_cpu(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 void bigint_backend_mul_gmp(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 void bigint_backend_div(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 void bigint_backend_mod(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 void bigint_backend_add_into(mpz_ptr out, mpz_ptr a, mpz_ptr b);
-void bigint_backend_mul_into(mpz_ptr out, mpz_ptr a, mpz_ptr b);
+void bigint_backend_mul_into(mpz_ptr out, mpz_ptr a, mpz_ptr b, const ProductCacheKey *cache_key);
 void bigint_backend_div_into(mpz_ptr out, mpz_ptr a, mpz_ptr b);
 void bigint_backend_sqrt_into(mpz_ptr out, mpz_ptr a);
 void bigint_backend_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp);
@@ -71,11 +74,11 @@ void bigdecimal_backend_set_double(mpfr_ptr out, double val);
 void bigdecimal_backend_set_string(mpfr_ptr out, const char *str, int precision);
 void bigdecimal_backend_add(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
 void bigdecimal_backend_sub(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
-void bigdecimal_backend_mul(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
+void bigdecimal_backend_mul(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b, const ProductCacheKey *cache_key);
 void bigdecimal_backend_mul_mpfr(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
 void bigdecimal_backend_div(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
 void bigdecimal_backend_add_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b);
-void bigdecimal_backend_mul_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b);
+void bigdecimal_backend_mul_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b, const ProductCacheKey *cache_key);
 void bigdecimal_backend_div_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b);
 void bigdecimal_backend_sqrt_into(mpfr_ptr out, mpfr_ptr a);
 void bigdecimal_backend_neg(mpfr_ptr *out, mpfr_ptr a);

@@ -1,6 +1,8 @@
 #ifndef BIGMATH_ALGOS_H
 #define BIGMATH_ALGOS_H
 
+#include "caching/product_cache.h"
+
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -31,11 +33,26 @@ void fast_pow(mpz_ptr out, mpz_ptr base, uint64_t exp);
 
 void product_tree_factorial(mpz_ptr out, uint64_t n);
 
-void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b);
+void fft_multiply(
+	mpz_ptr out,
+	mpz_ptr a,
+	mpz_ptr b,
+	const caching::ProductCacheKey *cache_key = nullptr
+);
 
-void fft_multiply_into(mpz_ptr out, mpz_ptr a, mpz_ptr b);
+void fft_multiply_into(
+	mpz_ptr out,
+	mpz_ptr a,
+	mpz_ptr b,
+	const caching::ProductCacheKey *cache_key = nullptr
+);
 
-void accelerated_mul(mpz_ptr out, mpz_ptr a, mpz_ptr b);
+void accelerated_mul(
+	mpz_ptr out,
+	mpz_ptr a,
+	mpz_ptr b,
+	const caching::ProductCacheKey *cache_key = nullptr
+);
 
 void modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod);
 

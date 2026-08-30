@@ -30,6 +30,11 @@ extern "C" {
 BIGMATH_EXPORT uint32_t    bigmath_abi_version();
 BIGMATH_EXPORT const char *bigmath_build_id();
 BIGMATH_EXPORT uint64_t    bigmath_capabilities();
+BIGMATH_EXPORT uint64_t    bigmath_product_cache_hits();
+BIGMATH_EXPORT uint64_t    bigmath_product_cache_misses();
+BIGMATH_EXPORT uint64_t    bigmath_product_cache_admissions();
+BIGMATH_EXPORT uint64_t    bigmath_product_cache_evictions();
+BIGMATH_EXPORT uint64_t    bigmath_product_cache_bytes();
 
 BIGMATH_EXPORT BigIntHandle *bigint_from_long(int64_t val);
 BIGMATH_EXPORT BigIntHandle *bigint_from_string(const char *str, int radix);
