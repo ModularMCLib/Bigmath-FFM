@@ -5,11 +5,7 @@
 
 - name: ci:native
   color: "0E8A16"
-  description: Run full native build matrix (5 platforms)
-
-- name: ci:android
-  color: "3DDC84"
-  description: Run Android NDK cross-compile builds
+  description: Run the six-platform native build matrix
 
 - name: ci:perf
   color: "1D76DB"

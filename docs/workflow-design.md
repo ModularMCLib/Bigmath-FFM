@@ -1,134 +1,59 @@
 # CI/CD Workflow Design
 
-## Overview
+## 六平台发布契约
 
-```
-PR 提交 → 构建 + 测试 → 合并 main → 全平台构建 → 打包 → GitHub Release
-```
+发布物只包含下列 classifier，名称与运行时平台识别保持一一对应：
 
-## 1. PR Workflow (`build-on-push.yml`)
+| Runner | Classifier | 主库 | 编译器 / 依赖 |
+|---|---|---|---|
+| `ubuntu-latest` | `linux-x86-64` | `libbigmath_ffm.so` | 系统 C/C++ 编译器，GMP/MPFR |
+| `ubuntu-24.04-arm` | `linux-aarch64` | `libbigmath_ffm.so` | 系统 C/C++ 编译器，GMP/MPFR |
+| `macos-15-intel` | `macos-x86-64` | `libbigmath_ffm.dylib` | Apple Clang，Homebrew GMP/MPFR |
+| `macos-15` | `macos-aarch64` | `libbigmath_ffm.dylib` | Apple Clang，Homebrew GMP/MPFR |
+| `windows-2022` | `windows-x86-64` | `bigmath_ffm.dll` | MSVC，`x64-windows` |
+| `windows-11-arm` | `windows-aarch64` | `bigmath_ffm.dll` | MSVC，`arm64-windows` |
 
-```
-pull_request
-├── build (Linux x86_64)
-│   ├── cmake build → native/linux-x86-64/libbigmath_ffm.so
-│   ├── upload artifact: native-libs
-│   │   └── path: native/linux-x86-64/libbigmath_ffm.so (精准单文件)
-│   └── gradle assemble → upload JAR artifact
-│
-└── test (needs: build, Linux x86_64)
-    ├── download artifact: native-libs
-    ├── 还原到 native/linux-x86-64/libbigmath_ffm.so
-    ├── gradle test -PrunTests -x buildNative -x cmakeConfigure
-    └── upload coverage report: build/reports/jacoco/test/**
-```
+Windows 两个架构均使用 MSVC 和对应 vcpkg triplet；找不到目标架构 runtime
+时必须失败，不得从另一架构目录回退。最终目录保留完整的非系统 DLL 依赖闭包，
+包括 MSVC runtime，以及 GMP、MPFR 或其他依赖实际引用的 GNU libstdc++、libgcc 和
+MinGW-w64 winpthreads runtime；不能仅根据主库编译器删除另一运行时家族。
 
-**关键点：** artifact 上传时使用精准文件路径 `native/{classifier}/{libname}`，下载后直接放置到同名目录，与 `BigmathFFM.loadLibrary()` 的查找路径一致。
+## Native artifact 单一构建入口
 
-## 2. 主分支 Snapshot (`auto-build.yml`)
+`.github/workflows/native-artifacts.yml` 是六平台 Native artifact 的唯一完整构建入口。
+Snapshot、PR 的 `ci:native` 检查和正式 Release 都以 reusable workflow 方式调用它。
+矩阵中的每个平台只构建一次，然后上传一个 `native-<classifier>` artifact。
 
-```
-push to main
-├── native-linux (矩阵)
-│   ├── ubuntu-latest / linux-x86-64
-│   └── ubuntu-24.04-arm / linux-aarch64
-├── native-macos (矩阵)
-│   ├── macos-14 / macos-x86-64
-│   └── macos-latest / macos-aarch64
-├── native-windows (矩阵)
-│   └── windows-latest / windows-x86-64
-│
-└── package (needs: 上面全部)
-    ├── download-artifact: pattern: native-*, merge-multiple
-    │   └── 合并为 native/{linux,macos,windows}-{x86-64,aarch64}/{lib}
-    ├── gradle assemble → JAR
-    ├── 生成 changelog
-    └── 发布 pre-release tag: latest
-        ├── build/libs/*.jar
-        └── native/**/*
+每个 artifact 包含：
+
+```text
+native/<classifier>/
+├── 主库
+├── GMP / MPFR / 平台 runtime 依赖
+└── licenses/
 ```
 
-**路径结构（合并后）：**
-```
-native/
-  linux-x86-64/libbigmath_ffm.so
-  linux-aarch64/libbigmath_ffm.so
-  macos-x86-64/libbigmath_ffm.dylib
-  macos-aarch64/libbigmath_ffm.dylib
-  windows-x86-64/bigmath_ffm.dll
-```
+## Gradle 聚合
 
-与 `BigmathFFM.platformClassifier()` 输出一一对应。
+`releaseJar` 是发布专用 Gradle 任务。它只依赖 Java 编译，并从下载到工作区的六个
+artifact 聚合 JAR；它不依赖 `processResources`、`copyNativeLib`、`buildNative` 或
+`cmakeConfigure`，也不构建 Kotlin module。因此 package job 不会在聚合 runner 上
+再次触发本机 Native 构建。package job 下载六个平台产物后只运行该 Gradle 任务。
 
-## 3. 手动触发原生全构建 (`native-build.yml`)
+## GitHub Release 与 Maven
 
-```
-PR 打标签 ci:native → 触发
-├── native-full (矩阵: 6 平台)
-└── android-build (矩阵: arm64-v8a + x86_64)
-```
+正式发布时，package job 只生成一次最终 JAR，并将 JAR 与 `release.sha256` 一起上传为
+`release-jar` Actions artifact。GitHub Release job 和 Maven reusable workflow分别下载
+同一个 artifact。Maven publication 通过
+`releaseJarFile` 指向已下载的 JAR，不重新运行 `releaseJar` 或任何 Native task。
 
-仅当 PR 需要验证全平台原生兼容性时使用。
+Snapshot 采用相同六平台 Gradle 聚合，但只发布到 `latest` pre-release。
 
-## 3.1 性能基准 (`performance-benchmarks.yml`)
+## PR 标签
 
-```
-PR 打标签 ci:perf → 触发
-└── benchmark (ubuntu-latest)
-    ├── 安装 GMP / MPFR / CMake
-    ├── ./gradlew jmh
-    └── 上传 build/reports/jmh/**
-```
-
-仅当 PR 需要查看 JMH 性能结果时使用，避免拖慢普通 PR 的默认检查。
-
-## 4. 标签体系
-
-| 标签 | 颜色 | 触发 |
-|------|------|------|
-| `ci:native` | `#0E8A16` | 全平台原生构建 |
-| `ci:android` | `#3DDC84` | Android NDK 交叉编译 |
-| `ci:perf` | `#1D76DB` | Linux JMH 性能测试 |
-| `ci:skip` | `#CCCCCC` | 跳过 CI |
-
-| 标签 | 用途 |
-|------|------|
-| `do not merge` | 阻止合并 |
-| `Tests: Passed/Failed` | 自动标记测试结果 |
-| `type:*` | PR 类型 (feature/bugfix/refactor/tests/build/ci/docs) |
-| `ignore changelog` | 排除出 release notes |
-
-## 5. Native Library Loading (`BigmathFFM.loadLibrary()`)
-
-```java
-// 加载顺序
-1. -Dbigmath.native.path=/absolute/path → System.load() + loaderLookup()
-2. native/{platformClassifier}/{libName} → Files.exists → System.load()
-3. System.loadLibrary("bigmath_ffm") → java.library.path
-```
-
-路径示例：
-- Linux x86_64: `native/linux-x86-64/libbigmath_ffm.so`
-- macOS aarch64: `native/macos-aarch64/libbigmath_ffm.dylib`
-- Windows x86_64: `native/windows-x86-64/bigmath_ffm.dll`
-- Android aarch64: `native/android-arm64-v8a/libbigmath_ffm.so`
-
-## 6. 发布版本管理
-
-```
-正式 Release (released)
-├── 生成 changelog (mikepenz/release-changelog-builder)
-└── publish.yml
-    ├── build → Maven publish
-    ├── upload JAR → GitHub Release
-    └── bump-version-and-changelog
-        ├── gradle.properties 版本号 +1
-        ├── CHANGELOG.md 插入新版本
-        └── 创建 PR "Post-release: bump version"
-
-预发布 (prereleased)
-└── build + upload JAR (无 Maven publish, 无 bump)
-
-Snapshot (push to main)
-└── auto-build.yml → pre-release tag: latest
-```
+| 标签 | 作用 |
+|---|---|
+| `ci:native` | 运行完整六平台 Native artifact 矩阵 |
+| `ci:perf` | 运行按需性能基准 |
+| `ci:skip` | 跳过可选 CI |
+| `ignore changelog` | 从 release notes 排除 PR |
