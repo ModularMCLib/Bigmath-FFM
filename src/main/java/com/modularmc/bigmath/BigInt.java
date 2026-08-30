@@ -182,10 +182,6 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 			"bigint_to_string",
 			FunctionDescriptors.HANDLE_STRING_RADIX
 	);
-	static final MethodHandle BIGINT_FORMAT_HANDLE = BigmathFFM.getInstance().downcall(
-			"bigint_format",
-			FunctionDescriptors.HANDLE_FORMAT
-	);
 	static final MethodHandle BIGINT_FREE_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_free",
 			FunctionDescriptors.HANDLE_FREE
@@ -210,8 +206,6 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 			"bigint_version",
 			FunctionDescriptors.HANDLE_LONG_UNARY
 	);
-	static final MemorySegment BIGINT_COMMA_SEPARATOR = Arena.global()
-			.allocateFrom(",", java.nio.charset.StandardCharsets.UTF_8);
 
 	public static final BigInt ZERO = createConstant(0);
 	public static final BigInt ONE = createConstant(1);
@@ -614,45 +608,6 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	}
 
 	/**
-	 * Returns the formatted string with default grouping (group size 3,
-	 * comma separator).
-	 */
-	public String toFormattedString() {
-		MemorySegment result = invokeFormat(nativePtr(), 3, BIGINT_COMMA_SEPARATOR);
-		try {
-			return result.reinterpret(Long.MAX_VALUE).getString(0);
-		} finally {
-			invokeVoidAddress(BIGINT_FREE_STRING_HANDLE, result);
-		}
-	}
-
-	/**
-	 * Returns the formatted string with custom digit grouping.
-	 *
-	 * @param groupSize number of digits per group
-	 * @param groupSep  the separator string
-	 */
-	public String toFormattedString(int groupSize, String groupSep) {
-		if (",".equals(groupSep)) {
-			MemorySegment result = invokeFormat(nativePtr(), groupSize, BIGINT_COMMA_SEPARATOR);
-			try {
-				return result.reinterpret(Long.MAX_VALUE).getString(0);
-			} finally {
-				invokeVoidAddress(BIGINT_FREE_STRING_HANDLE, result);
-			}
-		}
-		try (Arena tmp = Arena.ofConfined()) {
-			MemorySegment separator = tmp.allocateFrom(groupSep, java.nio.charset.StandardCharsets.UTF_8);
-			MemorySegment result = invokeFormat(nativePtr(), groupSize, separator);
-			try {
-				return result.reinterpret(Long.MAX_VALUE).getString(0);
-			} finally {
-				invokeVoidAddress(BIGINT_FREE_STRING_HANDLE, result);
-			}
-		}
-	}
-
-	/**
 	 * Returns the base-10 string representation.
 	 */
 	@Override
@@ -810,16 +765,6 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 	static MemorySegment invokeStringWithRadix(MemorySegment value, int radix) {
 		try {
 			return (MemorySegment) BIGINT_TO_STRING_HANDLE.invokeExact(value, radix);
-		} catch (RuntimeException | Error e) {
-			throw e;
-		} catch (Throwable t) {
-			throw new RuntimeException(t);
-		}
-	}
-
-	static MemorySegment invokeFormat(MemorySegment value, int groupSize, MemorySegment separator) {
-		try {
-			return (MemorySegment) BIGINT_FORMAT_HANDLE.invokeExact(value, groupSize, separator);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {

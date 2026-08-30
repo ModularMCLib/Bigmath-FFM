@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 @Measurement(iterations = 5, time = 1)
 @Fork(1)
 public class BigDeciBenchmark {
+	private static final BigNumberFormat GROUPED_FORMAT = BigNumberFormat.ofPattern("#,##0.################");
 
 	@State(Scope.Thread)
 	public static class PrecisionState {
@@ -162,7 +163,7 @@ public class BigDeciBenchmark {
 
 	@Benchmark
 	public String format(PrecisionState state) {
-		return state.left.toFormattedString();
+		return GROUPED_FORMAT.format(state.left);
 	}
 
 	private static String repeatDigits(String pattern, int digits) {

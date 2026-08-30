@@ -156,10 +156,6 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 			"bigdecimal_to_string",
 			FunctionDescriptors.HANDLE_STRING
 	);
-	static final MethodHandle BIGDECIMAL_FORMAT_HANDLE = BigmathFFM.getInstance().downcall(
-			"bigdecimal_format",
-			FunctionDescriptors.HANDLE_DECIMAL_FORMAT
-	);
 	static final MethodHandle BIGDECIMAL_FREE_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigdecimal_free",
 			FunctionDescriptors.HANDLE_FREE
@@ -176,8 +172,6 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 			"bigdecimal_version",
 			FunctionDescriptors.HANDLE_LONG_UNARY
 	);
-	static final MemorySegment BIGDECIMAL_COMMA_SEPARATOR = Arena.global()
-			.allocateFrom(",", java.nio.charset.StandardCharsets.UTF_8);
 
 	public static final BigDeci ZERO = createConstant(0.0);
 	public static final BigDeci ONE = createConstant(1.0);
@@ -522,60 +516,6 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	}
 
 	/**
-	 * Returns the formatted string with auto-scaled fractional part, default
-	 * group size 3, and comma separator.
-	 */
-	public String toFormattedString() {
-		MemorySegment result = invokeFormat(nativePtr(), -1, 3, BIGDECIMAL_COMMA_SEPARATOR);
-		try {
-			return result.reinterpret(Long.MAX_VALUE).getString(0);
-		} finally {
-			invokeVoidAddress(BIGDECIMAL_FREE_STRING_HANDLE, result);
-		}
-	}
-
-	/**
-	 * Returns the formatted string with a fixed scale.
-	 *
-	 * @param scale number of fractional digits, or {@code -1} for auto-scale
-	 */
-	public String toFormattedString(int scale) {
-		MemorySegment result = invokeFormat(nativePtr(), scale, 3, BIGDECIMAL_COMMA_SEPARATOR);
-		try {
-			return result.reinterpret(Long.MAX_VALUE).getString(0);
-		} finally {
-			invokeVoidAddress(BIGDECIMAL_FREE_STRING_HANDLE, result);
-		}
-	}
-
-	/**
-	 * Returns the formatted string with custom scale and digit grouping.
-	 *
-	 * @param scale     number of fractional digits, or {@code -1} for auto-scale
-	 * @param groupSize number of integer digits per group
-	 * @param groupSep  the group separator string
-	 */
-	public String toFormattedString(int scale, int groupSize, String groupSep) {
-		if (",".equals(groupSep)) {
-			MemorySegment result = invokeFormat(nativePtr(), scale, groupSize, BIGDECIMAL_COMMA_SEPARATOR);
-			try {
-				return result.reinterpret(Long.MAX_VALUE).getString(0);
-			} finally {
-				invokeVoidAddress(BIGDECIMAL_FREE_STRING_HANDLE, result);
-			}
-		}
-		try (Arena tmp = Arena.ofConfined()) {
-			MemorySegment sep = tmp.allocateFrom(groupSep, StandardCharsets.UTF_8);
-			MemorySegment result = invokeFormat(nativePtr(), scale, groupSize, sep);
-			try {
-				return result.reinterpret(Long.MAX_VALUE).getString(0);
-			} finally {
-				invokeVoidAddress(BIGDECIMAL_FREE_STRING_HANDLE, result);
-			}
-		}
-	}
-
-	/**
 	 * Frees the native MPFR memory backing this instance.
 	 */
 	@Override
@@ -626,16 +566,6 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 	static MemorySegment invokeString(MemorySegment value) {
 		try {
 			return (MemorySegment) BIGDECIMAL_TO_STRING_HANDLE.invokeExact(value);
-		} catch (RuntimeException | Error e) {
-			throw e;
-		} catch (Throwable t) {
-			throw new RuntimeException(t);
-		}
-	}
-
-	static MemorySegment invokeFormat(MemorySegment value, int scale, int groupSize, MemorySegment separator) {
-		try {
-			return (MemorySegment) BIGDECIMAL_FORMAT_HANDLE.invokeExact(value, scale, groupSize, separator);
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {

@@ -595,28 +595,28 @@ class BigIntTest {
 	@Test
 	void formatting() {
 		try (BigInt bi = BigInt.fromString("1234567", 10)) {
-			assertEquals("1,234,567", bi.toFormattedString());
+			assertEquals("1,234,567", BigNumberFormat.ofPattern("#,##0").format(bi));
 		}
 	}
 
 	@Test
 	void formattingLarge() {
 		try (BigInt bi = BigInt.fromString("12345678901234567890", 10)) {
-			assertEquals("12,345,678,901,234,567,890", bi.toFormattedString());
+			assertEquals("12,345,678,901,234,567,890", BigNumberFormat.ofPattern("#,##0").format(bi));
 		}
 	}
 
 	@Test
 	void formattingNegative() {
 		try (BigInt bi = BigInt.fromString("-1234567890", 10)) {
-			assertEquals("-1,234,567,890", bi.toFormattedString());
+			assertEquals("-1,234,567,890", BigNumberFormat.ofPattern("#,##0").format(bi));
 		}
 	}
 
 	@Test
 	void formattingCustom() {
 		try (BigInt bi = BigInt.fromString("12345678", 10)) {
-			assertEquals("1234 5678", bi.toFormattedString(4, " "));
+			assertEquals("1234,5678", BigNumberFormat.ofPattern("####,####").format(bi));
 		}
 	}
 

@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 @Measurement(iterations = 5, time = 1)
 @Fork(1)
 public class JdkComparisonBenchmark {
+	private static final BigNumberFormat GROUPED_FORMAT = BigNumberFormat.ofPattern("#,##0");
 
 	private static final long RANDOM_SEED = 0x5eed_f00d_cafe_babeL;
 	private static final int SMALL_INT_DIGITS = 9;
@@ -463,7 +464,7 @@ public class JdkComparisonBenchmark {
 
 	@Benchmark
 	public String nativeInt128Format(Int128State state) {
-		return state.nativeRightValues[state.nextPair()].toFormattedString();
+		return GROUPED_FORMAT.format(state.nativeRightValues[state.nextPair()]);
 	}
 
 	@Benchmark
@@ -551,7 +552,7 @@ public class JdkComparisonBenchmark {
 
 	@Benchmark
 	public String nativeBigIntFormatLarge(LargeIntState state) {
-		return state.nativeLeftValues[state.nextPair()].toFormattedString();
+		return GROUPED_FORMAT.format(state.nativeLeftValues[state.nextPair()]);
 	}
 
 	@Benchmark
