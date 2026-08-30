@@ -5,8 +5,9 @@ Cross-platform high-performance big integer & decimal library for Java FFM (back
 ## Features
 
 - **BigInt** — arbitrary-precision integer arithmetic (GMP)
-- **BigDecimal** — arbitrary-precision decimal floating-point (MPFR)
+- **BigDeci** — arbitrary-precision decimal floating-point (MPFR)
 - **Int128** — 128-bit signed integer (no external dependency)
+- **BigNumberFormat** — Native number formatting with `DecimalFormat` patterns, locales, compact units, and scientific fallback
 - **FFM native bridge** — Java 23+ Foreign Function & Memory API
 - **Scoped Kotlin expressions** — use `+`, `-`, `*`, `/` without leaking BigInt/BigDeci intermediates
 
@@ -23,15 +24,53 @@ Cross-platform high-performance big integer & decimal library for Java FFM (back
 ```java
 import com.modularmc.bigmath.BigInt;
 import com.modularmc.bigmath.BigDeci;
+import com.modularmc.bigmath.BigNumberFormat;
 
 BigInt a = BigInt.fromString("12345678901234567890", 10);
 BigInt b = BigInt.fromLong(42);
 BigInt sum = a.add(b);
 System.out.println(sum); // 12345678901234567932
+System.out.println(BigNumberFormat.readable().format(sum)); // compact output
 
-BigDecimal pi = BigDecimal.fromString("3.141592653589793", 128);
-BigDecimal area = pi.multiply(pi);
+BigDeci pi = BigDeci.fromString("3.141592653589793", 128);
+BigDeci area = pi.multiply(pi);
 ```
+
+### Number formatting
+
+`BigNumberFormat` is immutable and thread-safe. It compiles the selected
+`DecimalFormat` pattern and locale once; actual numeric conversion, scaling,
+rounding, grouping, digit localization, and output assembly run in Native code.
+When no locale is supplied, the formatter captures the current FORMAT locale at
+build time.
+
+```java
+import java.util.Locale;
+
+long value = 1_234_567L;
+BigNumberFormat grouped = BigNumberFormat.ofPattern("#,##0.00", Locale.US);
+BigNumberFormat power = BigNumberFormat.builder("#,##0.#")
+        .locale(Locale.US)
+        .compactUnits(true)
+        .unit("W")
+        .build();
+
+String exact = grouped.format(value);
+String readable = power.format(value);
+String scientific = BigNumberFormat.scientific().format(value);
+```
+
+The public overloads accept `BigInt`, `BigDeci`, `Int128`, `long`, `double`,
+`BigInteger`, and `BigDecimal`. `readable()` uses 1000-based compact suffixes,
+while `scientific()` uses the localized `0.00E00` pattern.
+
+The 0.2.0 migration from the removed instance formatting methods is:
+
+| Previous behavior | Replacement |
+|---|---|
+| Grouped integer output | `BigNumberFormat.ofPattern("#,##0").format(value)` |
+| Readable compact units | `BigNumberFormat.readable().format(value)` |
+| Scientific output | `BigNumberFormat.scientific().format(value)` |
 
 ### Kotlin expressions
 
