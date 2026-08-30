@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.text.DecimalFormat;
 import java.util.Currency;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -19,7 +20,7 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
- * Immutable, thread-safe number formatter compiled from {@link java.text.DecimalFormat}
+ * Immutable, thread-safe number formatter compiled from {@link DecimalFormat}
  * pattern and locale semantics.
  * <p>
  * Construction validates and compiles the Java pattern into a read-only descriptor. Numeric
