@@ -413,6 +413,43 @@ class BigIntTest {
 	}
 
 	@Test
+	void bigIntegerTwosComplementRoundTrip() {
+		BigInteger[] values = {
+			BigInteger.ZERO,
+			BigInteger.ONE,
+			BigInteger.valueOf(127),
+			BigInteger.valueOf(128),
+			BigInteger.valueOf(255),
+			BigInteger.valueOf(256),
+			BigInteger.valueOf(-1),
+			BigInteger.valueOf(-128),
+			BigInteger.valueOf(-129),
+			BigInteger.ONE.shiftLeft(4096).subtract(BigInteger.ONE),
+			BigInteger.ONE.shiftLeft(4096).negate()
+		};
+		for (BigInteger expected : values) {
+			try (BigInt actual = BigInt.fromBigInteger(expected)) {
+				assertEquals(expected, actual.toBigInteger());
+			}
+		}
+	}
+
+	@Test
+	void closeIsIdempotentAndRejectsFurtherUse() {
+		BigInt value = BigInt.fromLong(42);
+		value.close();
+		value.close();
+		assertThrows(IllegalStateException.class, value::toString);
+	}
+
+	@Test
+	void constantsRejectCloseAndMutation() {
+		assertThrows(UnsupportedOperationException.class, BigInt.ZERO::close);
+		assertThrows(UnsupportedOperationException.class, () -> BigInt.ONE.set(2));
+		assertEquals(BigInteger.ONE, BigInt.ONE.toBigInteger());
+	}
+
+	@Test
 	void largeMultiplication() {
 		try (BigInt a = BigInt.fromString("99999999999999999999", 10);
 			BigInt b = BigInt.fromString("99999999999999999999", 10)) {
