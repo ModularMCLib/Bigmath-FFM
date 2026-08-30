@@ -275,7 +275,7 @@ bool upload_twiddles(
 		sizeof(u64) * static_cast<size_t>(transform_size / 2),
 		cudaMemcpyHostToDevice,
 		workspace.stream
-	) == cudaSuccess;
+	) == cudaSuccess && cudaStreamSynchronize(workspace.stream) == cudaSuccess;
 }
 
 bool ensure_twiddles(ModularNttWorkspace &workspace, int transform_size) {
