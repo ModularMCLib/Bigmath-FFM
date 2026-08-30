@@ -10,7 +10,6 @@ namespace bigmath::caching {
 namespace {
 
 constexpr size_t MAX_RESULTS = 16;
-constexpr size_t MAX_RESULT_BYTES = 64 * 1024 * 1024;
 constexpr size_t ADMISSION_ENTRIES = 64;
 
 bool operand_less(const ProductOperandKey &left, const ProductOperandKey &right) {
@@ -67,7 +66,7 @@ public:
 			std::vector<uint64_t> packed_limbs,
 			bool admitted
 	) {
-		if (!admitted || packed_limbs.capacity() > MAX_RESULT_BYTES / sizeof(uint64_t)) {
+		if (!admitted || !product_result_fits(packed_limbs.capacity())) {
 			return;
 		}
 		const size_t result_bytes = packed_limbs.capacity() * sizeof(uint64_t);
@@ -81,7 +80,8 @@ public:
 			}
 		}
 
-		while (result_count_ >= MAX_RESULTS || bytes_ > MAX_RESULT_BYTES - result_bytes) {
+		while (result_count_ >= MAX_RESULTS ||
+				bytes_ > PRODUCT_CACHE_MAX_RESULT_BYTES - result_bytes) {
 			if (!evict_lru()) {
 				return;
 			}

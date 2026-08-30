@@ -8,8 +8,13 @@
 
 namespace bigmath::caching {
 
+inline constexpr size_t PRODUCT_CACHE_MAX_RESULT_BYTES = 64 * 1024 * 1024;
 inline constexpr uint64_t PRODUCT_CONFIG_BIGINT_AUTO = 1;
 inline constexpr uint64_t PRODUCT_CONFIG_BIGDECI_AUTO = 2;
+
+constexpr bool product_result_fits(size_t limb_count) {
+	return limb_count <= PRODUCT_CACHE_MAX_RESULT_BYTES / sizeof(uint64_t);
+}
 
 struct ProductOperandKey {
 	uint64_t id;

@@ -633,6 +633,10 @@ static void store_product_result(
 ) {
 #if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
 	if (cache_key == nullptr || !admitted) return;
+	if (!caching::product_result_fits(abs_limb_count(result))) {
+		caching::record_product_cache_bypass();
+		return;
+	}
 	try {
 		std::vector<uint64_t> packed_limbs;
 		copy_abs_u64_limbs(result, packed_limbs);
