@@ -774,6 +774,14 @@ public final class BigDeci extends Number implements AutoCloseable, Comparable<B
 		return invokeLong(BIGDECIMAL_VERSION_HANDLE, nativePtr());
 	}
 
+	boolean isClosed() {
+		return nativeState.closed.get();
+	}
+
+	boolean isPermanent() {
+		return permanent;
+	}
+
 	void ensureMutable() {
 		nativePtr();
 		if (permanent) {

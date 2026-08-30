@@ -942,6 +942,14 @@ public final class BigInt extends Number implements AutoCloseable, Comparable<Bi
 		return invokeLong(BIGINT_VERSION_HANDLE, nativePtr());
 	}
 
+	boolean isClosed() {
+		return nativeState.closed.get();
+	}
+
+	boolean isPermanent() {
+		return permanent;
+	}
+
 	void ensureMutable() {
 		nativePtr();
 		if (permanent) {
