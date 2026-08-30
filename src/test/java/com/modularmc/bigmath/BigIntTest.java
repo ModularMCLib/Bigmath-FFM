@@ -545,9 +545,9 @@ class BigIntTest {
 	@EnabledIfSystemProperty(named = "bigmath.cuda.tests", matches = "true")
 	void cudaProductCacheDoesNotReuseMutatedOperands() {
 		assumeTrue(BigmathFFM.cudaAvailable(), BigmathFFM.cudaStatusMessage());
-		String left = repeatDigits("1234567890", 40000);
-		String changedLeft = repeatDigits("2234567890", 40000);
-		String right = repeatDigits("9876543210", 40000);
+		String left = repeatDigits("1234567890", 80000);
+		String changedLeft = repeatDigits("2234567890", 80000);
+		String right = repeatDigits("9876543210", 80000);
 		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
 		BigInteger changedExpected = new BigInteger(changedLeft).multiply(new BigInteger(right));
 		int before = BigmathFFM.cudaMultiplyCount();
