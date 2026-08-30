@@ -1,7 +1,11 @@
 publishing {
     publications {
         mavenJava(MavenPublication) {
-            from components.java
+            if (project.hasProperty("releaseJarFile")) {
+                artifact file(project.property("releaseJarFile"))
+            } else {
+                artifact tasks.named("releaseJar")
+            }
             pom {
                 name = mod_name
                 description = mod_description
@@ -19,4 +23,17 @@ publishing {
             }
         }
     }
+
+	if (System.getenv("MAVEN_URL")) {
+		repositories {
+			maven {
+				name = "release"
+				url = uri(System.getenv("MAVEN_URL"))
+				credentials {
+					username = System.getenv("MAVEN_USER")
+					password = System.getenv("MAVEN_PASSWORD")
+				}
+			}
+		}
+	}
 }

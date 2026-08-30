@@ -1,0 +1,136 @@
+name: Six-Platform Native Artifacts
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-native:
+    name: ${{ matrix.classifier }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            classifier: linux-x86-64
+            main_library: libbigmath_ffm.so
+          - os: ubuntu-24.04-arm
+            platform: linux
+            classifier: linux-aarch64
+            main_library: libbigmath_ffm.so
+          - os: macos-15-intel
+            platform: macos
+            classifier: macos-x86-64
+            main_library: libbigmath_ffm.dylib
+          - os: macos-15
+            platform: macos
+            classifier: macos-aarch64
+            main_library: libbigmath_ffm.dylib
+          - os: windows-2022
+            platform: windows
+            classifier: windows-x86-64
+            main_library: bigmath_ffm.dll
+            vcpkg_triplet: x64-windows
+            msvc_arch: x64
+          - os: windows-11-arm
+            platform: windows
+            classifier: windows-aarch64
+            main_library: bigmath_ffm.dll
+            vcpkg_triplet: arm64-windows
+            msvc_arch: arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure MSVC
+        if: matrix.platform == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
+
+      - name: Enforce MSVC compiler environment
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $cl = (Get-Command cl.exe -ErrorAction Stop).Source
+          "CC=$cl" >> $env:GITHUB_ENV
+          "CXX=$cl" >> $env:GITHUB_ENV
+          "BIGMATH_WINDOWS_COMPILER=msvc" >> $env:GITHUB_ENV
+
+      - name: Restore vcpkg binary cache
+        if: matrix.platform == 'windows'
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-binary-${{ matrix.classifier }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            vcpkg-binary-${{ matrix.classifier }}-${{ hashFiles('vcpkg.json') }}-
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y cmake libgmp-dev libmpfr-dev ninja-build
+
+      - name: Install macOS dependencies
+        if: matrix.platform == 'macos'
+        run: brew install cmake gmp mpfr ninja
+
+      - name: Install Windows dependencies
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: vcpkg install --triplet '${{ matrix.vcpkg_triplet }}'
+
+      - name: Build and stage Unix native artifact
+        if: matrix.platform != 'windows'
+        shell: bash
+        run: |
+          chmod +x .github/scripts/stage-native-runtime-unix.sh
+          cmake -S src/main/cpp -B build/native -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=build/native \
+            -DUSE_GMP=ON \
+            -DBIGMATH_ENABLE_CUDA=OFF
+          cmake --build build/native --target install --parallel
+          .github/scripts/stage-native-runtime-unix.sh \
+            '${{ matrix.platform }}' '${{ matrix.classifier }}' '${{ matrix.main_library }}'
+
+      - name: Build and stage Windows native artifact
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $prefix = Join-Path '${{ github.workspace }}' 'vcpkg_installed\${{ matrix.vcpkg_triplet }}'
+          cmake -S src/main/cpp -B build/native -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX=build/native `
+            "-DCMAKE_PREFIX_PATH=$prefix" `
+            -DUSE_GMP=ON `
+            -DBIGMATH_ENABLE_CUDA=OFF
+          if ($LASTEXITCODE -ne 0) { throw "CMake configure failed with exit code $LASTEXITCODE" }
+          cmake --build build/native --target install --parallel
+          if ($LASTEXITCODE -ne 0) { throw "CMake build failed with exit code $LASTEXITCODE" }
+          .github/scripts/stage-native-runtime-windows.ps1 `
+            -Label '${{ matrix.classifier }}' -Triplet '${{ matrix.vcpkg_triplet }}'
+
+      - name: Save vcpkg binary cache
+        if: matrix.platform == 'windows' && !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-cache
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.classifier }}
+          path: native/
+          if-no-files-found: error
+          retention-days: 7

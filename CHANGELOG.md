@@ -13,3 +13,4 @@
 - Binary GCD, fast exponentiation by squaring, product tree factorial
 - GitHub Actions CI with PR label-driven workflows
 - vcpkg manifest for Windows dependency management
+- Six-platform release artifacts with one JAR shared by GitHub Releases and Maven

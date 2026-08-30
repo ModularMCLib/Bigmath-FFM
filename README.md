@@ -16,8 +16,7 @@ Cross-platform high-performance big integer & decimal library for Java FFM (back
 |---------|-----------------|--------------------------------------|----------|
 | Linux   | x86-64, aarch64 | `apt install libgmp-dev libmpfr-dev` | built-in |
 | macOS   | x86-64, aarch64 | `brew install gmp mpfr`              | built-in |
-| Windows | x86-64, aarch64 | vcpkg / MSYS2                        | built-in |
-| Android | aarch64, x86-64 | stubs only                           | built-in |
+| Windows | x86-64, aarch64 | vcpkg (`x64-windows` / `arm64-windows`) with MSVC | built-in |
 
 ## Quick Start
 
@@ -103,6 +102,15 @@ GNU LGPL 3.0 — see [LICENSE](LICENSE).
 Published artifacts may include platform-native shared libraries under
 `native/<classifier>/`. Depending on platform, these can include GMP, MPFR, and
 selected toolchain runtime libraries needed to load `bigmath_ffm`.
+
+Release JARs contain exactly six native classifiers: `linux-x86-64`,
+`linux-aarch64`, `macos-x86-64`, `macos-aarch64`, `windows-x86-64`, and
+`windows-aarch64`.
+
+Windows classifiers include the complete architecture-matched non-system DLL
+closure needed on a minimal host. This includes the Microsoft VC++ runtime and,
+when required by GMP, MPFR, or another bundled dependency, the GNU libstdc++,
+libgcc, and MinGW-w64 winpthreads runtimes together with their notices.
 
 Users can replace compatible shared libraries by:
 

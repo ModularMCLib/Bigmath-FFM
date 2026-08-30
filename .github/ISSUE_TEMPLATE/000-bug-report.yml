@@ -37,6 +37,7 @@ body:
         - "macOS x86_64"
         - "macOS aarch64"
         - "Windows x86_64"
+        - "Windows aarch64"
     validations:
       required: true
   - type: dropdown

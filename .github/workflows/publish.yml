@@ -8,89 +8,80 @@ on:
         type: boolean
         default: false
       tag-name:
-        description: Tag to build from and upload to
+        description: Release tag associated with the immutable JAR
         required: true
         type: string
       version:
-        description: Version branch identifier
+        description: Branch to update after a successful release
         required: true
         type: string
-      release-body:
-        description: Body for published release notes
-        required: false
+      artifact-name:
+        description: Actions artifact containing the already-built JAR and release.sha256
+        required: true
         type: string
       changelog-body:
-        description: Body of change notes to insert into CHANGELOG.md
+        description: Change notes to insert into CHANGELOG.md
         required: false
         type: string
+    secrets:
+      MAVEN_URL:
+        required: false
+      MAVEN_USER:
+        required: false
+      MAVEN_PASSWORD:
+        required: false
 
 jobs:
-  build:
-    name: Build and Publish to Maven
+  publish:
+    name: Publish Packaged JAR
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+    outputs:
+      ver: ${{ steps.version.outputs.value }}
     env:
       CI: 'true'
-    outputs:
-      ver: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.version }}
-      - name: Setup Build
-        uses: ./.github/actions/build_setup
+          ref: ${{ inputs.tag-name }}
+      - uses: actions/setup-java@v4
         with:
-          ref: ${{ inputs.version }}
-      - name: Install native dependencies
-        run: sudo apt-get update && sudo apt-get install -y libgmp-dev libmpfr-dev cmake
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-      - name: Get Version
-        id: ver
-        run: echo "version=$(./gradlew -q printVersion 2>/dev/null || echo $(grep -oP 'mod_version\s*=\s*\K.*' gradle.properties))" >> $GITHUB_OUTPUT
-      - name: Build
-        run: ./gradlew assemble
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts-${{ inputs.tag-name }}
-          path: |
-            build/libs/*
-            bigmath-ffm-kt/build/libs/*
-          if-no-files-found: error
-          retention-days: 3
-      - name: Publish
-        if: ${{ !inputs.simulate }}
-        env:
-          MAVEN_USER: ${{ secrets.MAVEN_USER }}
-          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
-        run: ./gradlew publish -x buildNative -x test
-
-  upload-release-artifacts:
-    name: Upload Artifacts
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download artifacts
+          java-version: '23'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Download the packaged release JAR
         uses: actions/download-artifact@v4
         with:
-          name: build-artifacts-${{ inputs.tag-name }}
-      - name: Upload artifacts to release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag-name }}
-          files: |
-            build/libs/*.jar
-            bigmath-ffm-kt/build/libs/*.jar
-          fail_on_unmatched_files: true
+          name: ${{ inputs.artifact-name }}
+          path: release/
+      - name: Locate packaged JAR
+        id: jar
+        run: |
+          cd release
+          jar_path="$(find "$PWD" -maxdepth 1 -type f -name '*.jar' -print -quit)"
+          echo "path=$jar_path" >> "$GITHUB_OUTPUT"
+      - name: Read version
+        id: version
+        run: echo "value=$(grep -oP 'mod_version\s*=\s*\K.*' gradle.properties | tail -1)" >> "$GITHUB_OUTPUT"
+      - name: Publish the packaged JAR to Maven
+        if: ${{ !inputs.simulate }}
+        env:
+          MAVEN_URL: ${{ secrets.MAVEN_URL }}
+          MAVEN_USER: ${{ secrets.MAVEN_USER }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+        run: |
+          test -n "$MAVEN_URL"
+          test -n "$MAVEN_USER"
+          test -n "$MAVEN_PASSWORD"
+          ./gradlew publishMavenJavaPublicationToReleaseRepository \
+            "-PreleaseJarFile=${{ steps.jar.outputs.path }}" \
+            -x releaseJar -x cmakeConfigure -x buildNative -x copyNativeLib -x processResources
 
   bump-version-and-changelog:
     name: Bump Version and Update Changelog
-    needs: [build, upload-release-artifacts]
-    if: ${{ always() && !failure() && !cancelled() }}
+    needs: publish
+    if: ${{ inputs.simulate == false && always() && !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -99,30 +90,40 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.version }}
-      - name: Bump Version
+      - name: Bump version
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git switch -C gh/release-${{ inputs.version }}
-          CURRENT=$(grep -oP 'mod_version\s*=\s*\K.*' gradle.properties | tail -1)
-          BUMPED=$(echo $CURRENT | awk -F. '/[0-9]+\./{$NF++;print}' OFS=.)
-          sed -i "s/mod_version\s*=\s*$CURRENT/mod_version = $BUMPED/" gradle.properties
+          git switch -c gh/release-${{ github.run_id }}
+          current="$(grep -oP 'mod_version\s*=\s*\K.*' gradle.properties | tail -1)"
+          bumped="$(echo "$current" | awk -F. '/[0-9]+\./{$NF++;print}' OFS=.)"
+          sed -i "s/mod_version\s*=\s*$current/mod_version = $bumped/" gradle.properties
           git add gradle.properties
-          git commit -m "Bump version to $BUMPED" || true
-      - name: Prepend to CHANGELOG
+          git commit -m "Bump version to $bumped" || true
+      - name: Prepend changelog
         if: inputs.changelog-body
+        env:
+          CHANGELOG_BODY: ${{ inputs.changelog-body }}
         run: |
-          { head -n 2 CHANGELOG.md; echo -e "${{ inputs.changelog-body }}"; tail -n +3 CHANGELOG.md; } > temp.md && mv temp.md CHANGELOG.md
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path("CHANGELOG.md")
+          lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+          body = os.environ["CHANGELOG_BODY"].rstrip("\n") + "\n"
+          path.write_text("".join(lines[:2]) + body + "".join(lines[2:]), encoding="utf-8")
+          PY
           git add CHANGELOG.md
-          git commit -m "Update CHANGELOG for ${{ needs.build.outputs.ver }}" || true
-      - name: Push and Create PR
+          git commit -m "Update CHANGELOG for ${{ needs.publish.outputs.ver }}" || true
+      - name: Push and create PR
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git push --force --set-upstream origin gh/release-${{ inputs.version }}
+          git push --set-upstream origin gh/release-${{ github.run_id }}
           gh pr create \
             -B ${{ inputs.version }} \
-            -H gh/release-${{ inputs.version }} \
+            -H gh/release-${{ github.run_id }} \
             --title "Post-release: bump version and update changelog" \
-            --body "Automated after release ${{ needs.build.outputs.ver }}" \
+            --body "Automated after release ${{ needs.publish.outputs.ver }}" \
             --label "ignore changelog"
