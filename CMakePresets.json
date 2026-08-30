@@ -9,6 +9,7 @@
       "binaryDir": "${sourceDir}/build/native",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
+        "BIGMATH_ENABLE_CUDA": "OFF",
         "USE_GMP": "ON"
       }
     },
@@ -20,6 +21,7 @@
       "binaryDir": "${sourceDir}/build/native",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
+        "BIGMATH_ENABLE_CUDA": "OFF",
         "USE_GMP": "OFF"
       }
     },
@@ -31,6 +33,7 @@
       "binaryDir": "${sourceDir}/build/native",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
+        "BIGMATH_ENABLE_CUDA": "OFF",
         "USE_GMP": "ON",
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
       }
@@ -43,6 +46,61 @@
       "binaryDir": "${sourceDir}/build/native",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
+        "BIGMATH_ENABLE_CUDA": "OFF",
+        "USE_GMP": "ON"
+      }
+    },
+    {
+      "name": "cuda-linux-release",
+      "displayName": "CUDA Linux Release",
+      "description": "Build Linux x86-64 with CUDA, GMP, and MPFR",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/native",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CUDA_STANDARD": "17",
+        "CMAKE_CUDA_ARCHITECTURES": "native",
+        "BIGMATH_ENABLE_CUDA": "ON",
+        "USE_GMP": "ON"
+      }
+    },
+    {
+      "name": "cuda-windows-msvc-release",
+      "displayName": "CUDA Windows MSVC Release",
+      "description": "Build Windows x86-64 with MSVC, CUDA, GMP, and MPFR",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/native",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CUDA_STANDARD": "17",
+        "CMAKE_CUDA_ARCHITECTURES": "native",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-windows",
+        "BIGMATH_ENABLE_CUDA": "ON",
+        "USE_GMP": "ON"
+      }
+    },
+    {
+      "name": "cuda-debug",
+      "displayName": "CUDA Debug",
+      "description": "Debug build with CUDA when running on a supported host",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/native",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CUDA_STANDARD": "17",
+        "CMAKE_CUDA_ARCHITECTURES": "native",
+        "BIGMATH_ENABLE_CUDA": "ON",
         "USE_GMP": "ON"
       }
     }

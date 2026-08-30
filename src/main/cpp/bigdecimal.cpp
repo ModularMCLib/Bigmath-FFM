@@ -1,9 +1,51 @@
 #include "bigmath_ffm.h"
+#include "algos.h"
 #include <cstdlib>
 #include <cstring>
 #include <limits>
 
+#ifdef BIGMATH_HAS_CUDA
+#include "cuda_runtime_state.h"
+#endif
+
 #ifndef BIGMATH_NO_GMP
+
+// GPU-accelerated MPFR multiply for very high precision. The expensive part of
+// mpfr_mul is the integer significand product; route that through the GPU bigint
+// multiply (accelerated_mul) and let MPFR round exactly once via mpfr_set_z_2exp.
+// Because a = za*2^ea and b = zb*2^eb exactly, the result is the single correct
+// rounding of the exact product — bit-identical to mpfr_mul. Returns false (the
+// caller falls back to mpfr_mul) for non-regular operands, when CUDA is
+// unavailable, or below the precision where the GPU beats CPU GMP and the
+// get/set_z overhead pays off.
+static bool gpu_mpfr_mul(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b) {
+#ifndef BIGMATH_HAS_CUDA
+	(void)out;
+	(void)a;
+	(void)b;
+	return false;
+#else
+	static constexpr mpfr_prec_t GPU_MUL_PREC_THRESHOLD = 262144;  // ~79k decimal digits
+	if (!bigmath::cuda::is_available() ||
+			!mpfr_regular_p(a) || !mpfr_regular_p(b) ||
+			mpfr_get_prec(a) < GPU_MUL_PREC_THRESHOLD ||
+			mpfr_get_prec(b) < GPU_MUL_PREC_THRESHOLD) {
+		return false;
+	}
+	mpz_t za, zb, zp;
+	mpz_init(za);
+	mpz_init(zb);
+	mpz_init(zp);
+	const mpfr_exp_t ea = mpfr_get_z_2exp(za, a);   // a = za * 2^ea
+	const mpfr_exp_t eb = mpfr_get_z_2exp(zb, b);   // b = zb * 2^eb
+	bigmath::accelerated_mul(zp, za, zb);           // exact significand product (GPU)
+	mpfr_set_z_2exp(out, zp, ea + eb, MPFR_RNDN);   // single correct rounding to out's prec
+	mpz_clear(za);
+	mpz_clear(zb);
+	mpz_clear(zp);
+	return true;
+#endif
+}
 
 void bigdecimal_from_double(mpfr_ptr *out, double val, int precision) {
 	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
@@ -90,6 +132,17 @@ void bigdecimal_mul(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
 	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
 	if (!*out) return;
 	mpfr_init2(*out, mpfr_get_prec(a));
+	if (!gpu_mpfr_mul(*out, a, b)) {
+		mpfr_mul(*out, a, b, MPFR_RNDN);
+	}
+}
+
+// Pure-MPFR reference multiply (never uses the GPU); correctness oracle for the
+// gpu_mpfr_mul path, analogous to bigint_mul_gmp.
+void bigdecimal_mul_mpfr(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b) {
+	*out = (mpfr_ptr)malloc(sizeof(__mpfr_struct));
+	if (!*out) return;
+	mpfr_init2(*out, mpfr_get_prec(a));
 	mpfr_mul(*out, a, b, MPFR_RNDN);
 }
 
@@ -111,7 +164,9 @@ void bigdecimal_mul_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b) {
 	if (mpfr_get_prec(out) != mpfr_get_prec(a)) {
 		mpfr_set_prec(out, mpfr_get_prec(a));
 	}
-	mpfr_mul(out, a, b, MPFR_RNDN);
+	if (!gpu_mpfr_mul(out, a, b)) {
+		mpfr_mul(out, a, b, MPFR_RNDN);
+	}
 }
 
 void bigdecimal_div_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b) {
@@ -413,6 +468,7 @@ void bigdecimal_set_string(mpfr_ptr, const char *, int) { }
 void bigdecimal_add(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_sub(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_mul(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
+void bigdecimal_mul_mpfr(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_div(mpfr_ptr *out, mpfr_ptr, mpfr_ptr) { *out = nullptr; }
 void bigdecimal_add_into(mpfr_ptr, mpfr_ptr, mpfr_ptr) { }
 void bigdecimal_mul_into(mpfr_ptr, mpfr_ptr, mpfr_ptr) { }

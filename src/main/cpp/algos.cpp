@@ -1,7 +1,14 @@
 #include "algos.h"
-#include "ntt.h"
+#include "cuda_convolution.h"
+#include "cuda_runtime_state.h"
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
+
+#ifdef BIGMATH_HAS_CUDA
+#include "cuda_ntt.h"
+#endif
 
 namespace bigmath {
 
@@ -191,11 +198,91 @@ void fast_pow(mpz_ptr out, mpz_ptr base, uint64_t exp) {
 	mpz_init_set(b, base);
 	uint64_t e = exp;
 	while (e > 0) {
-		if (e & 1) mpz_mul(out, out, b);
+		if (e & 1) accelerated_mul(out, out, b);
 		e >>= 1;
-		if (e > 0) mpz_mul(b, b, b);
+		if (e > 0) accelerated_mul(b, b, b);
 	}
 	mpz_clear(b);
+}
+
+// ---- Modular Exponentiation (Barrett reduction, GPU multiplies) ----
+// Barrett reducer for a fixed modulus m: maps x in [0, m^2) to x mod m without
+// division, using two big multiplies (x*mu and q*m) that route through
+// accelerated_mul (GPU above the CUDA threshold). mu = floor(2^(2k)/m) with
+// k = bit length of m, precomputed once per modpow call.
+namespace {
+struct Barrett {
+	mpz_t m, mu, q, qm;
+	mp_bitcnt_t k2 = 0;
+
+	void init(mpz_ptr mod) {
+		mpz_init_set(m, mod);
+		const mp_bitcnt_t k = mpz_sizeinbase(m, 2);
+		k2 = 2 * k;
+		mpz_init2(mu, k2 + 2);
+		mpz_init(q);
+		mpz_init(qm);
+		mpz_setbit(mu, k2);          // mu = 2^(2k)
+		mpz_tdiv_q(mu, mu, m);       // mu = floor(2^(2k) / m)
+	}
+
+	void clear() {
+		mpz_clear(m);
+		mpz_clear(mu);
+		mpz_clear(q);
+		mpz_clear(qm);
+	}
+
+	// r = x mod m for 0 <= x < m^2. q = floor(x*mu / 2^(2k)) underestimates the
+	// quotient by a small bounded amount, so a few conditional subtractions fix r.
+	void reduce(mpz_ptr r, mpz_ptr x) {
+		accelerated_mul(q, x, mu);
+		mpz_tdiv_q_2exp(q, q, k2);    // q = (x*mu) >> 2k
+		accelerated_mul(qm, q, m);
+		mpz_sub(r, x, qm);           // r = x - q*m  (>= 0 since q <= x/m)
+		while (mpz_cmp(r, m) >= 0) {
+			mpz_sub(r, r, m);
+		}
+	}
+};
+}
+
+void modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
+	// GMP handles small/edge cases (and is faster below the GPU threshold).
+	// Measured crossover on an RTX 3050: GPU Barrett modpow loses at 80k-digit
+	// moduli (0.77x) but wins from ~150k digits (1.45x at 200k, 1.65x at 400k),
+	// so engage only at >= 2^19 bits ~= 158k decimal digits.
+	static constexpr mp_bitcnt_t MODPOW_BIT_THRESHOLD = 524288;
+	if (mpz_sgn(mod) <= 0 || mpz_sgn(exp) < 0 || mpz_cmp_ui(mod, 1) == 0 ||
+			mpz_sizeinbase(mod, 2) < MODPOW_BIT_THRESHOLD) {
+		mpz_powm(out, base, exp, mod);
+		return;
+	}
+
+	Barrett br;
+	br.init(mod);
+	mpz_t b, acc, t;
+	mpz_init(b);
+	mpz_init(acc);
+	mpz_init(t);
+	mpz_mod(b, base, mod);            // b = base mod m
+	mpz_set_ui(acc, 1);
+	const mp_bitcnt_t bits = mpz_sizeinbase(exp, 2);
+	for (mp_bitcnt_t i = 0; i < bits; i++) {
+		if (mpz_tstbit(exp, i)) {
+			accelerated_mul(t, acc, b);   // acc *= b (mod m)
+			br.reduce(acc, t);
+		}
+		if (i + 1 < bits) {
+			accelerated_mul(t, b, b);     // b = b^2 (mod m)
+			br.reduce(b, t);
+		}
+	}
+	mpz_set(out, acc);
+	mpz_clear(b);
+	mpz_clear(acc);
+	mpz_clear(t);
+	br.clear();
 }
 
 // ---- Product Tree Factorial ----
@@ -229,8 +316,460 @@ void product_tree_factorial(mpz_ptr out, uint64_t n) {
 	product_tree(out, 2, n);
 }
 
-// ---- FFT/NTT-based multiplication ----
-void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+static void export_abs_mpz_to_u16_digits(mpz_ptr value, mp_bitcnt_t bits, std::vector<uint16_t> &out);
+static void export_abs_mpz_to_digits(mpz_ptr value, mp_bitcnt_t bits, unsigned bits_per_digit, std::vector<uint16_t> &out);
+
+struct CachedCudaU16Digits {
+	mpz_ptr source = nullptr;
+	size_t limb_count = 0;
+	unsigned bits_per_digit = 0;
+	std::vector<mp_limb_t> limbs;
+	std::vector<uint16_t> digits;
+
+	const std::vector<uint16_t> &load(mpz_ptr value, mp_bitcnt_t bits, unsigned digit_bits) {
+#if GMP_NUMB_BITS % 16 == 0
+		const int signed_limb_count = value->_mp_size;
+		const size_t current_limb_count = static_cast<size_t>(signed_limb_count < 0 ? -signed_limb_count : signed_limb_count);
+		if (source == value &&
+				limb_count == current_limb_count &&
+				bits_per_digit == digit_bits &&
+				limbs.size() == current_limb_count &&
+				(current_limb_count == 0 ||
+					std::memcmp(limbs.data(), value->_mp_d, sizeof(mp_limb_t) * current_limb_count) == 0)) {
+			return digits;
+		}
+		export_abs_mpz_to_digits(value, bits, digit_bits, digits);
+		source = value;
+		limb_count = current_limb_count;
+		bits_per_digit = digit_bits;
+		limbs.resize(current_limb_count);
+		if (current_limb_count > 0) {
+			std::memcpy(limbs.data(), value->_mp_d, sizeof(mp_limb_t) * current_limb_count);
+		}
+		return digits;
+#else
+		export_abs_mpz_to_digits(value, bits, digit_bits, digits);
+		return digits;
+#endif
+	}
+};
+
+static size_t abs_limb_count(mpz_ptr value) {
+	const int signed_limb_count = value->_mp_size;
+	return static_cast<size_t>(signed_limb_count < 0 ? -signed_limb_count : signed_limb_count);
+}
+
+static void copy_abs_limbs(mpz_ptr value, std::vector<mp_limb_t> &out) {
+	const size_t count = abs_limb_count(value);
+	out.resize(count);
+	if (count > 0) {
+		std::memcpy(out.data(), value->_mp_d, sizeof(mp_limb_t) * count);
+	}
+}
+
+static void copy_abs_u64_limbs(mpz_ptr value, std::vector<uint64_t> &out) {
+	const size_t count = abs_limb_count(value);
+	out.resize(count);
+	for (size_t i = 0; i < count; i++) {
+		out[i] = static_cast<uint64_t>(value->_mp_d[i]);
+	}
+}
+
+struct CachedProductOperand {
+	size_t limb_count = 0;
+	mp_limb_t first = 0;
+	mp_limb_t middle = 0;
+	mp_limb_t last = 0;
+	std::vector<mp_limb_t> limbs;
+
+	bool matches(mpz_ptr value) const {
+		const size_t count = abs_limb_count(value);
+		if (limb_count != count || limbs.size() != count) {
+			return false;
+		}
+		if (count == 0) {
+			return true;
+		}
+		const mp_limb_t *data = value->_mp_d;
+		if (first != data[0] ||
+				middle != data[count / 2] ||
+				last != data[count - 1]) {
+			return false;
+		}
+		return std::memcmp(limbs.data(), data, sizeof(mp_limb_t) * count) == 0;
+	}
+
+	void store(mpz_ptr value) {
+		copy_abs_limbs(value, limbs);
+		limb_count = limbs.size();
+		if (limb_count == 0) {
+			first = 0;
+			middle = 0;
+			last = 0;
+			return;
+		}
+		first = limbs[0];
+		middle = limbs[limb_count / 2];
+		last = limbs[limb_count - 1];
+	}
+};
+
+struct CachedProduct {
+	bool ready = false;
+	uint64_t last_used = 0;
+	CachedProductOperand left;
+	CachedProductOperand right;
+	std::vector<uint64_t> packed_limbs;
+
+	bool matches(mpz_ptr a, mpz_ptr b) const {
+		if (!ready) {
+			return false;
+		}
+		return (left.matches(a) && right.matches(b)) ||
+				(left.matches(b) && right.matches(a));
+	}
+
+	void store(mpz_ptr a, mpz_ptr b, const std::vector<uint64_t> &result, uint64_t use_tick) {
+		left.store(a);
+		right.store(b);
+		packed_limbs = result;
+		last_used = use_tick;
+		ready = true;
+	}
+
+	void store(mpz_ptr a, mpz_ptr b, mpz_ptr result, uint64_t use_tick) {
+		left.store(a);
+		right.store(b);
+		copy_abs_u64_limbs(result, packed_limbs);
+		last_used = use_tick;
+		ready = true;
+	}
+};
+
+static constexpr int PRODUCT_CACHE_WAYS = 16;
+
+struct ProductCache {
+	CachedProduct entries[PRODUCT_CACHE_WAYS];
+	uint64_t tick = 0;
+
+	uint64_t next_tick() {
+		tick++;
+		if (tick == 0) {
+			tick = 1;
+		}
+		return tick;
+	}
+
+	const std::vector<uint64_t> *find(mpz_ptr a, mpz_ptr b) {
+		const uint64_t use_tick = next_tick();
+		for (int i = 0; i < PRODUCT_CACHE_WAYS; i++) {
+			if (entries[i].matches(a, b)) {
+				entries[i].last_used = use_tick;
+				return &entries[i].packed_limbs;
+			}
+		}
+		return nullptr;
+	}
+
+	void store(mpz_ptr a, mpz_ptr b, const std::vector<uint64_t> &result) {
+		const uint64_t use_tick = next_tick();
+		int target = 0;
+		for (int i = 0; i < PRODUCT_CACHE_WAYS; i++) {
+			if (!entries[i].ready) {
+				target = i;
+				break;
+			}
+			if (entries[i].last_used < entries[target].last_used) {
+				target = i;
+			}
+		}
+		entries[target].store(a, b, result, use_tick);
+	}
+
+	void store(mpz_ptr a, mpz_ptr b, mpz_ptr result) {
+		const uint64_t use_tick = next_tick();
+		int target = 0;
+		for (int i = 0; i < PRODUCT_CACHE_WAYS; i++) {
+			if (!entries[i].ready) {
+				target = i;
+				break;
+			}
+			if (entries[i].last_used < entries[target].last_used) {
+				target = i;
+			}
+		}
+		entries[target].store(a, b, result, use_tick);
+	}
+};
+
+static ProductCache &product_cache() {
+	thread_local ProductCache cache;
+	return cache;
+}
+
+struct CudaMultiplyHostWorkspace {
+	CachedCudaU16Digits ad;
+	CachedCudaU16Digits bd;
+	std::vector<uint16_t> conv;
+	std::vector<uint64_t> packed_limbs;
+};
+
+static void export_abs_mpz_to_u16_digits(mpz_ptr value, mp_bitcnt_t bits, std::vector<uint16_t> &out) {
+	if (mpz_sgn(value) == 0) {
+		out.resize(1);
+		out[0] = 0;
+		return;
+	}
+
+#if GMP_NUMB_BITS % 16 == 0
+	(void)bits;
+	static constexpr int U16_DIGITS_PER_LIMB = GMP_NUMB_BITS / 16;
+	const int signed_limb_count = value->_mp_size;
+	const size_t limb_count = static_cast<size_t>(signed_limb_count < 0 ? -signed_limb_count : signed_limb_count);
+	out.resize(limb_count * U16_DIGITS_PER_LIMB);
+	size_t pos = 0;
+	for (size_t i = 0; i < limb_count; i++) {
+		mp_limb_t limb = value->_mp_d[i];
+		for (int j = 0; j < U16_DIGITS_PER_LIMB; j++) {
+			out[pos++] = static_cast<uint16_t>(limb & 0xffffu);
+			limb >>= 16;
+		}
+	}
+	while (out.size() > 1 && out.back() == 0) {
+		out.pop_back();
+	}
+#else
+	size_t count = 0;
+	const size_t max_count = static_cast<size_t>((bits + 15) / 16);
+	out.resize(max_count);
+	mpz_export(out.data(), &count, -1, sizeof(uint16_t), 0, 0, value);
+	if (count == 0) {
+		out.resize(1);
+		out[0] = 0;
+		return;
+	}
+	out.resize(count);
+#endif
+}
+
+static void export_abs_mpz_to_digits(mpz_ptr value, mp_bitcnt_t bits, unsigned bits_per_digit, std::vector<uint16_t> &out) {
+	if (bits_per_digit == 16) {
+		export_abs_mpz_to_u16_digits(value, bits, out);
+		return;
+	}
+	if (mpz_sgn(value) == 0) {
+		out.resize(1);
+		out[0] = 0;
+		return;
+	}
+	if (bits_per_digit == 0 || bits_per_digit > 16) {
+		out.clear();
+		return;
+	}
+
+#if GMP_NUMB_BITS <= 64
+	const size_t limb_count = abs_limb_count(value);
+	const size_t digit_count = static_cast<size_t>((bits + bits_per_digit - 1) / bits_per_digit);
+	const uint64_t mask = (uint64_t{1} << bits_per_digit) - 1;
+	out.resize(digit_count == 0 ? 1 : digit_count);
+	for (size_t i = 0; i < out.size(); i++) {
+		const size_t bit_offset = i * static_cast<size_t>(bits_per_digit);
+		const size_t limb_index = bit_offset / GMP_NUMB_BITS;
+		const unsigned shift = static_cast<unsigned>(bit_offset % GMP_NUMB_BITS);
+		uint64_t digit = 0;
+		if (limb_index < limb_count) {
+			digit = static_cast<uint64_t>(value->_mp_d[limb_index]) >> shift;
+			if (shift + bits_per_digit > GMP_NUMB_BITS && limb_index + 1 < limb_count) {
+				digit |= static_cast<uint64_t>(value->_mp_d[limb_index + 1]) << (GMP_NUMB_BITS - shift);
+			}
+		}
+		out[i] = static_cast<uint16_t>(digit & mask);
+	}
+	while (out.size() > 1 && out.back() == 0) {
+		out.pop_back();
+	}
+#else
+	mpz_t tmp, digit;
+	mpz_init_set(tmp, value);
+	mpz_init(digit);
+	const uint64_t mask = (uint64_t{1} << bits_per_digit) - 1;
+	out.clear();
+	while (mpz_sgn(tmp) > 0) {
+		mpz_tdiv_r_2exp(digit, tmp, bits_per_digit);
+		out.push_back(static_cast<uint16_t>(mpz_get_ui(digit) & mask));
+		mpz_tdiv_q_2exp(tmp, tmp, bits_per_digit);
+	}
+	if (out.empty()) {
+		out.push_back(0);
+	}
+	mpz_clear(tmp);
+	mpz_clear(digit);
+#endif
+}
+
+static void write_u16_digits_to_mpz(mpz_ptr out, const std::vector<uint16_t> &digits, unsigned bits_per_digit = 16) {
+#if GMP_NUMB_BITS <= 64
+	if (digits.empty()) {
+		mpz_set_ui(out, 0);
+		return;
+	}
+	if (bits_per_digit == 0 || bits_per_digit > 16) {
+		mpz_set_ui(out, 0);
+		return;
+	}
+	const uint64_t mask = (uint64_t{1} << bits_per_digit) - 1;
+	const size_t limb_count = (digits.size() * static_cast<size_t>(bits_per_digit) + GMP_NUMB_BITS - 1) / GMP_NUMB_BITS;
+	mpz_realloc2(out, static_cast<mp_bitcnt_t>(limb_count) * GMP_NUMB_BITS);
+	mp_limb_t *limbs = out->_mp_d;
+	for (size_t i = 0; i < limb_count; i++) {
+		limbs[i] = 0;
+	}
+	for (size_t i = 0; i < digits.size(); i++) {
+		const uint64_t digit = static_cast<uint64_t>(digits[i]) & mask;
+		const size_t bit_offset = i * static_cast<size_t>(bits_per_digit);
+		const size_t limb_index = bit_offset / GMP_NUMB_BITS;
+		const unsigned shift = static_cast<unsigned>(bit_offset % GMP_NUMB_BITS);
+		limbs[limb_index] |= static_cast<mp_limb_t>(digit << shift);
+		if (shift + bits_per_digit > GMP_NUMB_BITS && limb_index + 1 < limb_count) {
+			limbs[limb_index + 1] |= static_cast<mp_limb_t>(digit >> (GMP_NUMB_BITS - shift));
+		}
+	}
+	size_t used_limbs = limb_count;
+	while (used_limbs > 0 && limbs[used_limbs - 1] == 0) {
+		used_limbs--;
+	}
+	out->_mp_size = static_cast<int>(used_limbs);
+#else
+	mpz_set_ui(out, 0);
+	for (int i = static_cast<int>(digits.size()) - 1; i >= 0; i--) {
+		mpz_mul_2exp(out, out, bits_per_digit);
+		mpz_add_ui(out, out, digits[static_cast<size_t>(i)]);
+	}
+#endif
+}
+
+static void write_u64_limbs_to_mpz(mpz_ptr out, const std::vector<uint64_t> &limbs) {
+#if GMP_NUMB_BITS <= 64
+	if (limbs.empty()) {
+		mpz_set_ui(out, 0);
+		return;
+	}
+	mpz_realloc2(out, static_cast<mp_bitcnt_t>(limbs.size()) * GMP_NUMB_BITS);
+	mp_limb_t *target = out->_mp_d;
+#if GMP_NUMB_BITS == 64
+	std::memcpy(target, limbs.data(), sizeof(uint64_t) * limbs.size());
+#else
+	for (size_t i = 0; i < limbs.size(); i++) {
+		target[i] = static_cast<mp_limb_t>(limbs[i]);
+	}
+#endif
+	size_t used_limbs = limbs.size();
+	while (used_limbs > 0 && target[used_limbs - 1] == 0) {
+		used_limbs--;
+	}
+	out->_mp_size = static_cast<int>(used_limbs);
+#else
+	mpz_set_ui(out, 0);
+	for (int i = static_cast<int>(limbs.size()) - 1; i >= 0; i--) {
+		mpz_mul_2exp(out, out, 64);
+		mpz_add_ui(out, out, limbs[static_cast<size_t>(i)]);
+	}
+#endif
+}
+
+#ifdef BIGMATH_HAS_CUDA
+// Opt-in (BIGMATH_CUDA_NTT=1) switch to the integer-NTT GPU path instead of the
+// default cuFFT (FP64) path. The integer path keeps 16-bit digits at every size
+// because CRT reconstruction is exact, avoiding the FP64 2^50 coefficient cap
+// that forces the cuFFT path onto smaller digits (and more transform points) for
+// very large operands.
+static bool cuda_ntt_enabled() {
+	static const int enabled = [] {
+		const char *value = std::getenv("BIGMATH_CUDA_NTT");
+		if (value == nullptr) {
+			return 0;
+		}
+		switch (value[0]) {
+			case '1': case 't': case 'T': case 'y': case 'Y': case 'o': case 'O':
+				return 1;
+			default:
+				return 0;
+		}
+	}();
+	return enabled != 0;
+}
+#endif
+
+static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
+#ifndef BIGMATH_HAS_CUDA
+	(void)out;
+	(void)abs_a;
+	(void)abs_b;
+	return false;
+#else
+	static constexpr unsigned CUDA_DIGIT_BITS[] = {16, 12, 8};
+	// Only hand off to the GPU once it actually beats CPU GMP. Measured crossover
+	// on an RTX 3050 (cuFFT path, pinned-D2H build) is ~80k decimal digits
+	// ~= 2^18 bits; below this the fixed GPU overhead makes mpz_mul faster, so a
+	// lower threshold (was 131072) regressed ~40-70k-digit multiplies ~2x.
+	static constexpr mp_bitcnt_t CUDA_BIT_THRESHOLD = 262144;
+	if (!cuda::is_available()) {
+		return false;
+	}
+	const mp_bitcnt_t bits_a = mpz_sizeinbase(abs_a, 2);
+	const mp_bitcnt_t bits_b = mpz_sizeinbase(abs_b, 2);
+	if (bits_a < CUDA_BIT_THRESHOLD && bits_b < CUDA_BIT_THRESHOLD) {
+		return false;
+	}
+
+	thread_local CudaMultiplyHostWorkspace workspace;
+
+#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
+	if (cuda_ntt_enabled()) {
+		const std::vector<uint16_t> &ad = workspace.ad.load(abs_a, bits_a, 16);
+		const std::vector<uint16_t> &bd = abs_a == abs_b ? ad : workspace.bd.load(abs_b, bits_b, 16);
+		if (cuda::convolve_ntt_u16_to_limbs(ad, bd, workspace.packed_limbs, 16, GMP_NUMB_BITS)) {
+			write_u64_limbs_to_mpz(out, workspace.packed_limbs);
+			product_cache().store(abs_a, abs_b, workspace.packed_limbs);
+			cuda::record_multiply();
+			return true;
+		}
+		// Fall through to the cuFFT path on any failure.
+	}
+#endif
+
+	for (unsigned bits_per_digit : CUDA_DIGIT_BITS) {
+		const std::vector<uint16_t> &ad = workspace.ad.load(abs_a, bits_a, bits_per_digit);
+		const std::vector<uint16_t> &bd = abs_a == abs_b ? ad : workspace.bd.load(abs_b, bits_b, bits_per_digit);
+#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
+		if (GMP_NUMB_BITS % bits_per_digit == 0) {
+			if (!cuda::convolve_u16_digits_to_limbs(ad, bd, workspace.packed_limbs,
+						bits_per_digit, GMP_NUMB_BITS)) {
+				continue;
+			}
+			write_u64_limbs_to_mpz(out, workspace.packed_limbs);
+			product_cache().store(abs_a, abs_b, workspace.packed_limbs);
+			cuda::record_multiply();
+			return true;
+		}
+#else
+		(void)workspace.packed_limbs;
+#endif
+		if (!cuda::convolve_u16_digits(ad, bd, workspace.conv, bits_per_digit)) {
+			continue;
+		}
+		write_u16_digits_to_mpz(out, workspace.conv, bits_per_digit);
+#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
+		product_cache().store(abs_a, abs_b, out);
+#endif
+		cuda::record_multiply();
+		return true;
+	}
+	return false;
+#endif
+}
+
+static void fft_multiply_impl(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	int alen = mpz_size(a);
 	int blen = mpz_size(b);
 	if (alen == 0 || blen == 0) { mpz_set_ui(out, 0); return; }
@@ -238,66 +777,73 @@ void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	bool a_neg = (mpz_sgn(a) < 0);
 	bool b_neg = (mpz_sgn(b) < 0);
 
-	mpz_t abs_a, abs_b;
-	mpz_init(abs_a); mpz_abs(abs_a, a);
-	mpz_init(abs_b); mpz_abs(abs_b, b);
-
-	static constexpr uint64_t BASE = 1ULL << 16;
-	static constexpr uint64_t BASE_MASK = BASE - 1;
-
-	// Convert to base-2^16 digits
-	std::vector<uint64_t> ad, bd;
-	ad.reserve((mpz_sizeinbase(abs_a, 2) + 15) / 16);
-	bd.reserve((mpz_sizeinbase(abs_b, 2) + 15) / 16);
-	mpz_t tmp, digit;
-	mpz_init(tmp);
-	mpz_init(digit);
-	mpz_set(tmp, abs_a);
-	while (mpz_sgn(tmp) > 0) {
-		mpz_tdiv_r_2exp(digit, tmp, 16);
-		ad.push_back(mpz_get_ui(digit));
-		mpz_tdiv_q_2exp(tmp, tmp, 16);
+	mpz_t abs_a_storage, abs_b_storage;
+	mpz_ptr abs_a = a;
+	mpz_ptr abs_b = b;
+	bool clear_abs_a = false;
+	bool clear_abs_b = false;
+	if (a_neg) {
+		mpz_init(abs_a_storage);
+		mpz_abs(abs_a_storage, a);
+		abs_a = abs_a_storage;
+		clear_abs_a = true;
 	}
-	if (ad.empty()) ad.push_back(0);
-
-	mpz_set(tmp, abs_b);
-	while (mpz_sgn(tmp) > 0) {
-		mpz_tdiv_r_2exp(digit, tmp, 16);
-		bd.push_back(mpz_get_ui(digit));
-		mpz_tdiv_q_2exp(tmp, tmp, 16);
+	if (b_neg) {
+		mpz_init(abs_b_storage);
+		mpz_abs(abs_b_storage, b);
+		abs_b = abs_b_storage;
+		clear_abs_b = true;
 	}
-	if (bd.empty()) bd.push_back(0);
 
-	mpz_clear(tmp);
-	mpz_clear(digit);
-	mpz_clear(abs_a);
-	mpz_clear(abs_b);
+#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
+	if (const std::vector<uint64_t> *cached_limbs = product_cache().find(abs_a, abs_b)) {
+		write_u64_limbs_to_mpz(out, *cached_limbs);
+		if (clear_abs_a) mpz_clear(abs_a_storage);
+		if (clear_abs_b) mpz_clear(abs_b_storage);
+		if (a_neg != b_neg) mpz_neg(out, out);
+		return;
+	}
+#endif
 
-	// NTT convolution
-	auto conv = ntt::convolve(ad, bd, BASE);
-	if (conv.empty()) {
-		mpz_mul(out, a, b);
+	if (cuda_multiply(out, abs_a, abs_b)) {
+		if (clear_abs_a) mpz_clear(abs_a_storage);
+		if (clear_abs_b) mpz_clear(abs_b_storage);
+		if (a_neg != b_neg) mpz_neg(out, out);
 		return;
 	}
 
-	// Carry propagation
-	uint64_t carry = 0;
-	for (size_t i = 0; i < conv.size(); i++) {
-		uint64_t val = conv[i] + carry;
-		conv[i] = val & BASE_MASK;
-		carry = val >> 16;
-	}
-	if (carry != 0) conv.push_back(carry);
-	while (conv.size() > 1 && conv.back() == 0) conv.pop_back();
+	mpz_mul(out, a, b);
+#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
+	product_cache().store(abs_a, abs_b, out);
+#endif
+	if (clear_abs_a) mpz_clear(abs_a_storage);
+	if (clear_abs_b) mpz_clear(abs_b_storage);
+}
 
-	// Build result: most significant digit first
-	mpz_set_ui(out, 0);
-	for (int i = (int)conv.size() - 1; i >= 0; i--) {
-		mpz_mul_2exp(out, out, 16);
-		mpz_add_ui(out, out, conv[i]);
-	}
+void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+	fft_multiply_impl(out, a, b);
+}
 
-	if (a_neg != b_neg) mpz_neg(out, out);
+void fft_multiply_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+	if (out == a || out == b) {
+		mpz_t tmp;
+		mpz_init(tmp);
+		fft_multiply_impl(tmp, a, b);
+		mpz_set(out, tmp);
+		mpz_clear(tmp);
+		return;
+	}
+	fft_multiply_impl(out, a, b);
+}
+
+void accelerated_mul(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+	int alen = mpz_size(a);
+	int blen = mpz_size(b);
+	if (alen + blen >= NTT_THRESHOLD) {
+		fft_multiply_into(out, a, b);
+	} else {
+		mpz_mul(out, a, b);
+	}
 }
 
 #else
@@ -306,6 +852,9 @@ void binary_gcd(mpz_ptr, mpz_ptr, mpz_ptr) {}
 void fast_pow(mpz_ptr, mpz_ptr, uint64_t) {}
 void product_tree_factorial(mpz_ptr, uint64_t) {}
 void fft_multiply(mpz_ptr, mpz_ptr, mpz_ptr) {}
+void fft_multiply_into(mpz_ptr, mpz_ptr, mpz_ptr) {}
+void accelerated_mul(mpz_ptr, mpz_ptr, mpz_ptr) {}
+void modpow(mpz_ptr, mpz_ptr, mpz_ptr, mpz_ptr) {}
 #endif // BIGMATH_NO_GMP
 
 }

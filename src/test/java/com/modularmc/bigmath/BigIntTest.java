@@ -1,7 +1,13 @@
 package com.modularmc.bigmath;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+
+import java.math.BigInteger;
+import java.util.Random;
+
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class BigIntTest {
 
@@ -140,6 +146,17 @@ class BigIntTest {
 	}
 
 	@Test
+	void powLargeNegativeMatchesBigInteger() {
+		BigInteger baseValue = new BigInteger("-12345678901234567890");
+		int exponent = 17;
+		BigInteger expected = baseValue.pow(exponent);
+		try (BigInt a = BigInt.fromBigInteger(baseValue);
+			BigInt c = a.pow(exponent)) {
+			assertEquals(expected, c.toBigInteger());
+		}
+	}
+
+	@Test
 	void negate() {
 		try (BigInt a = BigInt.fromLong(42)) {
 			try (BigInt b = a.negate()) {
@@ -270,6 +287,52 @@ class BigIntTest {
 	}
 
 	@Test
+	void largePositiveBitwiseOperationsMatchBigInteger() {
+		String leftHex = repeatDigits("fedcba9876543210", 4096);
+		String rightHex = repeatDigits("aaaaaaaa55555555", 4096);
+		BigInteger leftValue = new BigInteger(leftHex, 16);
+		BigInteger rightValue = new BigInteger(rightHex, 16);
+		try (BigInt a = BigInt.fromString(leftHex, 16);
+			BigInt b = BigInt.fromString(rightHex, 16)) {
+			try (BigInt c = a.and(b)) {
+				assertEquals(leftValue.and(rightValue).toString(16), c.toString(16));
+			}
+			try (BigInt c = a.xor(b)) {
+				assertEquals(leftValue.xor(rightValue).toString(16), c.toString(16));
+			}
+		}
+	}
+
+	@Test
+	void bitwiseFastPathNormalizesZeroResults() {
+		try (BigInt a = BigInt.fromString("10000000000000000", 16);
+			BigInt b = BigInt.fromString("ffffffffffffffff", 16)) {
+			try (BigInt c = a.and(b)) {
+				assertEquals("0", c.toString());
+				assertEquals(0, c.signum());
+			}
+			try (BigInt c = a.xor(a)) {
+				assertEquals("0", c.toString());
+				assertEquals(0, c.signum());
+			}
+		}
+	}
+
+	@Test
+	void negativeBitwiseOperationsUseBigIntegerSemantics() {
+		BigInteger leftValue = BigInteger.valueOf(-42);
+		BigInteger rightValue = BigInteger.valueOf(15);
+		try (BigInt a = BigInt.fromLong(-42); BigInt b = BigInt.fromLong(15)) {
+			try (BigInt c = a.and(b)) {
+				assertEquals(leftValue.and(rightValue).toString(), c.toString());
+			}
+			try (BigInt c = a.xor(b)) {
+				assertEquals(leftValue.xor(rightValue).toString(), c.toString());
+			}
+		}
+	}
+
+	@Test
 	void shiftLeft() {
 		try (BigInt a = BigInt.fromLong(1)) {
 			try (BigInt c = a.shiftLeft(10)) {
@@ -363,7 +426,7 @@ class BigIntTest {
 	void veryLargeMultiplicationMatchesBigInteger() {
 		String left = repeatDigits("1234567890", 5000);
 		String right = repeatDigits("9876543210", 5000);
-		java.math.BigInteger expected = new java.math.BigInteger(left).multiply(new java.math.BigInteger(right));
+		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
 		try (BigInt a = BigInt.fromString(left, 10);
 			BigInt b = BigInt.fromString(right, 10)) {
 			try (BigInt c = a.multiply(b)) {
@@ -372,6 +435,159 @@ class BigIntTest {
 			try (BigInt c = BigInt.fromLong(0)) {
 				c.multiplyInto(a, b);
 				assertEquals(expected.toString(), c.toString());
+			}
+		}
+	}
+
+	@Test
+	void randomVeryLargeMultiplicationMatchesBigInteger() {
+		Random random = new Random(0xB16B00B5L);
+		BigInteger leftValue = new BigInteger(160000, random).setBit(159999);
+		BigInteger rightValue = new BigInteger(160000, random).setBit(159999);
+		BigInteger expected = leftValue.multiply(rightValue);
+		try (BigInt a = BigInt.fromBigInteger(leftValue);
+			BigInt b = BigInt.fromBigInteger(rightValue)) {
+			try (BigInt c = a.multiply(b)) {
+				assertEquals(expected, c.toBigInteger());
+			}
+			try (BigInt c = BigInt.fromLong(0)) {
+				c.multiplyInto(a, b);
+				assertEquals(expected, c.toBigInteger());
+			}
+		}
+		BigInteger negativeLeftValue = leftValue.negate();
+		BigInteger negativeExpected = negativeLeftValue.multiply(rightValue);
+		try (BigInt a = BigInt.fromBigInteger(negativeLeftValue);
+			BigInt b = BigInt.fromBigInteger(rightValue)) {
+			try (BigInt c = a.multiply(b)) {
+				assertEquals(negativeExpected, c.toBigInteger());
+			}
+			try (BigInt c = BigInt.fromLong(0)) {
+				c.multiplyInto(a, b);
+				assertEquals(negativeExpected, c.toBigInteger());
+			}
+		}
+	}
+
+	@Test
+	void randomMultiplicationAliasesMatchBigInteger() {
+		Random random = new Random(0xC0FFEE1234L);
+		BigInteger[] fixedValues = {
+			BigInteger.ZERO,
+			BigInteger.ONE,
+			BigInteger.ONE.negate(),
+			new BigInteger("12345678901234567890"),
+			new BigInteger("-98765432109876543210")
+		};
+		for (BigInteger leftValue : fixedValues) {
+			for (BigInteger rightValue : fixedValues) {
+				assertMultiplyAliases(leftValue, rightValue);
+			}
+		}
+		for (int bits : new int[] {1, 17, 4096, 70000}) {
+			BigInteger leftValue = signedRandomBigInteger(bits, random);
+			BigInteger rightValue = signedRandomBigInteger(Math.max(1, bits / 2 + 37), random);
+			assertMultiplyAliases(leftValue, rightValue);
+		}
+	}
+
+	@Test
+	void cudaStatusIsCachedAndQueryable() {
+		int firstProbeCount = BigmathFFM.cudaProbeCount();
+		String firstStatus = BigmathFFM.cudaStatusMessage();
+		String secondStatus = BigmathFFM.cudaStatusMessage();
+		int secondProbeCount = BigmathFFM.cudaProbeCount();
+		assertNotNull(firstStatus);
+		assertEquals(firstStatus, secondStatus);
+		assertEquals(1, firstProbeCount);
+		assertEquals(firstProbeCount, secondProbeCount);
+		assertEquals(BigmathFFM.cudaDeviceCount(), BigmathFFM.cudaDeviceCount());
+		if (BigmathFFM.cudaAvailable()) {
+			assertTrue(BigmathFFM.cudaDeviceCount() > 0);
+			assertFalse(BigmathFFM.cudaDeviceName().isBlank());
+		} else {
+			assertFalse(firstStatus.isBlank());
+		}
+	}
+
+	@Test
+	void cudaUnavailableFallsBackToCpuMultiplication() {
+		assumeTrue(!BigmathFFM.cudaAvailable(), BigmathFFM.cudaStatusMessage());
+		String left = repeatDigits("3141592653", 40000);
+		String right = repeatDigits("2718281828", 40000);
+		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
+		int before = BigmathFFM.cudaMultiplyCount();
+		try (BigInt a = BigInt.fromString(left, 10);
+			BigInt b = BigInt.fromString(right, 10);
+			BigInt c = a.multiply(b)) {
+			assertEquals(expected.toString(), c.toString());
+		}
+		assertEquals(before, BigmathFFM.cudaMultiplyCount());
+	}
+
+	@Test
+	@EnabledIfSystemProperty(named = "bigmath.cuda.tests", matches = "true")
+	void cudaLargeMultiplicationMatchesBigIntegerWhenEnabled() {
+		assumeTrue(BigmathFFM.cudaAvailable(), BigmathFFM.cudaStatusMessage());
+		String left = repeatDigits("1234567890", 80000);
+		String right = repeatDigits("9876543210", 80000);
+		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
+		int before = BigmathFFM.cudaMultiplyCount();
+		try (BigInt a = BigInt.fromString(left, 10);
+			BigInt b = BigInt.fromString(right, 10);
+			BigInt c = a.multiply(b)) {
+			assertEquals(expected.toString(), c.toString());
+		}
+		assertTrue(BigmathFFM.cudaMultiplyCount() > before, BigmathFFM.cudaStatusMessage());
+	}
+
+	@Test
+	@EnabledIfSystemProperty(named = "bigmath.cuda.tests", matches = "true")
+	void cudaProductCacheDoesNotReuseMutatedOperands() {
+		assumeTrue(BigmathFFM.cudaAvailable(), BigmathFFM.cudaStatusMessage());
+		String left = repeatDigits("1234567890", 40000);
+		String changedLeft = repeatDigits("2234567890", 40000);
+		String right = repeatDigits("9876543210", 40000);
+		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
+		BigInteger changedExpected = new BigInteger(changedLeft).multiply(new BigInteger(right));
+		int before = BigmathFFM.cudaMultiplyCount();
+		try (BigInt a = BigInt.fromString(left, 10);
+			BigInt b = BigInt.fromString(right, 10)) {
+			try (BigInt first = a.multiply(b)) {
+				assertEquals(expected.toString(), first.toString());
+			}
+			int afterFirst = BigmathFFM.cudaMultiplyCount();
+			assertTrue(afterFirst > before, BigmathFFM.cudaStatusMessage());
+			try (BigInt cached = a.multiply(b)) {
+				assertEquals(expected.toString(), cached.toString());
+			}
+			assertEquals(afterFirst, BigmathFFM.cudaMultiplyCount());
+			a.set(changedLeft, 10);
+			try (BigInt changed = a.multiply(b)) {
+				assertEquals(changedExpected.toString(), changed.toString());
+			}
+			assertTrue(BigmathFFM.cudaMultiplyCount() > afterFirst, BigmathFFM.cudaStatusMessage());
+		}
+	}
+
+	@Test
+	void productCacheDoesNotReuseMutatedOperands() {
+		String left = repeatDigits("1234567890", 30000);
+		String changedLeft = repeatDigits("2234567890", 30000);
+		String right = repeatDigits("9876543210", 30000);
+		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
+		BigInteger changedExpected = new BigInteger(changedLeft).multiply(new BigInteger(right));
+		try (BigInt a = BigInt.fromString(left, 10);
+			BigInt b = BigInt.fromString(right, 10)) {
+			try (BigInt first = a.multiply(b)) {
+				assertEquals(expected.toString(), first.toString());
+			}
+			try (BigInt cached = a.multiply(b)) {
+				assertEquals(expected.toString(), cached.toString());
+			}
+			a.set(changedLeft, 10);
+			try (BigInt changed = a.multiply(b)) {
+				assertEquals(changedExpected.toString(), changed.toString());
 			}
 		}
 	}
@@ -522,5 +738,37 @@ class BigIntTest {
 		}
 		sb.setLength(digits);
 		return sb.toString();
+	}
+
+	private static BigInteger signedRandomBigInteger(int bits, Random random) {
+		if (bits <= 1) {
+			return random.nextBoolean() ? BigInteger.ONE : BigInteger.ONE.negate();
+		}
+		BigInteger value = new BigInteger(bits, random).setBit(bits - 1);
+		return random.nextBoolean() ? value : value.negate();
+	}
+
+	private static void assertMultiplyAliases(BigInteger leftValue, BigInteger rightValue) {
+		BigInteger expected = leftValue.multiply(rightValue);
+		try (BigInt left = BigInt.fromBigInteger(leftValue);
+			BigInt right = BigInt.fromBigInteger(rightValue)) {
+			try (BigInt product = left.multiply(right)) {
+				assertEquals(expected, product.toBigInteger());
+			}
+			try (BigInt target = BigInt.fromLong(0)) {
+				assertSame(target, target.multiplyInto(left, right));
+				assertEquals(expected, target.toBigInteger());
+			}
+		}
+		try (BigInt leftAlias = BigInt.fromBigInteger(leftValue);
+			BigInt right = BigInt.fromBigInteger(rightValue)) {
+			assertSame(leftAlias, leftAlias.multiplyInto(leftAlias, right));
+			assertEquals(expected, leftAlias.toBigInteger());
+		}
+		try (BigInt left = BigInt.fromBigInteger(leftValue);
+			BigInt rightAlias = BigInt.fromBigInteger(rightValue)) {
+			assertSame(rightAlias, rightAlias.multiplyInto(left, rightAlias));
+			assertEquals(expected, rightAlias.toBigInteger());
+		}
 	}
 }

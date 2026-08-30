@@ -57,7 +57,7 @@ jobs:
             label: macos-aarch64
           - os: windows-latest
             label: windows-x86-64
-            vcpkg_triplet: x64-mingw-static-release
+            vcpkg_triplet: x64-windows
           - os: windows-11-arm
             label: windows-aarch64
             vcpkg_triplet: arm64-windows
@@ -69,27 +69,29 @@ jobs:
       - name: Make native staging script executable
         if: runner.os != 'Windows'
         run: chmod +x .github/scripts/stage-native-runtime-unix.sh
+      - name: Configure MSVC for Windows x64
+        if: runner.os == 'Windows' && matrix.vcpkg_triplet == 'x64-windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - name: Configure MSVC for Windows ARM64
-        if: matrix.vcpkg_triplet == 'arm64-windows'
+        if: runner.os == 'Windows' && matrix.vcpkg_triplet == 'arm64-windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64_arm64
       - name: Configure MSVC compiler env
-        if: matrix.vcpkg_triplet == 'arm64-windows'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           "CC=cl" >> $env:GITHUB_ENV
           "CXX=cl" >> $env:GITHUB_ENV
           "BIGMATH_WINDOWS_COMPILER=msvc" >> $env:GITHUB_ENV
-      - name: Configure MinGW for Windows x64
-        if: matrix.vcpkg_triplet == 'x64-mingw-static-release'
+      - name: Configure CUDA architecture list
+        if: matrix.label == 'linux-x86-64' || matrix.label == 'windows-x86-64'
         shell: pwsh
         run: |
-          $gcc = (Get-Command gcc -ErrorAction Stop).Source
-          $gxx = (Get-Command g++ -ErrorAction Stop).Source
-          "CC=$gcc" >> $env:GITHUB_ENV
-          "CXX=$gxx" >> $env:GITHUB_ENV
-          "BIGMATH_WINDOWS_COMPILER=mingw" >> $env:GITHUB_ENV
+          "BIGMATH_ENABLE_CUDA=true" >> $env:GITHUB_ENV
+          "BIGMATH_CUDA_ARCH=75;80;86;89;90" >> $env:GITHUB_ENV
       - name: Restore vcpkg binary cache
         if: runner.os == 'Windows'
         id: vcpkg-cache-restore
@@ -107,12 +109,13 @@ jobs:
       - name: Install Linux deps
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libgmp-dev libmpfr-dev cmake
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y libgmp-dev libmpfr-dev cmake ninja-build
 
       - name: Install macOS deps
         if: runner.os == 'macOS'
-        run: brew install gmp mpfr cmake
+        run: brew install gmp mpfr cmake ninja
 
       - name: Install Windows deps
         if: runner.os == 'Windows'
@@ -123,6 +126,65 @@ jobs:
           vcpkg install --triplet ${{ matrix.vcpkg_triplet }}
           echo "CMAKE_PREFIX_PATH=${{ github.workspace }}\vcpkg_installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
           echo "BIGMATH_VCPKG_TRIPLET=${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
+
+      - name: Restore Windows CUDA toolkit cache
+        id: cuda-cache-windows
+        if: matrix.label == 'windows-x86-64'
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2
+          key: cuda-toolkit-${{ matrix.label }}-13.2.0-jimver-v0.2.35-v1
+
+      - name: Check CUDA toolkit cache
+        id: cuda-cache-check
+        if: matrix.label == 'windows-x86-64'
+        shell: pwsh
+        run: |
+          $nvcc = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2\bin\nvcc.exe'
+          if (Test-Path -LiteralPath $nvcc) {
+            "available=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "available=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Setup Linux CUDA toolkit
+        if: matrix.label == 'linux-x86-64'
+        uses: Jimver/cuda-toolkit@v0.2.35
+        with:
+          cuda: '13.2.0'
+          method: network
+          sub-packages: '["compiler", "cudart", "cudart-dev"]'
+          non-cuda-sub-packages: '["libcufft", "libcufft-dev"]'
+
+      - name: Setup Windows CUDA toolkit
+        if: matrix.label == 'windows-x86-64' && steps.cuda-cache-check.outputs.available != 'true'
+        uses: Jimver/cuda-toolkit@v0.2.35
+        with:
+          cuda: '13.2.0'
+
+      - name: Configure CUDA toolkit environment
+        if: matrix.label == 'linux-x86-64' || matrix.label == 'windows-x86-64'
+        shell: pwsh
+        run: |
+          if ('${{ matrix.label }}' -eq 'windows-x86-64') {
+            $cudaPath = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2'
+            "CUDA_PATH=$cudaPath" >> $env:GITHUB_ENV
+            "CUDA_PATH_V13_2=$cudaPath" >> $env:GITHUB_ENV
+            "CUDA_PATH_VX_Y=CUDA_PATH_V13_2" >> $env:GITHUB_ENV
+            "$cudaPath\bin" >> $env:GITHUB_PATH
+            "$cudaPath\libnvvp" >> $env:GITHUB_PATH
+          } else {
+            $cudaPath = '/usr/local/cuda-13.2'
+            "CUDA_PATH=$cudaPath" >> $env:GITHUB_ENV
+            "CUDA_PATH_V13_2=$cudaPath" >> $env:GITHUB_ENV
+            "CUDA_PATH_VX_Y=CUDA_PATH_V13_2" >> $env:GITHUB_ENV
+            "LD_LIBRARY_PATH=$cudaPath/lib64:${env:LD_LIBRARY_PATH}" >> $env:GITHUB_ENV
+            "$cudaPath/bin" >> $env:GITHUB_PATH
+          }
+
+      - name: Print CUDA compiler
+        if: matrix.label == 'linux-x86-64' || matrix.label == 'windows-x86-64'
+        run: nvcc --version
 
       - uses: gradle/actions/setup-gradle@v4
       - name: Build native
@@ -149,6 +211,13 @@ jobs:
         with:
           path: .vcpkg-cache
           key: ${{ steps.vcpkg-cache-restore.outputs.cache-primary-key }}
+
+      - name: Save Windows CUDA toolkit cache
+        if: matrix.label == 'windows-x86-64' && steps.cuda-cache-check.outputs.available != 'true' && !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2
+          key: ${{ steps.cuda-cache-windows.outputs.cache-primary-key }}
 
       - uses: actions/upload-artifact@v4
         with:

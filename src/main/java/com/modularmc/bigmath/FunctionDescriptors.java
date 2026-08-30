@@ -53,6 +53,11 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
 	);
 
+	/** {@code void bigint_op(void** out, void* a, void* b, void* c)} — powm */
+	static final FunctionDescriptor BIGINT_TERNARY = FunctionDescriptor.ofVoid(
+			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
+	);
+
 	/** {@code void bigint_op_into(void* out, void* a, void* b)} — add/mul/div */
 	static final FunctionDescriptor BIGINT_BINARY_INTO = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS
@@ -116,6 +121,18 @@ final class FunctionDescriptors {
 	/** {@code int bigint_is_probably_prime(void* a, int certainty)} */
 	static final FunctionDescriptor BIGINT_IS_PROBABLY_PRIME = FunctionDescriptor.of(
 			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
+	);
+
+	// --- CUDA diagnostics ---
+
+	/** {@code int bigmath_cuda_value(void)} */
+	static final FunctionDescriptor CUDA_INT = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT
+	);
+
+	/** {@code const char* bigmath_cuda_string(void)} */
+	static final FunctionDescriptor CUDA_STRING = FunctionDescriptor.of(
+			ValueLayout.ADDRESS
 	);
 
 	// --- BigDeci ---

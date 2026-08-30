@@ -33,6 +33,12 @@ void product_tree_factorial(mpz_ptr out, uint64_t n);
 
 void fft_multiply(mpz_ptr out, mpz_ptr a, mpz_ptr b);
 
+void fft_multiply_into(mpz_ptr out, mpz_ptr a, mpz_ptr b);
+
+void accelerated_mul(mpz_ptr out, mpz_ptr a, mpz_ptr b);
+
+void modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod);
+
 inline limb_t *limb_alloc(int n) {
 	return static_cast<limb_t *>(calloc(n, sizeof(limb_t)));
 }

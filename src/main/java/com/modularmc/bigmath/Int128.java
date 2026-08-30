@@ -13,14 +13,14 @@ import java.lang.invoke.MethodHandle;
  */
 public final class Int128 extends Number implements AutoCloseable, Comparable<Int128> {
 
-	private static final long STRUCT_SIZE = 16L;
-	private static final long UNSIGNED_INT_MASK = 0xffff_ffffL;
-	private static final long UNSIGNED_INT_BASE = 1L << 32;
-	private static final long DECIMAL_CHUNK_BASE = 1_000_000_000L;
-	private static final int DECIMAL_CHUNK_DIGITS = 9;
-	private static final char[] DIGITS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
-	private static final char[] PADDED_THREE_DIGIT_TABLE = createPaddedThreeDigitTable();
-	private static final MethodHandle INT128_FROM_STRING_HANDLE = BigmathFFM.getInstance().downcall(
+	static final long STRUCT_SIZE = 16L;
+	static final long UNSIGNED_INT_MASK = 0xffff_ffffL;
+	static final long UNSIGNED_INT_BASE = 1L << 32;
+	static final long DECIMAL_CHUNK_BASE = 1_000_000_000L;
+	static final int DECIMAL_CHUNK_DIGITS = 9;
+	static final char[] DIGITS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
+	static final char[] PADDED_THREE_DIGIT_TABLE = createPaddedThreeDigitTable();
+	static final MethodHandle INT128_FROM_STRING_HANDLE = BigmathFFM.getInstance().downcall(
 			"int128_from_string",
 			FunctionDescriptors.INT128_FROM_STRING
 	);
@@ -31,12 +31,12 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	public static final Int128 TEN = fromLong(10);
 	public static final Int128 NEGATIVE_ONE = fromLong(-1);
 
-	private final long lo;
-	private final long hi;
-	private String cachedDecimalString;
-	private String cachedFormattedDecimalString;
+	final long lo;
+	final long hi;
+	String cachedDecimalString;
+	String cachedFormattedDecimalString;
 
-	private Int128(long lo, long hi) {
+	Int128(long lo, long hi) {
 		this.lo = lo;
 		this.hi = hi;
 	}
@@ -275,19 +275,19 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		// Value object; kept for source compatibility with previous AutoCloseable API.
 	}
 
-	private boolean fitsInLong() {
+	boolean fitsInLong() {
 		return hi == (lo < 0 ? -1L : 0L);
 	}
 
-	private boolean isZero() {
+	boolean isZero() {
 		return hi == 0 && lo == 0;
 	}
 
-	private long absLo() {
+	long absLo() {
 		return hi < 0 ? ~lo + 1L : lo;
 	}
 
-	private long absHi() {
+	long absHi() {
 		if (hi >= 0) {
 			return hi;
 		}
@@ -295,13 +295,13 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return ~hi + (magnitudeLo == 0 ? 1L : 0L);
 	}
 
-	private String toStringJava(int radix) {
+	String toStringJava(int radix) {
 		char[] buffer = new char[130];
 		int pos = writeDigits(buffer, radix);
 		return new String(buffer, pos, buffer.length - pos);
 	}
 
-	private String toDecimalString() {
+	String toDecimalString() {
 		long magnitudeLo = lo;
 		long magnitudeHi = hi;
 		boolean negative = magnitudeHi < 0;
@@ -352,7 +352,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return new String(buffer);
 	}
 
-	private String toFormattedDecimalStringDefault() {
+	String toFormattedDecimalStringDefault() {
 		long magnitudeLo = lo;
 		long magnitudeHi = hi;
 		boolean negative = magnitudeHi < 0;
@@ -428,7 +428,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return new String(formatted);
 	}
 
-	private String toFormattedStringJava(int groupSize, String groupSep) {
+	String toFormattedStringJava(int groupSize, String groupSep) {
 		char[] raw = new char[130];
 		int pos = writeDigits(raw, 10);
 		boolean negative = raw[pos] == '-';
@@ -462,7 +462,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return new String(formatted);
 	}
 
-	private int writeDigits(char[] buffer, int radix) {
+	int writeDigits(char[] buffer, int radix) {
 		if (hi == 0 && lo == 0) {
 			buffer[buffer.length - 1] = '0';
 			return buffer.length - 1;
@@ -505,7 +505,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return pos;
 	}
 
-	private static String formatGroupedDecimal(String value, int groupSize, String groupSep) {
+	static String formatGroupedDecimal(String value, int groupSize, String groupSep) {
 		int signOffset = value.startsWith("-") ? 1 : 0;
 		int digits = value.length() - signOffset;
 		if (digits <= groupSize) {
@@ -530,7 +530,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return sb.toString();
 	}
 
-	private static String formatGroupedDecimalDefault(String value) {
+	static String formatGroupedDecimalDefault(String value) {
 		int signOffset = value.startsWith("-") ? 1 : 0;
 		int digits = value.length() - signOffset;
 		if (digits <= 3) {
@@ -558,7 +558,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return new String(formatted);
 	}
 
-	private static Int128 unsignedDivideByUnsignedInt(long dividendLo, long dividendHi, long divisor) {
+	static Int128 unsignedDivideByUnsignedInt(long dividendLo, long dividendHi, long divisor) {
 		long remainder = 0;
 
 		long part = dividendHi >>> 32;
@@ -579,7 +579,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return new Int128((qLoHigh << 32) | qLoLow, (qHiHigh << 32) | qHiLow);
 	}
 
-	private static Int128 unsignedDivideByUnsignedLong(long dividendLo, long dividendHi, long divisor) {
+	static Int128 unsignedDivideByUnsignedLong(long dividendLo, long dividendHi, long divisor) {
 		if (Long.compareUnsigned(dividendHi, divisor) < 0) {
 			return new Int128(unsignedDivideByUnsignedLongLow(dividendLo, dividendHi, divisor), 0);
 		}
@@ -589,11 +589,11 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return new Int128(quotientLo, quotientHi);
 	}
 
-	private static long unsignedDivideByUnsignedLongLow(long dividendLo, long dividendHi, long divisor) {
+	static long unsignedDivideByUnsignedLongLow(long dividendLo, long dividendHi, long divisor) {
 		return unsignedDivideAndRemainderByUnsignedLongLow(dividendLo, dividendHi, divisor, false);
 	}
 
-	private static long unsignedRemainderByUnsignedInt(long dividendLo, long dividendHi, long divisor) {
+	static long unsignedRemainderByUnsignedInt(long dividendLo, long dividendHi, long divisor) {
 		long remainder = 0;
 
 		long part = dividendHi >>> 32;
@@ -609,7 +609,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return Long.remainderUnsigned(part, divisor);
 	}
 
-	private static long unsignedRemainderByUnsignedLong(long dividendLo, long dividendHi, long divisor) {
+	static long unsignedRemainderByUnsignedLong(long dividendLo, long dividendHi, long divisor) {
 		if (Long.compareUnsigned(dividendHi, divisor) < 0) {
 			return unsignedRemainderByUnsignedLongLow(dividendLo, dividendHi, divisor);
 		}
@@ -617,11 +617,11 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return unsignedRemainderByUnsignedLongLow(dividendLo, remainderHi, divisor);
 	}
 
-	private static long unsignedRemainderByUnsignedLongLow(long dividendLo, long dividendHi, long divisor) {
+	static long unsignedRemainderByUnsignedLongLow(long dividendLo, long dividendHi, long divisor) {
 		return unsignedDivideAndRemainderByUnsignedLongLow(dividendLo, dividendHi, divisor, true);
 	}
 
-	private static long unsignedDivideAndRemainderByUnsignedLongLow(
+	static long unsignedDivideAndRemainderByUnsignedLongLow(
 			long dividendLo,
 			long dividendHi,
 			long divisor,
@@ -668,7 +668,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return shift == 0 ? normalizedRemainder : normalizedRemainder >>> shift;
 	}
 
-	private static int decimalDigits(int value) {
+	static int decimalDigits(int value) {
 		if (value >= 100_000_000) return 9;
 		if (value >= 10_000_000) return 8;
 		if (value >= 1_000_000) return 7;
@@ -680,7 +680,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return 1;
 	}
 
-	private static int writeUnsignedInt(int value, char[] buffer, int pos) {
+	static int writeUnsignedInt(int value, char[] buffer, int pos) {
 		int digits = decimalDigits(value);
 		int end = pos + digits;
 		int cursor = end;
@@ -693,7 +693,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return end;
 	}
 
-	private static void writePaddedNineDigits(int value, char[] buffer, int pos) {
+	static void writePaddedNineDigits(int value, char[] buffer, int pos) {
 		int high = value / 1_000_000;
 		int remainder = value - high * 1_000_000;
 		int middle = remainder / 1_000;
@@ -703,7 +703,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		copyPaddedThreeDigits(low, buffer, pos + 6);
 	}
 
-	private static Int128 unsignedDivMod(
+	static Int128 unsignedDivMod(
 			long dividendLo,
 			long dividendHi,
 			long divisorLo,
@@ -739,19 +739,19 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 				: new Int128(quotientLo, quotientHi);
 	}
 
-	private static int compareUnsigned(long leftLo, long leftHi, long rightLo, long rightHi) {
+	static int compareUnsigned(long leftLo, long leftHi, long rightLo, long rightHi) {
 		int high = Long.compareUnsigned(leftHi, rightHi);
 		return high != 0 ? high : Long.compareUnsigned(leftLo, rightLo);
 	}
 
-	private static void copyPaddedThreeDigits(int value, char[] buffer, int pos) {
+	static void copyPaddedThreeDigits(int value, char[] buffer, int pos) {
 		int source = value * 3;
 		buffer[pos] = PADDED_THREE_DIGIT_TABLE[source];
 		buffer[pos + 1] = PADDED_THREE_DIGIT_TABLE[source + 1];
 		buffer[pos + 2] = PADDED_THREE_DIGIT_TABLE[source + 2];
 	}
 
-	private static char[] createPaddedThreeDigitTable() {
+	static char[] createPaddedThreeDigitTable() {
 		char[] table = new char[1_000 * 3];
 		for (int value = 0; value < 1_000; value++) {
 			int pos = value * 3;
@@ -762,7 +762,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return table;
 	}
 
-	private static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int radix) {
+	static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int radix) {
 		try {
 			INT128_FROM_STRING_HANDLE.invokeExact(out, value, radix);
 		} catch (RuntimeException | Error e) {

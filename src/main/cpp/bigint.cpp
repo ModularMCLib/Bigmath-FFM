@@ -1,5 +1,6 @@
 #include "bigmath_ffm.h"
 #include "algos.h"
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -53,6 +54,66 @@ static bool mpz_ior_nonnegative_fast(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	mpn_copyi(out->_mp_d + asize, b->_mp_d + asize, bsize - asize);
 	out->_mp_size = bsize;
 	return true;
+}
+
+static void mpz_normalize_nonnegative(mpz_ptr value, mp_size_t size) {
+	while (size > 0 && value->_mp_d[size - 1] == 0) {
+		size--;
+	}
+	value->_mp_size = size;
+}
+
+static bool mpz_and_nonnegative_fast(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+	const mp_size_t asize = a->_mp_size;
+	const mp_size_t bsize = b->_mp_size;
+	if (asize < 0 || bsize < 0) {
+		return false;
+	}
+	const mp_size_t rsize = std::min(asize, bsize);
+	if (rsize == 0) {
+		mpz_init(out);
+		return true;
+	}
+	mpz_init2(out, static_cast<mp_bitcnt_t>(rsize) * GMP_NUMB_BITS);
+	mpn_and_n(out->_mp_d, a->_mp_d, b->_mp_d, rsize);
+	mpz_normalize_nonnegative(out, rsize);
+	return true;
+}
+
+static bool mpz_xor_nonnegative_fast(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
+	const mp_size_t asize = a->_mp_size;
+	const mp_size_t bsize = b->_mp_size;
+	if (asize < 0 || bsize < 0) {
+		return false;
+	}
+	if (asize == 0) {
+		mpz_init_set(out, b);
+		return true;
+	}
+	if (bsize == 0) {
+		mpz_init_set(out, a);
+		return true;
+	}
+	const mp_size_t min_size = std::min(asize, bsize);
+	const mp_size_t max_size = std::max(asize, bsize);
+	mpz_init2(out, static_cast<mp_bitcnt_t>(max_size) * GMP_NUMB_BITS);
+	mpn_xor_n(out->_mp_d, a->_mp_d, b->_mp_d, min_size);
+	if (asize > bsize) {
+		mpn_copyi(out->_mp_d + min_size, a->_mp_d + min_size, asize - min_size);
+	} else if (bsize > asize) {
+		mpn_copyi(out->_mp_d + min_size, b->_mp_d + min_size, bsize - min_size);
+	}
+	mpz_normalize_nonnegative(out, max_size);
+	return true;
+}
+
+static bool should_use_gmp_pow_ui(mpz_ptr base, uint64_t exp) {
+	if (exp > static_cast<uint64_t>(std::numeric_limits<unsigned long>::max())) {
+		return false;
+	}
+	static constexpr mp_bitcnt_t GMP_POW_BIT_THRESHOLD = 4096;
+	const mp_bitcnt_t base_bits = mpz_sizeinbase(base, 2);
+	return base_bits <= GMP_POW_BIT_THRESHOLD / static_cast<mp_bitcnt_t>(exp);
 }
 
 void bigint_from_long(mpz_ptr *out, int64_t val) {
@@ -119,11 +180,24 @@ void bigint_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	} else {
 		mpz_init2(*out, static_cast<mp_bitcnt_t>(alen + blen + 1) * GMP_NUMB_BITS);
 	}
-	if (alen + blen >= bigmath::NTT_THRESHOLD) {
-		bigmath::fft_multiply(*out, a, b);
+	bigmath::accelerated_mul(*out, a, b);
+}
+
+void bigint_mul_gmp(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
+	int alen = mpz_size(a);
+	int blen = mpz_size(b);
+	if (alen == 0 || blen == 0) {
+		mpz_init(*out);
 	} else {
-		mpz_mul(*out, a, b);
+		mpz_init2(*out, static_cast<mp_bitcnt_t>(alen + blen + 1) * GMP_NUMB_BITS);
 	}
+	mpz_mul(*out, a, b);
+}
+
+void bigint_mul_cpu(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+	bigint_mul_gmp(out, a, b);
 }
 
 void bigint_div(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
@@ -145,13 +219,7 @@ void bigint_add_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 }
 
 void bigint_mul_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
-	int alen = mpz_size(a);
-	int blen = mpz_size(b);
-	if (out != a && out != b && alen + blen >= bigmath::NTT_THRESHOLD) {
-		bigmath::fft_multiply(out, a, b);
-	} else {
-		mpz_mul(out, a, b);
-	}
+	bigmath::accelerated_mul(out, a, b);
 }
 
 void bigint_div_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
@@ -174,16 +242,31 @@ void bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp) {
 			mpz_set(*out, a);
 			return;
 		case 2:
-			mpz_mul(*out, a, a);
+			bigmath::accelerated_mul(*out, a, a);
 			return;
 		default:
 			break;
 	}
-	if (exp <= static_cast<uint64_t>(std::numeric_limits<unsigned long>::max())) {
+	if (should_use_gmp_pow_ui(a, exp)) {
 		mpz_pow_ui(*out, a, static_cast<unsigned long>(exp));
-	} else {
-		bigmath::fast_pow(*out, a, exp);
+		return;
 	}
+	bigmath::fast_pow(*out, a, exp);
+}
+
+void bigint_powm(mpz_ptr *out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
+	mpz_init(*out);
+	bigmath::modpow(*out, base, exp, mod);
+}
+
+// Pure-GMP reference (mpz_powm); correctness oracle for the Barrett/GPU modpow.
+void bigint_powm_gmp(mpz_ptr *out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
+	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
+	if (!*out) return;
+	mpz_init(*out);
+	mpz_powm(*out, base, exp, mod);
 }
 
 void bigint_neg(mpz_ptr *out, mpz_ptr a) {
@@ -328,8 +411,10 @@ void bigint_sqrt(mpz_ptr *out, mpz_ptr a) {
 void bigint_and(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mpz_init(*out);
-	mpz_and(*out, a, b);
+	if (!mpz_and_nonnegative_fast(*out, a, b)) {
+		mpz_init(*out);
+		mpz_and(*out, a, b);
+	}
 }
 
 void bigint_or(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
@@ -344,8 +429,10 @@ void bigint_or(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 void bigint_xor(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
-	mpz_init(*out);
-	mpz_xor(*out, a, b);
+	if (!mpz_xor_nonnegative_fast(*out, a, b)) {
+		mpz_init(*out);
+		mpz_xor(*out, a, b);
+	}
 }
 
 void bigint_shl(mpz_ptr *out, mpz_ptr a, uint64_t bits) {
@@ -392,6 +479,8 @@ void bigint_set_string(mpz_ptr, const char *, int) { }
 void bigint_add(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_sub(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_mul(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_mul_cpu(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_mul_gmp(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_div(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_mod(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_add_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
@@ -399,6 +488,8 @@ void bigint_mul_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
 void bigint_div_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
 void bigint_sqrt_into(mpz_ptr, mpz_ptr) { }
 void bigint_pow(mpz_ptr *out, mpz_ptr, uint64_t) { *out = nullptr; }
+void bigint_powm(mpz_ptr *out, mpz_ptr, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_powm_gmp(mpz_ptr *out, mpz_ptr, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_neg(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
 void bigint_abs(mpz_ptr *out, mpz_ptr) { *out = nullptr; }
 int  bigint_cmp(mpz_ptr, mpz_ptr) { return 0; }

@@ -31,6 +31,8 @@ BIGMATH_EXPORT void  bigint_set_string(mpz_ptr out, const char *str, int radix);
 BIGMATH_EXPORT void  bigint_add(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_sub(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
+BIGMATH_EXPORT void  bigint_mul_cpu(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
+BIGMATH_EXPORT void  bigint_mul_gmp(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_div(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_mod(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_add_into(mpz_ptr out, mpz_ptr a, mpz_ptr b);
@@ -38,6 +40,8 @@ BIGMATH_EXPORT void  bigint_mul_into(mpz_ptr out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_div_into(mpz_ptr out, mpz_ptr a, mpz_ptr b);
 BIGMATH_EXPORT void  bigint_sqrt_into(mpz_ptr out, mpz_ptr a);
 BIGMATH_EXPORT void  bigint_pow(mpz_ptr *out, mpz_ptr a, uint64_t exp);
+BIGMATH_EXPORT void  bigint_powm(mpz_ptr *out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod);
+BIGMATH_EXPORT void  bigint_powm_gmp(mpz_ptr *out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod);
 BIGMATH_EXPORT void  bigint_neg(mpz_ptr *out, mpz_ptr a);
 BIGMATH_EXPORT void  bigint_abs(mpz_ptr *out, mpz_ptr a);
 BIGMATH_EXPORT int   bigint_cmp(mpz_ptr a, mpz_ptr b);
@@ -61,6 +65,14 @@ BIGMATH_EXPORT int   bigint_sign(mpz_ptr a);
 BIGMATH_EXPORT int64_t bigint_to_long(mpz_ptr a);
 BIGMATH_EXPORT double bigint_to_double(mpz_ptr a);
 
+/* CUDA diagnostics */
+BIGMATH_EXPORT int         bigmath_cuda_available();
+BIGMATH_EXPORT int         bigmath_cuda_device_count();
+BIGMATH_EXPORT int         bigmath_cuda_probe_count();
+BIGMATH_EXPORT int         bigmath_cuda_multiply_count();
+BIGMATH_EXPORT const char *bigmath_cuda_device_name();
+BIGMATH_EXPORT const char *bigmath_cuda_status_message();
+
 /* BigDecimal */
 BIGMATH_EXPORT void   bigdecimal_from_double(mpfr_ptr *out, double val, int precision);
 BIGMATH_EXPORT void   bigdecimal_from_string(mpfr_ptr *out, const char *str, int precision);
@@ -73,6 +85,7 @@ BIGMATH_EXPORT void   bigdecimal_set_string(mpfr_ptr out, const char *str, int p
 BIGMATH_EXPORT void   bigdecimal_add(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
 BIGMATH_EXPORT void   bigdecimal_sub(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
 BIGMATH_EXPORT void   bigdecimal_mul(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
+BIGMATH_EXPORT void   bigdecimal_mul_mpfr(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
 BIGMATH_EXPORT void   bigdecimal_div(mpfr_ptr *out, mpfr_ptr a, mpfr_ptr b);
 BIGMATH_EXPORT void   bigdecimal_add_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b);
 BIGMATH_EXPORT void   bigdecimal_mul_into(mpfr_ptr out, mpfr_ptr a, mpfr_ptr b);

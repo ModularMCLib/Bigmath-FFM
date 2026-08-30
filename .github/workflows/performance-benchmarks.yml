@@ -58,7 +58,7 @@ jobs:
             label: macos-aarch64
           - os: windows-latest
             label: windows-x86-64
-            vcpkg_triplet: x64-mingw-static-release
+            vcpkg_triplet: x64-windows
           - os: windows-11-arm
             label: windows-aarch64
             vcpkg_triplet: arm64-windows
@@ -67,27 +67,23 @@ jobs:
       VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
     steps:
       - uses: actions/checkout@v4
+      - name: Configure MSVC for Windows x64
+        if: matrix.vcpkg_triplet == 'x64-windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - name: Configure MSVC for Windows ARM64
         if: matrix.vcpkg_triplet == 'arm64-windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64_arm64
       - name: Configure MSVC compiler env
-        if: matrix.vcpkg_triplet == 'arm64-windows'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           "CC=cl" >> $env:GITHUB_ENV
           "CXX=cl" >> $env:GITHUB_ENV
           "BIGMATH_WINDOWS_COMPILER=msvc" >> $env:GITHUB_ENV
-      - name: Configure MinGW for Windows x64
-        if: matrix.vcpkg_triplet == 'x64-mingw-static-release'
-        shell: pwsh
-        run: |
-          $gcc = (Get-Command gcc -ErrorAction Stop).Source
-          $gxx = (Get-Command g++ -ErrorAction Stop).Source
-          "CC=$gcc" >> $env:GITHUB_ENV
-          "CXX=$gxx" >> $env:GITHUB_ENV
-          "BIGMATH_WINDOWS_COMPILER=mingw" >> $env:GITHUB_ENV
       - name: Setup Build
         uses: ./.github/actions/build_setup
       - name: Restore vcpkg binary cache
@@ -103,7 +99,13 @@ jobs:
       - name: Install Linux deps
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources \
+            /etc/apt/sources.list.d/packages-microsoft-prod.list
+          sudo apt-get update -o Acquire::Retries=3
           sudo apt-get install -y libgmp-dev libmpfr-dev cmake
       - name: Install macOS deps
         if: runner.os == 'macOS'
@@ -129,13 +131,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/reports/jmh
-          ./gradlew jmh "-PjmhIncludes=com.modularmc.bigmath.BigIntBenchmark.orLarge" "-PjmhArgs=-wi 8 -i 5 -w 1s -r 1s -f 1 -foe true -rf csv -rff build/reports/jmh/jmh-result-${{ matrix.label }}.csv"
+          ./gradlew buildNative jmh "-PjmhIncludes=com.modularmc.bigmath.JdkComparisonBenchmark.cpuDispatch.*" "-PjmhArgs=-wi 5 -i 5 -w 1s -r 1s -f 1 -foe true -rf csv -rff build/reports/jmh/jmh-result-${{ matrix.label }}.csv"
       - name: Run JMH
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -Force -ItemType Directory -Path build/reports/jmh | Out-Null
-          .\gradlew.bat jmh "-PjmhIncludes=com.modularmc.bigmath.BigIntBenchmark.orLarge" "-PjmhArgs=-wi 8 -i 5 -w 1s -r 1s -f 1 -foe true -rf csv -rff build/reports/jmh/jmh-result-${{ matrix.label }}.csv"
+          .\gradlew.bat buildNative jmh "-PjmhIncludes=com.modularmc.bigmath.JdkComparisonBenchmark.cpuDispatch.*" "-PjmhArgs=-wi 5 -i 5 -w 1s -r 1s -f 1 -foe true -rf csv -rff build/reports/jmh/jmh-result-${{ matrix.label }}.csv"
       - name: Publish benchmark summary
         shell: bash
         run: |
@@ -181,7 +183,7 @@ jobs:
             label: macos-aarch64
           - os: windows-latest
             label: windows-x86-64
-            vcpkg_triplet: x64-mingw-static-release
+            vcpkg_triplet: x64-windows
           - os: windows-11-arm
             label: windows-aarch64
             vcpkg_triplet: arm64-windows
@@ -190,27 +192,23 @@ jobs:
       VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
     steps:
       - uses: actions/checkout@v4
+      - name: Configure MSVC for Windows x64
+        if: matrix.vcpkg_triplet == 'x64-windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - name: Configure MSVC for Windows ARM64
         if: matrix.vcpkg_triplet == 'arm64-windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64_arm64
       - name: Configure MSVC compiler env
-        if: matrix.vcpkg_triplet == 'arm64-windows'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           "CC=cl" >> $env:GITHUB_ENV
           "CXX=cl" >> $env:GITHUB_ENV
           "BIGMATH_WINDOWS_COMPILER=msvc" >> $env:GITHUB_ENV
-      - name: Configure MinGW for Windows x64
-        if: matrix.vcpkg_triplet == 'x64-mingw-static-release'
-        shell: pwsh
-        run: |
-          $gcc = (Get-Command gcc -ErrorAction Stop).Source
-          $gxx = (Get-Command g++ -ErrorAction Stop).Source
-          "CC=$gcc" >> $env:GITHUB_ENV
-          "CXX=$gxx" >> $env:GITHUB_ENV
-          "BIGMATH_WINDOWS_COMPILER=mingw" >> $env:GITHUB_ENV
       - name: Setup Build
         uses: ./.github/actions/build_setup
       - name: Restore vcpkg binary cache
@@ -226,7 +224,13 @@ jobs:
       - name: Install Linux deps
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources \
+            /etc/apt/sources.list.d/packages-microsoft-prod.list
+          sudo apt-get update -o Acquire::Retries=3
           sudo apt-get install -y libgmp-dev libmpfr-dev cmake
       - name: Install macOS deps
         if: runner.os == 'macOS'
