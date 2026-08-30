@@ -37,16 +37,32 @@ foreach ($requiredPattern in @("bigmath_ffm.dll", "*gmp*.dll", "*mpfr*.dll")) {
 	}
 }
 
-# Preserve GNU/MinGW runtimes when GMP, MPFR, or another bundled DLL uses them.
-foreach ($sourceDir in @(
+# Keep the GNU/MinGW runtime set in the x86-64 distribution so the artifact
+# remains usable with bundled or replacement dependencies built by MinGW.
+$gnuRuntimeRoots = @(
 	$sourceNative,
 	$vcpkgBinDir,
 	$(if ($env:MINGW_PREFIX) { Join-Path $env:MINGW_PREFIX "bin" }),
 	$(if ($env:MSYSTEM_PREFIX) { Join-Path $env:MSYSTEM_PREFIX "bin" })
-) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Container) }) {
+)
+if ($Label -eq "windows-x86-64") {
+	$gnuRuntimeRoots += @(
+		"C:\mingw64\bin",
+		"C:\msys64\mingw64\bin",
+		"C:\Program Files\Git\mingw64\bin"
+	)
+}
+foreach ($sourceDir in $gnuRuntimeRoots | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Container) }) {
 	foreach ($pattern in @("libstdc++-6.dll", "libgcc_s_*.dll", "libwinpthread-1.dll")) {
 		Get-ChildItem -LiteralPath $sourceDir -File -Filter $pattern | ForEach-Object {
 			Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $nativeDir $_.Name) -Force
+		}
+	}
+}
+if ($Label -eq "windows-x86-64") {
+	foreach ($requiredPattern in @("libstdc++-6.dll", "libgcc_s_*.dll", "libwinpthread-1.dll")) {
+		if (-not (Get-ChildItem -LiteralPath $nativeDir -File -Filter $requiredPattern | Select-Object -First 1)) {
+			throw "Required GNU/MinGW runtime is missing for ${Label}: $requiredPattern"
 		}
 	}
 }
@@ -110,7 +126,10 @@ if ($gnuFiles.Count -gt 0) {
 		(Join-Path $sourceNative "licenses"),
 		(Join-Path $repoRoot "vcpkg_installed\$Triplet\share"),
 		$(if ($env:MINGW_PREFIX) { Join-Path $env:MINGW_PREFIX "share\licenses" }),
-		$(if ($env:MSYSTEM_PREFIX) { Join-Path $env:MSYSTEM_PREFIX "share\licenses" })
+		$(if ($env:MSYSTEM_PREFIX) { Join-Path $env:MSYSTEM_PREFIX "share\licenses" }),
+		"C:\mingw64\share\licenses",
+		"C:\msys64\mingw64\share\licenses",
+		"C:\Program Files\Git\mingw64\share\licenses"
 	) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
 	$requiredNotices = @()
 	if ($gnuFiles.Name -contains "libstdc++-6.dll" -or @($gnuFiles.Name | Where-Object { $_ -like "libgcc_s_*.dll" }).Count -gt 0) {
@@ -121,7 +140,12 @@ if ($gnuFiles.Count -gt 0) {
 	}
 	foreach ($required in $requiredNotices) {
 		$notice = Get-ChildItem -LiteralPath $licenseRoots -Recurse -File -ErrorAction SilentlyContinue |
-			Where-Object { $_.Name -eq $required.Name -or $_.Name -eq "$($required.Name).txt" } |
+			Where-Object {
+				$_.Name -eq $required.Name -or
+				$_.Name -eq "$($required.Name).txt" -or
+				($required.Target -eq "COPYING.winpthreads.txt" -and
+					$_.Name -eq "COPYING" -and $_.FullName -match "libwinpthread")
+			} |
 			Select-Object -First 1
 		if (-not $notice) {
 			throw "Bundled GNU/MinGW runtimes require $($required.Target)"
