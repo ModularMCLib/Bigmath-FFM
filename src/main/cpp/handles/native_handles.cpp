@@ -60,6 +60,15 @@ bool mutable_bigdecimal(BigDeciHandle *handle) {
 	return handle != nullptr && handle->value != nullptr && !handle->read_only;
 }
 
+template<typename Handle>
+ProductCacheKey product_cache_key(Handle *left, Handle *right, uint64_t config) {
+	return ProductCacheKey::canonical(
+		{left->id, left->version},
+		{right->id, right->version},
+		config
+	);
+}
+
 #ifdef BIGMATH_HAS_GMP
 std::vector<uint8_t> export_twos_complement(mpz_ptr value) {
 	if (mpz_sgn(value) == 0) {
@@ -118,6 +127,26 @@ uint64_t bigmath_capabilities() {
 	capabilities |= UINT64_C(1) << 3;
 #endif
 	return capabilities;
+}
+
+uint64_t bigmath_product_cache_hits() {
+	return bigmath::caching::product_cache_metrics().hits;
+}
+
+uint64_t bigmath_product_cache_misses() {
+	return bigmath::caching::product_cache_metrics().misses;
+}
+
+uint64_t bigmath_product_cache_admissions() {
+	return bigmath::caching::product_cache_metrics().admissions;
+}
+
+uint64_t bigmath_product_cache_evictions() {
+	return bigmath::caching::product_cache_metrics().evictions;
+}
+
+uint64_t bigmath_product_cache_bytes() {
+	return bigmath::caching::product_cache_metrics().bytes;
 }
 
 BigIntHandle *bigint_from_long(int64_t val) {
@@ -235,7 +264,6 @@ int bigint_set_string(BigIntHandle *out, const char *str, int radix) {
 
 BIGINT_BINARY_WRAPPER(bigint_add, bigint_backend_add)
 BIGINT_BINARY_WRAPPER(bigint_sub, bigint_backend_sub)
-BIGINT_BINARY_WRAPPER(bigint_mul, bigint_backend_mul)
 BIGINT_BINARY_WRAPPER(bigint_mul_cpu, bigint_backend_mul_cpu)
 BIGINT_BINARY_WRAPPER(bigint_mul_gmp, bigint_backend_mul_gmp)
 BIGINT_BINARY_WRAPPER(bigint_div, bigint_backend_div)
@@ -252,6 +280,18 @@ BIGINT_UNARY_WRAPPER(bigint_next_prime, bigint_backend_next_prime)
 
 #undef BIGINT_BINARY_WRAPPER
 #undef BIGINT_UNARY_WRAPPER
+
+BigIntHandle *bigint_mul(BigIntHandle *a, BigIntHandle *b) {
+	if (a == nullptr || b == nullptr || a->value == nullptr || b->value == nullptr) return nullptr;
+	const ProductCacheKey cache_key = product_cache_key(
+		a,
+		b,
+		bigmath::caching::PRODUCT_CONFIG_BIGINT_AUTO
+	);
+	mpz_ptr result = nullptr;
+	bigint_backend_mul(&result, a->value, b->value, &cache_key);
+	return wrap_bigint(result);
+}
 
 BigIntHandle *bigint_pow(BigIntHandle *a, uint64_t exp) {
 	if (a == nullptr || a->value == nullptr) return nullptr;
@@ -305,15 +345,12 @@ int bigint_add_into(BigIntHandle *out, BigIntHandle *a, BigIntHandle *b) {
 
 int bigint_mul_into(BigIntHandle *out, BigIntHandle *a, BigIntHandle *b) {
 	if (!mutable_bigint(out) || a == nullptr || b == nullptr) return -1;
-	const uint64_t left_id = a->id;
-	const uint64_t left_version = a->version;
-	const uint64_t right_id = b->id;
-	const uint64_t right_version = b->version;
-	(void)left_id;
-	(void)left_version;
-	(void)right_id;
-	(void)right_version;
-	bigint_backend_mul_into(out->value, a->value, b->value);
+	const ProductCacheKey cache_key = product_cache_key(
+		a,
+		b,
+		bigmath::caching::PRODUCT_CONFIG_BIGINT_AUTO
+	);
+	bigint_backend_mul_into(out->value, a->value, b->value, &cache_key);
 	out->version++;
 	return 0;
 }
@@ -501,7 +538,6 @@ int bigdecimal_set_string(BigDeciHandle *out, const char *str, int precision) {
 
 BIGDECIMAL_BINARY_WRAPPER(bigdecimal_add, bigdecimal_backend_add)
 BIGDECIMAL_BINARY_WRAPPER(bigdecimal_sub, bigdecimal_backend_sub)
-BIGDECIMAL_BINARY_WRAPPER(bigdecimal_mul, bigdecimal_backend_mul)
 BIGDECIMAL_BINARY_WRAPPER(bigdecimal_mul_mpfr, bigdecimal_backend_mul_mpfr)
 BIGDECIMAL_BINARY_WRAPPER(bigdecimal_div, bigdecimal_backend_div)
 BIGDECIMAL_BINARY_WRAPPER(bigdecimal_pow, bigdecimal_backend_pow)
@@ -520,6 +556,18 @@ BIGDECIMAL_UNARY_WRAPPER(bigdecimal_round, bigdecimal_backend_round)
 #undef BIGDECIMAL_BINARY_WRAPPER
 #undef BIGDECIMAL_UNARY_WRAPPER
 
+BigDeciHandle *bigdecimal_mul(BigDeciHandle *a, BigDeciHandle *b) {
+	if (a == nullptr || b == nullptr || a->value == nullptr || b->value == nullptr) return nullptr;
+	const ProductCacheKey cache_key = product_cache_key(
+		a,
+		b,
+		bigmath::caching::PRODUCT_CONFIG_BIGDECI_AUTO
+	);
+	mpfr_ptr result = nullptr;
+	bigdecimal_backend_mul(&result, a->value, b->value, &cache_key);
+	return wrap_bigdecimal(result);
+}
+
 BigDeciHandle *bigdecimal_pow_long(BigDeciHandle *a, int64_t exp) {
 	if (a == nullptr || a->value == nullptr) return nullptr;
 	mpfr_ptr result = nullptr;
@@ -536,15 +584,12 @@ int bigdecimal_add_into(BigDeciHandle *out, BigDeciHandle *a, BigDeciHandle *b) 
 
 int bigdecimal_mul_into(BigDeciHandle *out, BigDeciHandle *a, BigDeciHandle *b) {
 	if (!mutable_bigdecimal(out) || a == nullptr || b == nullptr) return -1;
-	const uint64_t left_id = a->id;
-	const uint64_t left_version = a->version;
-	const uint64_t right_id = b->id;
-	const uint64_t right_version = b->version;
-	(void)left_id;
-	(void)left_version;
-	(void)right_id;
-	(void)right_version;
-	bigdecimal_backend_mul_into(out->value, a->value, b->value);
+	const ProductCacheKey cache_key = product_cache_key(
+		a,
+		b,
+		bigmath::caching::PRODUCT_CONFIG_BIGDECI_AUTO
+	);
+	bigdecimal_backend_mul_into(out->value, a->value, b->value, &cache_key);
 	out->version++;
 	return 0;
 }

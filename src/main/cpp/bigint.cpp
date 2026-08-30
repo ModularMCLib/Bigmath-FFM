@@ -171,7 +171,12 @@ void bigint_backend_sub(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	mpz_sub(*out, a, b);
 }
 
-void bigint_backend_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
+void bigint_backend_mul(
+		mpz_ptr *out,
+		mpz_ptr a,
+		mpz_ptr b,
+		const ProductCacheKey *cache_key
+) {
 	*out = (mpz_ptr)malloc(sizeof(__mpz_struct));
 	if (!*out) return;
 	int alen = mpz_size(a);
@@ -181,7 +186,7 @@ void bigint_backend_mul(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
 	} else {
 		mpz_init2(*out, static_cast<mp_bitcnt_t>(alen + blen + 1) * GMP_NUMB_BITS);
 	}
-	bigmath::accelerated_mul(*out, a, b);
+	bigmath::accelerated_mul(*out, a, b, cache_key);
 }
 
 void bigint_backend_mul_gmp(mpz_ptr *out, mpz_ptr a, mpz_ptr b) {
@@ -219,8 +224,13 @@ void bigint_backend_add_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
 	mpz_add(out, a, b);
 }
 
-void bigint_backend_mul_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
-	bigmath::accelerated_mul(out, a, b);
+void bigint_backend_mul_into(
+		mpz_ptr out,
+		mpz_ptr a,
+		mpz_ptr b,
+		const ProductCacheKey *cache_key
+) {
+	bigmath::accelerated_mul(out, a, b, cache_key);
 }
 
 void bigint_backend_div_into(mpz_ptr out, mpz_ptr a, mpz_ptr b) {
@@ -420,13 +430,13 @@ void bigint_backend_set_long(mpz_ptr, int64_t) { }
 void bigint_backend_set_string(mpz_ptr, const char *, int) { }
 void bigint_backend_add(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_backend_sub(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
-void bigint_backend_mul(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
+void bigint_backend_mul(mpz_ptr *out, mpz_ptr, mpz_ptr, const ProductCacheKey *) { *out = nullptr; }
 void bigint_backend_mul_cpu(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_backend_mul_gmp(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_backend_div(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_backend_mod(mpz_ptr *out, mpz_ptr, mpz_ptr) { *out = nullptr; }
 void bigint_backend_add_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
-void bigint_backend_mul_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
+void bigint_backend_mul_into(mpz_ptr, mpz_ptr, mpz_ptr, const ProductCacheKey *) { }
 void bigint_backend_div_into(mpz_ptr, mpz_ptr, mpz_ptr) { }
 void bigint_backend_sqrt_into(mpz_ptr, mpz_ptr) { }
 void bigint_backend_pow(mpz_ptr *out, mpz_ptr, uint64_t) { *out = nullptr; }

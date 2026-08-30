@@ -545,9 +545,9 @@ class BigIntTest {
 	@EnabledIfSystemProperty(named = "bigmath.cuda.tests", matches = "true")
 	void cudaProductCacheDoesNotReuseMutatedOperands() {
 		assumeTrue(BigmathFFM.cudaAvailable(), BigmathFFM.cudaStatusMessage());
-		String left = repeatDigits("1234567890", 40000);
-		String changedLeft = repeatDigits("2234567890", 40000);
-		String right = repeatDigits("9876543210", 40000);
+		String left = repeatDigits("1234567890", 80000);
+		String changedLeft = repeatDigits("2234567890", 80000);
+		String right = repeatDigits("9876543210", 80000);
 		BigInteger expected = new BigInteger(left).multiply(new BigInteger(right));
 		BigInteger changedExpected = new BigInteger(changedLeft).multiply(new BigInteger(right));
 		int before = BigmathFFM.cudaMultiplyCount();
@@ -558,15 +558,20 @@ class BigIntTest {
 			}
 			int afterFirst = BigmathFFM.cudaMultiplyCount();
 			assertTrue(afterFirst > before, BigmathFFM.cudaStatusMessage());
+			try (BigInt admitted = a.multiply(b)) {
+				assertEquals(expected.toString(), admitted.toString());
+			}
+			int afterAdmission = BigmathFFM.cudaMultiplyCount();
+			assertTrue(afterAdmission > afterFirst, BigmathFFM.cudaStatusMessage());
 			try (BigInt cached = a.multiply(b)) {
 				assertEquals(expected.toString(), cached.toString());
 			}
-			assertEquals(afterFirst, BigmathFFM.cudaMultiplyCount());
+			assertEquals(afterAdmission, BigmathFFM.cudaMultiplyCount());
 			a.set(changedLeft, 10);
 			try (BigInt changed = a.multiply(b)) {
 				assertEquals(changedExpected.toString(), changed.toString());
 			}
-			assertTrue(BigmathFFM.cudaMultiplyCount() > afterFirst, BigmathFFM.cudaStatusMessage());
+			assertTrue(BigmathFFM.cudaMultiplyCount() > afterAdmission, BigmathFFM.cudaStatusMessage());
 		}
 	}
 

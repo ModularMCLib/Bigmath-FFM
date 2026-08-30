@@ -201,6 +201,11 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS
 	);
 
+	/** {@code uint64_t bigmath_product_cache_metric(void)} */
+	static final FunctionDescriptor PRODUCT_CACHE_LONG = FunctionDescriptor.of(
+			ValueLayout.JAVA_LONG
+	);
+
 	// --- BigDeci ---
 
 	/** {@code void bigdecimal_from_double(void** out, double value, int precision)} */

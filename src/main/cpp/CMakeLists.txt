@@ -180,6 +180,7 @@ endif()
 # Always add all sources so CLion indexes every file
 add_library(bigmath_ffm SHARED
 	bigmath_ffm.cpp
+	caching/product_cache.cpp
 	formatting/decimal_quantity.cpp
 	formatting/format_descriptor.cpp
 	formatting/format_exports.cpp

@@ -74,6 +74,11 @@ public final class BigmathFFM {
 	final int nativeAbiVersion;
 	final String nativeBuildId;
 	final long nativeCapabilities;
+	final MethodHandle productCacheHitsHandle;
+	final MethodHandle productCacheMissesHandle;
+	final MethodHandle productCacheAdmissionsHandle;
+	final MethodHandle productCacheEvictionsHandle;
+	final MethodHandle productCacheBytesHandle;
 	final MethodHandle cudaAvailableHandle;
 	final MethodHandle cudaDeviceCountHandle;
 	final MethodHandle cudaProbeCountHandle;
@@ -105,6 +110,26 @@ public final class BigmathFFM {
 		}
 		this.nativeBuildId = invokeMetadataString(buildIdHandle);
 		this.nativeCapabilities = invokeMetadataLong(capabilitiesHandle);
+		this.productCacheHitsHandle = optionalDowncall(
+			"bigmath_product_cache_hits",
+			FunctionDescriptors.PRODUCT_CACHE_LONG
+		);
+		this.productCacheMissesHandle = optionalDowncall(
+			"bigmath_product_cache_misses",
+			FunctionDescriptors.PRODUCT_CACHE_LONG
+		);
+		this.productCacheAdmissionsHandle = optionalDowncall(
+			"bigmath_product_cache_admissions",
+			FunctionDescriptors.PRODUCT_CACHE_LONG
+		);
+		this.productCacheEvictionsHandle = optionalDowncall(
+			"bigmath_product_cache_evictions",
+			FunctionDescriptors.PRODUCT_CACHE_LONG
+		);
+		this.productCacheBytesHandle = optionalDowncall(
+			"bigmath_product_cache_bytes",
+			FunctionDescriptors.PRODUCT_CACHE_LONG
+		);
 		this.cudaAvailableHandle = optionalDowncall("bigmath_cuda_available", FunctionDescriptors.CUDA_INT);
 		this.cudaDeviceCountHandle = optionalDowncall("bigmath_cuda_device_count", FunctionDescriptors.CUDA_INT);
 		this.cudaProbeCountHandle = optionalDowncall("bigmath_cuda_probe_count", FunctionDescriptors.CUDA_INT);
@@ -480,6 +505,26 @@ public final class BigmathFFM {
 		);
 	}
 
+	static long productCacheHits() {
+		return getInstance().invokeOptionalLong(getInstance().productCacheHitsHandle);
+	}
+
+	static long productCacheMisses() {
+		return getInstance().invokeOptionalLong(getInstance().productCacheMissesHandle);
+	}
+
+	static long productCacheAdmissions() {
+		return getInstance().invokeOptionalLong(getInstance().productCacheAdmissionsHandle);
+	}
+
+	static long productCacheEvictions() {
+		return getInstance().invokeOptionalLong(getInstance().productCacheEvictionsHandle);
+	}
+
+	static long productCacheBytes() {
+		return getInstance().invokeOptionalLong(getInstance().productCacheBytesHandle);
+	}
+
 	static boolean cudaAvailable() {
 		if (getInstance().cudaAvailableHandle == null) {
 			return false;
@@ -526,6 +571,17 @@ public final class BigmathFFM {
 		return lookup.find(name)
 			.map(symbol -> linker.downcallHandle(symbol, descriptor))
 			.orElse(null);
+	}
+
+	long invokeOptionalLong(MethodHandle handle) {
+		if (handle == null) return 0;
+		try {
+			return (long) handle.invokeExact();
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new IllegalStateException("Failed to query Native cache metrics", t);
+		}
 	}
 
 	int invokeCudaInt(MethodHandle handle) {
