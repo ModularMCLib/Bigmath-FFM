@@ -1,6 +1,7 @@
 #include "cuda_runtime_state.h"
 
 #include "caching/product_cache.h"
+#include "runtime/cuda_calibration.h"
 
 #include <algorithm>
 #include <atomic>
@@ -26,8 +27,9 @@ namespace {
 
 enum class InitializationPhase : int {
 	NOT_STARTED = 0,
-	RUNNING = 1,
-	FINISHED = 2
+	PROBING = 1,
+	CALIBRATING = 2,
+	FINISHED = 3
 };
 
 struct RuntimeState {
@@ -43,6 +45,7 @@ struct RuntimeState {
 	uint64_t workspace_in_use_bytes = 0;
 	uint32_t workspace_capacity = 0;
 	uint32_t workspace_in_use = 0;
+	bigmath::runtime::CudaCalibrationProfile calibration;
 	char name[256] = "";
 	char message[512] = "Native runtime initialization has not started";
 };
@@ -195,6 +198,63 @@ void run_initialization() {
 		std::lock_guard lock(state_mutex);
 		state = initialized;
 	}
+	if (initialized.available && configuration.backend == RuntimeBackend::AUTO) {
+		initialization_phase.store(
+			static_cast<int>(InitializationPhase::CALIBRATING),
+			std::memory_order_release
+		);
+		state_changed.notify_all();
+		try {
+			bigmath::runtime::CudaCalibrationProfile profile =
+				bigmath::runtime::calibrate_cuda(configuration.calibration_millis);
+			{
+				std::lock_guard lock(state_mutex);
+				state.calibration = profile;
+				state.active_backend = profile.completed ? RuntimeBackend::AUTO : RuntimeBackend::CPU;
+				for (size_t index = 0; index < 4; index++) {
+					state.threshold_bits[index] = profile.threshold_bits[index];
+				}
+				state.square_threshold_bits = profile.square_threshold_bits;
+				state.ntt_transform_mask = profile.ntt_transform_mask;
+				if (profile.completed) {
+					calibration_status.store(
+						static_cast<uint32_t>(CalibrationStatus::READY),
+						std::memory_order_release
+					);
+					std::snprintf(
+						state.message,
+						sizeof(state.message),
+						"CUDA calibration completed for device %d: %s",
+						state.selected_device,
+						state.name
+					);
+				} else {
+					calibration_status.store(
+						static_cast<uint32_t>(CalibrationStatus::FAILED),
+						std::memory_order_release
+					);
+					copy_text(
+						state.message,
+						sizeof(state.message),
+						"CUDA calibration failed; CPU dispatch remains active"
+					);
+				}
+			}
+		} catch (const std::exception &exception) {
+			std::lock_guard lock(state_mutex);
+			state.active_backend = RuntimeBackend::CPU;
+			calibration_status.store(
+				static_cast<uint32_t>(CalibrationStatus::FAILED),
+				std::memory_order_release
+			);
+			std::snprintf(
+				state.message,
+				sizeof(state.message),
+				"CUDA calibration failed: %s",
+				exception.what()
+			);
+		}
+	}
 	initialization_phase.store(
 		static_cast<int>(InitializationPhase::FINISHED),
 		std::memory_order_release
@@ -214,8 +274,24 @@ void wait_for_initialization() {
 	});
 }
 
+void wait_for_probe() {
+	const int phase = initialization_phase.load(std::memory_order_acquire);
+	if (phase >= static_cast<int>(InitializationPhase::CALIBRATING)) return;
+	std::unique_lock lock(state_mutex);
+	state_changed.wait(lock, [] {
+		return initialization_phase.load(std::memory_order_acquire) >=
+			static_cast<int>(InitializationPhase::CALIBRATING);
+	});
+}
+
 RuntimeState state_snapshot() {
 	wait_for_initialization();
+	std::lock_guard lock(state_mutex);
+	return state;
+}
+
+RuntimeState probe_state_snapshot() {
+	wait_for_probe();
 	std::lock_guard lock(state_mutex);
 	return state;
 }
@@ -245,7 +321,7 @@ int initialize_async() {
 	int expected = static_cast<int>(InitializationPhase::NOT_STARTED);
 	if (!initialization_phase.compare_exchange_strong(
 			expected,
-			static_cast<int>(InitializationPhase::RUNNING),
+			static_cast<int>(InitializationPhase::PROBING),
 			std::memory_order_acq_rel
 	)) {
 		return 0;
@@ -274,7 +350,7 @@ int initialize_async() {
 }
 
 bool is_available() {
-	return state_snapshot().available;
+	return probe_state_snapshot().available;
 }
 
 bool calibration_ready() {
@@ -282,16 +358,101 @@ bool calibration_ready() {
 		static_cast<uint32_t>(CalibrationStatus::READY);
 }
 
+RuntimeBackend active_backend() {
+	if (!calibration_ready()) return RuntimeBackend::CPU;
+	std::lock_guard lock(state_mutex);
+	return state.active_backend;
+}
+
+DispatchDecision choose_dispatch(const DispatchRequest &request) {
+	DispatchDecision decision;
+	if (!calibration_ready()) {
+		if (calibration_status.load(std::memory_order_acquire) ==
+				static_cast<uint32_t>(CalibrationStatus::RUNNING)) {
+			cpu_fallbacks.fetch_add(1, std::memory_order_relaxed);
+		}
+		return decision;
+	}
+	if (request.left_bits == 0 || request.right_bits == 0 ||
+			request.transform_size <= 0) {
+		return decision;
+	}
+
+	RuntimeState current;
+	{
+		std::lock_guard lock(state_mutex);
+		current = state;
+	}
+	if (!current.available || current.active_backend == RuntimeBackend::CPU) return decision;
+	if (current.active_backend == RuntimeBackend::CUFFT) {
+		decision.backend = RuntimeBackend::CUFFT;
+		return decision;
+	}
+	if (current.active_backend == RuntimeBackend::NTT) {
+#ifdef BIGMATH_HAS_CUDA
+		if (request.transform_size <= bigmath::cuda::NTT_MAX_TRANSFORM_SIZE) {
+			decision.backend = RuntimeBackend::NTT;
+		}
+#endif
+		return decision;
+	}
+
+	const uint64_t maximum = std::max(request.left_bits, request.right_bits);
+	const uint64_t minimum = std::min(request.left_bits, request.right_bits);
+	size_t shape = 4;
+	if (!request.square) {
+		const uint64_t ratio = maximum / minimum + (maximum % minimum == 0 ? 0 : 1);
+		if (ratio <= 1) shape = 0;
+		else if (ratio <= 2) shape = 1;
+		else if (ratio <= 8) shape = 2;
+		else if (ratio <= 64) shape = 3;
+		else return decision;
+	}
+
+	int transform_log = 0;
+	int transform = request.transform_size;
+	while (transform > 1 && (transform & 1) == 0) {
+		transform >>= 1;
+		transform_log++;
+	}
+	if (transform != 1 || transform_log >= static_cast<int>(bigmath::runtime::CUDA_TRANSFORM_BUCKETS)) {
+		return decision;
+	}
+	const bigmath::runtime::DispatchProfileCell &cell =
+		current.calibration.cells[shape][static_cast<size_t>(transform_log)];
+	if (!cell.measured || cell.backend == bigmath::runtime::CalibratedBackend::CPU) return decision;
+
+	bool workspace_available = false;
+	uint64_t gpu_nanos = 0;
+#ifdef BIGMATH_HAS_CUDA
+	if (cell.backend == bigmath::runtime::CalibratedBackend::NTT) {
+		if ((current.ntt_transform_mask & (UINT32_C(1) << transform_log)) == 0) return decision;
+		workspace_available = ntt_workspace_available(request.transform_size);
+		gpu_nanos = workspace_available ? cell.ntt_nanos : cell.ntt_cold_nanos;
+		decision.backend = RuntimeBackend::NTT;
+	} else {
+		workspace_available = convolution_workspace_available(request.transform_size);
+		gpu_nanos = request.spectrum_cached ? cell.cufft_nanos : cell.cufft_cold_nanos;
+		decision.backend = RuntimeBackend::CUFFT;
+	}
+#else
+	return DispatchDecision{};
+#endif
+	if (gpu_nanos == 0 || gpu_nanos >= cell.cpu_nanos) return DispatchDecision{};
+	if (!workspace_available) decision.max_queue_wait_nanos = cell.cpu_nanos - gpu_nanos;
+	return decision;
+}
+
 int device_count() {
-	return state_snapshot().count;
+	return probe_state_snapshot().count;
 }
 
 int device_id() {
-	return state_snapshot().selected_device;
+	return probe_state_snapshot().selected_device;
 }
 
 int probe_count() {
-	return state_snapshot().probe_count;
+	return probe_state_snapshot().probe_count;
 }
 
 void record_multiply() {

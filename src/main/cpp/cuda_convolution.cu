@@ -804,7 +804,8 @@ static bool convolve_u16_digits_impl(const std::vector<uint16_t> &a,
 		std::vector<uint64_t> *limb_out,
 		unsigned bits_per_digit,
 		unsigned limb_bits,
-		uint64_t max_queue_wait_nanos) {
+		uint64_t max_queue_wait_nanos,
+		bool cache_spectra) {
 	if (a.empty() || b.empty()) {
 		if (digit_out != nullptr) {
 			digit_out->clear();
@@ -822,7 +823,7 @@ static bool convolve_u16_digits_impl(const std::vector<uint16_t> &a,
 		return false;
 	}
 	static constexpr int SPECTRUM_CACHE_MIN_SIZE = 32768;
-	const bool use_spectrum_cache = n >= SPECTRUM_CACHE_MIN_SIZE;
+	const bool use_spectrum_cache = cache_spectra && n >= SPECTRUM_CACHE_MIN_SIZE;
 	CudaWorkspacePool::Lease lease = workspace_pool().acquire(
 		n,
 		use_spectrum_cache,
@@ -897,7 +898,8 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 		const std::vector<uint16_t> &b,
 		std::vector<uint16_t> &out,
 		unsigned bits_per_digit,
-		uint64_t max_queue_wait_nanos) {
+		uint64_t max_queue_wait_nanos,
+		bool cache_spectra) {
 	return convolve_u16_digits_impl(
 		a,
 		b,
@@ -905,7 +907,8 @@ bool convolve_u16_digits(const std::vector<uint16_t> &a,
 		nullptr,
 		bits_per_digit,
 		0,
-		max_queue_wait_nanos
+		max_queue_wait_nanos,
+		cache_spectra
 	);
 }
 
@@ -914,7 +917,8 @@ bool convolve_u16_digits_to_limbs(const std::vector<uint16_t> &a,
 		std::vector<uint64_t> &out,
 		unsigned bits_per_digit,
 		unsigned limb_bits,
-		uint64_t max_queue_wait_nanos) {
+		uint64_t max_queue_wait_nanos,
+		bool cache_spectra) {
 	return convolve_u16_digits_impl(
 		a,
 		b,
@@ -922,7 +926,8 @@ bool convolve_u16_digits_to_limbs(const std::vector<uint16_t> &a,
 		&out,
 		bits_per_digit,
 		limb_bits,
-		max_queue_wait_nanos
+		max_queue_wait_nanos,
+		cache_spectra
 	);
 }
 

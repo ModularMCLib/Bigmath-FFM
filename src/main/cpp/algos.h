@@ -25,6 +25,11 @@ constexpr int NTT_THRESHOLD      = 4096;
 
 using limb_t = uint64_t;
 
+enum class DirectCudaBackend {
+	CUFFT,
+	NTT
+};
+
 void karatsuba_mul(limb_t *out, const limb_t *a, int alen, const limb_t *b, int blen);
 
 void binary_gcd(mpz_ptr out, mpz_ptr a, mpz_ptr b);
@@ -53,6 +58,18 @@ void accelerated_mul(
 	mpz_ptr b,
 	const caching::ProductCacheKey *cache_key = nullptr
 );
+
+bool cuda_multiply_direct(
+	mpz_ptr out,
+	mpz_ptr a,
+	mpz_ptr b,
+	DirectCudaBackend backend,
+	uint64_t max_queue_wait_nanos,
+	bool cache_spectra,
+	bool reset_host_cache
+);
+
+bool cuda_dispatch_favorable(uint64_t left_bits, uint64_t right_bits, bool square);
 
 void modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod);
 

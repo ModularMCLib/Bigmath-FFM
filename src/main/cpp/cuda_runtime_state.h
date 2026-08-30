@@ -32,10 +32,25 @@ struct RuntimeConfiguration {
 	RuntimeBackend backend = RuntimeBackend::AUTO;
 };
 
+struct DispatchRequest {
+	uint64_t left_bits;
+	uint64_t right_bits;
+	int transform_size;
+	bool square;
+	bool spectrum_cached;
+};
+
+struct DispatchDecision {
+	RuntimeBackend backend = RuntimeBackend::CPU;
+	uint64_t max_queue_wait_nanos = 0;
+};
+
 bool configure(const RuntimeConfiguration &configuration);
 int initialize_async();
 bool is_available();
 bool calibration_ready();
+RuntimeBackend active_backend();
+DispatchDecision choose_dispatch(const DispatchRequest &request);
 int device_count();
 int device_id();
 int probe_count();
