@@ -174,7 +174,7 @@ public final class BigmathFFM {
 		return lookup.find(name)
 			.map(symbol -> linker.downcallHandle(symbol, descriptor))
 			.orElseThrow(() -> new LinkageError(
-				"Loaded Bigmath native library does not expose ABI v2 metadata symbol: " + name
+				"Loaded Bigmath native library does not expose required ABI metadata symbol: " + name
 			));
 	}
 

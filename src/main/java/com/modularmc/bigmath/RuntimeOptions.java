@@ -5,7 +5,14 @@ import org.jspecify.annotations.NullMarked;
 import java.time.Duration;
 import java.util.Objects;
 
-/** Immutable options captured when the Bigmath Native runtime is initialized. */
+/**
+ * Immutable options captured when the Bigmath Native runtime is initialized.
+ * <p>
+ * Defaults enable the product cache with a 64 MiB host budget, reserve 25% of
+ * available device memory up to 512 MiB for CUDA workspaces, allow about ten
+ * seconds for calibration, and automatically select both the CUDA device and
+ * backend.
+ */
 @NullMarked
 public final class RuntimeOptions {
 
