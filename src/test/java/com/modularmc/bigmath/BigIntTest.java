@@ -558,15 +558,20 @@ class BigIntTest {
 			}
 			int afterFirst = BigmathFFM.cudaMultiplyCount();
 			assertTrue(afterFirst > before, BigmathFFM.cudaStatusMessage());
+			try (BigInt admitted = a.multiply(b)) {
+				assertEquals(expected.toString(), admitted.toString());
+			}
+			int afterAdmission = BigmathFFM.cudaMultiplyCount();
+			assertTrue(afterAdmission > afterFirst, BigmathFFM.cudaStatusMessage());
 			try (BigInt cached = a.multiply(b)) {
 				assertEquals(expected.toString(), cached.toString());
 			}
-			assertEquals(afterFirst, BigmathFFM.cudaMultiplyCount());
+			assertEquals(afterAdmission, BigmathFFM.cudaMultiplyCount());
 			a.set(changedLeft, 10);
 			try (BigInt changed = a.multiply(b)) {
 				assertEquals(changedExpected.toString(), changed.toString());
 			}
-			assertTrue(BigmathFFM.cudaMultiplyCount() > afterFirst, BigmathFFM.cudaStatusMessage());
+			assertTrue(BigmathFFM.cudaMultiplyCount() > afterAdmission, BigmathFFM.cudaStatusMessage());
 		}
 	}
 
