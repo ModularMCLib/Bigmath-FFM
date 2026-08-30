@@ -95,10 +95,53 @@ jobs:
           "CMAKE_PREFIX_PATH=${{ github.workspace }}\vcpkg_installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
           "BIGMATH_VCPKG_TRIPLET=${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
 
-      - name: Install CUDA toolkit
+      - name: Restore Windows CUDA toolkit cache
+        if: matrix.platform == 'windows'
+        id: cuda-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2
+          key: cuda-toolkit-${{ matrix.classifier }}-13.2.0-jimver-v0.2.35-v1
+
+      - name: Check Windows CUDA toolkit cache
+        if: matrix.platform == 'windows'
+        id: cuda-cache-check
+        shell: pwsh
+        run: |
+          $nvcc = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2\bin\nvcc.exe'
+          $available = Test-Path -LiteralPath $nvcc -PathType Leaf
+          "available=$($available.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Install Linux CUDA toolkit
+        if: matrix.platform == 'linux'
         uses: Jimver/cuda-toolkit@v0.2.35
         with:
           cuda: '13.2.0'
+          method: network
+          sub-packages: '["compiler", "cudart", "cudart-dev"]'
+          non-cuda-sub-packages: '["libcufft", "libcufft-dev"]'
+
+      - name: Install Windows CUDA toolkit
+        if: matrix.platform == 'windows' && steps.cuda-cache-check.outputs.available != 'true'
+        uses: Jimver/cuda-toolkit@v0.2.35
+        with:
+          cuda: '13.2.0'
+
+      - name: Configure CUDA toolkit environment
+        shell: pwsh
+        run: |
+          if ('${{ matrix.platform }}' -eq 'windows') {
+            $cudaPath = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2'
+            "CUDA_PATH=$cudaPath" >> $env:GITHUB_ENV
+            "CUDA_PATH_V13_2=$cudaPath" >> $env:GITHUB_ENV
+            "$cudaPath\bin" >> $env:GITHUB_PATH
+          } else {
+            $cudaPath = '/usr/local/cuda-13.2'
+            "CUDA_PATH=$cudaPath" >> $env:GITHUB_ENV
+            "CUDA_PATH_V13_2=$cudaPath" >> $env:GITHUB_ENV
+            "LD_LIBRARY_PATH=$cudaPath/lib64:${env:LD_LIBRARY_PATH}" >> $env:GITHUB_ENV
+            "$cudaPath/bin" >> $env:GITHUB_PATH
+          }
 
       - uses: actions/setup-java@v4
         with:
@@ -133,6 +176,13 @@ jobs:
         with:
           path: .vcpkg-cache
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+
+      - name: Save Windows CUDA toolkit cache
+        if: matrix.platform == 'windows' && steps.cuda-cache-check.outputs.available != 'true' && !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2
+          key: ${{ steps.cuda-cache.outputs.cache-primary-key }}
 
       - name: Upload CUDA Native artifact
         uses: actions/upload-artifact@v4
