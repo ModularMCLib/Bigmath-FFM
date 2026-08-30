@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -632,9 +633,14 @@ static void store_product_result(
 ) {
 #if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
 	if (cache_key == nullptr || !admitted) return;
-	std::vector<uint64_t> packed_limbs;
-	copy_abs_u64_limbs(result, packed_limbs);
-	caching::store_product(*cache_key, std::move(packed_limbs), true);
+	try {
+		std::vector<uint64_t> packed_limbs;
+		copy_abs_u64_limbs(result, packed_limbs);
+		caching::store_product(*cache_key, std::move(packed_limbs), true);
+	} catch (const std::bad_alloc &) {
+		// Product caching is optional; preserve the completed multiplication.
+		caching::record_product_cache_bypass();
+	}
 #else
 	(void)cache_key;
 	(void)admitted;

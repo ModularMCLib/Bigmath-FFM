@@ -40,6 +40,7 @@ struct ProductCacheMetrics {
 	uint64_t misses;
 	uint64_t admissions;
 	uint64_t evictions;
+	uint64_t bypasses;
 	uint64_t bytes;
 };
 
@@ -50,6 +51,7 @@ void store_product(
 	bool admitted
 );
 ProductCacheMetrics product_cache_metrics();
+void record_product_cache_bypass();
 
 }
 

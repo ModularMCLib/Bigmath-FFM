@@ -2,6 +2,7 @@
 
 #include <array>
 #include <mutex>
+#include <new>
 #include <utility>
 
 namespace bigmath::caching {
@@ -36,9 +37,12 @@ public:
 		const uint64_t use_tick = next_tick();
 		for (CachedProduct &entry : results_) {
 			if (entry.ready && entry.key == key) {
+				ProductCacheLookup result;
+				result.packed_limbs = entry.packed_limbs;
+				result.hit = true;
 				entry.last_used = use_tick;
 				metrics_.hits++;
-				return ProductCacheLookup{true, false, entry.packed_limbs};
+				return result;
 			}
 		}
 
@@ -100,6 +104,11 @@ public:
 	ProductCacheMetrics metrics() const {
 		std::lock_guard lock(mutex_);
 		return metrics_;
+	}
+
+	void record_bypass() {
+		std::lock_guard lock(mutex_);
+		metrics_.bypasses++;
 	}
 
 private:
@@ -169,7 +178,12 @@ bool ProductCacheKey::operator==(const ProductCacheKey &other) const {
 }
 
 ProductCacheLookup lookup_product(const ProductCacheKey &key) {
-	return cache().lookup(key);
+	try {
+		return cache().lookup(key);
+	} catch (const std::bad_alloc &) {
+		cache().record_bypass();
+		return ProductCacheLookup{};
+	}
 }
 
 void store_product(
@@ -182,6 +196,10 @@ void store_product(
 
 ProductCacheMetrics product_cache_metrics() {
 	return cache().metrics();
+}
+
+void record_product_cache_bypass() {
+	cache().record_bypass();
 }
 
 }
