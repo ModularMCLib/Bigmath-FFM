@@ -1,22 +1,12 @@
 #include "int128.h"
 
-static constexpr char INT128_DIGITS[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+#include <bit>
 
-static int digit_value(const char c, const int radix) {
-	if (c >= '0' && c <= '9') {
-		return c - '0';
-	}
-	if (c >= 'a' && c <= 'z') {
-		return c - 'a' + 10;
-	}
-	if (c >= 'A' && c <= 'Z') {
-		if (radix <= 36) {
-			return c - 'A' + 10;
-		}
-		return c - 'A' + 36;
-	}
-	return -1;
-}
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
+static constexpr char INT128_DIGITS[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 static char digit_char(const unsigned digit) {
 	return INT128_DIGITS[digit];
@@ -56,27 +46,6 @@ void int128_from_i64(int128_box *out, int64_t val) {
 void int128_from_u64(int128_box *out, uint64_t val) {
 	out->lo = static_cast<int64_t>(val);
 	out->hi = 0;
-}
-
-void int128_from_string(int128_box *out, const char *str, int radix) {
-	if (radix < 2 || radix > 62) {
-		int128_from_i64(out, 0);
-		return;
-	}
-	unsigned __int128 v = 0;
-	bool neg = false;
-	const char *p = str;
-	if (*p == '-') { neg = true; p++; }
-	while (*p) {
-		const char c = *p++;
-		const int d = digit_value(c, radix);
-		if (d < 0 || d >= radix) break;
-		v = v * radix + d;
-	}
-	if (neg) {
-		v = ~v + 1;
-	}
-	from_u128(out, v);
 }
 
 void int128_add(int128_box *out, const int128_box *a, const int128_box *b) {
@@ -134,10 +103,31 @@ char *int128_to_string(const int128_box *a, int radix) {
 	char buf[256];
 	int pos = 255;
 	buf[pos] = '\0';
-	while (magnitude > 0) {
-		const auto digit = static_cast<unsigned>(magnitude % static_cast<unsigned>(radix));
-		buf[--pos] = digit_char(digit);
-		magnitude /= static_cast<unsigned>(radix);
+	if (radix == 10) {
+		constexpr unsigned __int128 chunk_base = 1000000000;
+		while (magnitude > 0) {
+			const unsigned __int128 quotient = magnitude / chunk_base;
+			uint32_t chunk = static_cast<uint32_t>(magnitude - quotient * chunk_base);
+			const int digits = quotient == 0 ? 1 : 9;
+			int written = 0;
+			do {
+				buf[--pos] = static_cast<char>('0' + chunk % 10);
+				chunk /= 10;
+				written++;
+			} while (chunk != 0);
+			while (written++ < digits) {
+				buf[--pos] = '0';
+			}
+			magnitude = quotient;
+		}
+	} else {
+		const auto unsigned_radix = static_cast<unsigned>(radix);
+		while (magnitude > 0) {
+			const unsigned __int128 quotient = magnitude / unsigned_radix;
+			const auto digit = static_cast<unsigned>(magnitude - quotient * unsigned_radix);
+			buf[--pos] = digit_char(digit);
+			magnitude = quotient;
+		}
 	}
 	if (neg) buf[--pos] = '-';
 	auto s = static_cast<char *>(malloc(255 - pos + 1));
@@ -185,31 +175,6 @@ void int128_from_u64(int128_box *out, uint64_t val) {
 	out->hi = 0;
 }
 
-void int128_from_string(int128_box *out, const char *str, int radix) {
-	if (radix < 2 || radix > 62) {
-		out->lo = 0;
-		out->hi = 0;
-		return;
-	}
-	out->lo = 0;
-	out->hi = 0;
-	bool neg = false;
-	const char *p = str;
-	if (*p == '-') { neg = true; p++; }
-	const int128_box radix_box = {(int64_t)radix, 0};
-	while (*p) {
-		const int d = digit_value(*p++, radix);
-		if (d < 0 || d >= radix) break;
-		int128_box product;
-		int128_mul(&product, out, &radix_box);
-		const int128_box digit_box = {(int64_t)d, 0};
-		int128_add(out, &product, &digit_box);
-	}
-	if (neg) {
-		neg_abs(out, out);
-	}
-}
-
 void int128_add(int128_box *out, const int128_box *a, const int128_box *b) {
 	u128_add((uint64_t*)&out->lo, (uint64_t*)&out->hi,
 		(uint64_t)a->lo, (uint64_t)a->hi,
@@ -224,98 +189,212 @@ void int128_sub(int128_box *out, const int128_box *a, const int128_box *b) {
 
 // 64x64 -> 128 multiplication using 32-bit decomposition
 static void umul64(uint64_t *lo, uint64_t *hi, uint64_t a, uint64_t b) {
-	uint32_t a_lo = (uint32_t)a;
-	uint32_t a_hi = (uint32_t)(a >> 32);
-	uint32_t b_lo = (uint32_t)b;
-	uint32_t b_hi = (uint32_t)(b >> 32);
-	uint64_t p00 = (uint64_t)a_lo * b_lo;
-	uint64_t p01 = (uint64_t)a_lo * b_hi;
-	uint64_t p10 = (uint64_t)a_hi * b_lo;
-	uint64_t p11 = (uint64_t)a_hi * b_hi;
-	uint64_t mid = p01 + p10;
-	*lo = p00 + ((mid & 0xFFFFFFFFULL) << 32);
-	*hi = p11 + (mid >> 32) + ((p00 >> 32) + (mid << 32 >> 32) > 0xFFFFFFFFULL ? 1 : 0);
-	// better carry handling
-	uint64_t mid_lo = (mid & 0xFFFFFFFFULL) << 32;
-	uint64_t carry = (p00 + mid_lo < p00) ? 1ULL : 0ULL;
-	*lo = p00 + mid_lo;
-	*hi = p11 + (mid >> 32) + carry;
+#if defined(_MSC_VER) && defined(_M_X64)
+	*lo = _umul128(a, b, hi);
+#elif defined(_MSC_VER) && defined(_M_ARM64)
+	*lo = a * b;
+	*hi = __umulh(a, b);
+#else
+	const uint64_t a_lo = static_cast<uint32_t>(a);
+	const uint64_t a_hi = a >> 32;
+	const uint64_t b_lo = static_cast<uint32_t>(b);
+	const uint64_t b_hi = b >> 32;
+	const uint64_t low_product = a_lo * b_lo;
+	uint64_t middle = a_hi * b_lo + (low_product >> 32);
+	const uint64_t middle_high = middle >> 32;
+	middle = (middle & 0xffff'ffffULL) + a_lo * b_hi;
+	*lo = (middle << 32) | (low_product & 0xffff'ffffULL);
+	*hi = a_hi * b_hi + middle_high + (middle >> 32);
+#endif
 }
 
 void int128_mul(int128_box *out, const int128_box *a, const int128_box *b) {
-	int128_box aa, bb;
-	abs_value(&aa, a);
-	abs_value(&bb, b);
-	bool result_neg = (is_neg(a) != is_neg(b));
-	// 128x128 -> 256, keep low 128 bits
-	uint64_t a0 = (uint64_t)aa.lo, a1 = (uint64_t)aa.hi;
-	uint64_t b0 = (uint64_t)bb.lo, b1 = (uint64_t)bb.hi;
-	uint64_t p00_lo, p00_hi, p01_lo, p01_hi, p10_lo, p10_hi;
-	umul64(&p00_lo, &p00_hi, a0, b0);
-	umul64(&p01_lo, &p01_hi, a0, b1);
-	umul64(&p10_lo, &p10_hi, a1, b0);
-	uint64_t r_lo = p00_lo;
-	uint64_t r_hi = p00_hi + p01_lo + p10_lo;
-	// handle overflow in addition chain
-	uint64_t sum = p00_hi + p01_lo;
-	uint64_t carry = (sum < p00_hi || sum < p01_lo) ? 1ULL : 0ULL;
-	sum += p10_lo;
-	if (sum < p10_lo) carry++;
-	r_hi = sum;
-	r_hi += (carry << 32);  // carry bits into higher part (p01_hi + p10_hi + overflow)
-	r_hi += p01_hi + p10_hi;
-	out->lo = (int64_t)r_lo;
-	out->hi = (int64_t)r_hi;
-	if (result_neg) {
-		neg_abs(out, out);
-	}
+	const uint64_t a0 = static_cast<uint64_t>(a->lo);
+	const uint64_t a1 = static_cast<uint64_t>(a->hi);
+	const uint64_t b0 = static_cast<uint64_t>(b->lo);
+	const uint64_t b1 = static_cast<uint64_t>(b->hi);
+	uint64_t product_lo;
+	uint64_t product_hi;
+	umul64(&product_lo, &product_hi, a0, b0);
+	out->lo = static_cast<int64_t>(product_lo);
+	out->hi = static_cast<int64_t>(product_hi + a0 * b1 + a1 * b0);
 }
 
-void int128_div(int128_box *out, const int128_box *a, const int128_box *b) {
-	int128_box aa, bb;
-	abs_value(&aa, a);
-	abs_value(&bb, b);
-	bool result_neg = (is_neg(a) != is_neg(b));
-	if (is_zero(&bb)) {
-		out->lo = 0; out->hi = 0;
-		return;
+static int u128_compare(const int128_box *a, const int128_box *b) {
+	const uint64_t a_hi = static_cast<uint64_t>(a->hi);
+	const uint64_t b_hi = static_cast<uint64_t>(b->hi);
+	if (a_hi < b_hi) return -1;
+	if (a_hi > b_hi) return 1;
+	const uint64_t a_lo = static_cast<uint64_t>(a->lo);
+	const uint64_t b_lo = static_cast<uint64_t>(b->lo);
+	return a_lo < b_lo ? -1 : a_lo > b_lo ? 1 : 0;
+}
+
+static void u128_subtract(int128_box *out, const int128_box *a, const int128_box *b) {
+	const uint64_t a_lo = static_cast<uint64_t>(a->lo);
+	const uint64_t b_lo = static_cast<uint64_t>(b->lo);
+	const uint64_t result_lo = a_lo - b_lo;
+	const uint64_t borrow = a_lo < b_lo ? 1 : 0;
+	out->lo = static_cast<int64_t>(result_lo);
+	out->hi = static_cast<int64_t>(static_cast<uint64_t>(a->hi) - static_cast<uint64_t>(b->hi) - borrow);
+}
+
+static uint64_t udiv128_by_64_low(uint64_t lo, uint64_t hi, uint64_t divisor, uint64_t *remainder) {
+#if defined(_MSC_VER) && defined(_M_X64)
+	return _udiv128(hi, lo, divisor, remainder);
+#else
+	uint64_t quotient = 0;
+	uint64_t current = hi;
+	for (int bit = 63; bit >= 0; bit--) {
+		const bool carry = (current >> 63) != 0;
+		current = (current << 1) | ((lo >> bit) & 1ULL);
+		if (carry || current >= divisor) {
+			current -= divisor;
+			quotient |= 1ULL << bit;
+		}
 	}
-	// restore division: shift-left algorithm
-	int128_box remainder = {0, 0};
-	int128_box quotient = {0, 0};
-	uint64_t a_lo = (uint64_t)aa.lo;
-	uint64_t a_hi = (uint64_t)aa.hi;
-	for (int i = 127; i >= 0; i--) {
-		// shift remainder left by 1
-		uint64_t r_lo = (uint64_t)remainder.lo;
-		uint64_t r_hi = (uint64_t)remainder.hi;
-		uint64_t new_lo = r_lo << 1;
-		uint64_t new_hi = (r_hi << 1) | (r_lo >> 63);
-		remainder.lo = (int64_t)new_lo;
-		remainder.hi = (int64_t)new_hi;
-		// bring down bit from dividend
-		uint64_t bit = (i >= 64) ? ((a_hi >> (i - 64)) & 1) : ((a_lo >> i) & 1);
-		remainder.lo |= bit;
-		// if remainder >= bb, subtract and set quotient bit
-		int128_box neg_bb;
-		neg_abs(&neg_bb, &bb);
-		int128_box diff;
-		uint64_t d_lo, d_hi;
-		u128_add(&d_lo, &d_hi,
-			(uint64_t)remainder.lo, (uint64_t)remainder.hi,
-			(uint64_t)neg_bb.lo, (uint64_t)neg_bb.hi);
-		diff.lo = (int64_t)d_lo;
-		diff.hi = (int64_t)d_hi;
-		if (!is_neg(&diff) || is_zero(&diff)) {
-			remainder = diff;
-			if (i >= 64) {
-				quotient.hi |= (1ULL << (i - 64));
+	*remainder = current;
+	return quotient;
+#endif
+}
+
+static void u128_divmod_restoring(
+		const int128_box *dividend,
+		const int128_box *divisor,
+		int128_box *quotient,
+		int128_box *remainder
+) {
+	quotient->lo = 0;
+	quotient->hi = 0;
+	remainder->lo = 0;
+	remainder->hi = 0;
+	const uint64_t dividend_lo = static_cast<uint64_t>(dividend->lo);
+	const uint64_t dividend_hi = static_cast<uint64_t>(dividend->hi);
+	for (int bit = 127; bit >= 0; bit--) {
+		const uint64_t remainder_lo = static_cast<uint64_t>(remainder->lo);
+		const uint64_t remainder_hi = static_cast<uint64_t>(remainder->hi);
+		remainder->lo = static_cast<int64_t>(remainder_lo << 1);
+		remainder->hi = static_cast<int64_t>((remainder_hi << 1) | (remainder_lo >> 63));
+		const uint64_t incoming = bit >= 64
+			? (dividend_hi >> (bit - 64)) & 1ULL
+			: (dividend_lo >> bit) & 1ULL;
+		remainder->lo = static_cast<int64_t>(static_cast<uint64_t>(remainder->lo) | incoming);
+		if (u128_compare(remainder, divisor) >= 0) {
+			u128_subtract(remainder, remainder, divisor);
+			if (bit >= 64) {
+				quotient->hi = static_cast<int64_t>(static_cast<uint64_t>(quotient->hi) | (1ULL << (bit - 64)));
 			} else {
-				quotient.lo |= (1ULL << i);
+				quotient->lo = static_cast<int64_t>(static_cast<uint64_t>(quotient->lo) | (1ULL << bit));
 			}
 		}
 	}
-	if (result_neg) {
+}
+
+static void u128_divmod_unsigned(
+		const int128_box *dividend,
+		const int128_box *divisor,
+		int128_box *quotient,
+		int128_box *remainder
+) {
+	if (static_cast<uint64_t>(divisor->hi) == 0) {
+		const uint64_t divisor_lo = static_cast<uint64_t>(divisor->lo);
+		const uint64_t dividend_hi = static_cast<uint64_t>(dividend->hi);
+		const uint64_t quotient_hi = dividend_hi / divisor_lo;
+		const uint64_t high_remainder = dividend_hi % divisor_lo;
+		uint64_t low_remainder;
+		const uint64_t quotient_lo = udiv128_by_64_low(
+			static_cast<uint64_t>(dividend->lo),
+			high_remainder,
+			divisor_lo,
+			&low_remainder
+		);
+		quotient->lo = static_cast<int64_t>(quotient_lo);
+		quotient->hi = static_cast<int64_t>(quotient_hi);
+		remainder->lo = static_cast<int64_t>(low_remainder);
+		remainder->hi = 0;
+		return;
+	}
+
+	// A true two-limb divisor produces at most one quotient limb. Normalize the
+	// top divisor word, estimate that quotient, then correct against the exact
+	// low-128 product. The restoring path remains the bounded fallback.
+	const uint64_t dividend_lo = static_cast<uint64_t>(dividend->lo);
+	const uint64_t dividend_hi = static_cast<uint64_t>(dividend->hi);
+	const uint64_t divisor_lo = static_cast<uint64_t>(divisor->lo);
+	const uint64_t divisor_hi = static_cast<uint64_t>(divisor->hi);
+	const int shift = std::countl_zero(divisor_hi);
+	const uint64_t normalized_divisor_hi = shift == 0
+		? divisor_hi
+		: (divisor_hi << shift) | (divisor_lo >> (64 - shift));
+	const uint64_t normalized_divisor_lo = divisor_lo << shift;
+	const uint64_t numerator_top = shift == 0 ? 0 : dividend_hi >> (64 - shift);
+	const uint64_t normalized_dividend_hi = shift == 0
+		? dividend_hi
+		: (dividend_hi << shift) | (dividend_lo >> (64 - shift));
+	const uint64_t normalized_dividend_lo = dividend_lo << shift;
+	uint64_t remainder_hat;
+	uint64_t estimate = udiv128_by_64_low(
+		normalized_dividend_hi,
+		numerator_top,
+		normalized_divisor_hi,
+		&remainder_hat
+	);
+	for (int correction = 0; correction < 3; correction++) {
+		uint64_t product_lo;
+		uint64_t product_hi;
+		umul64(&product_lo, &product_hi, estimate, normalized_divisor_lo);
+		if (product_hi < remainder_hat ||
+				(product_hi == remainder_hat && product_lo <= normalized_dividend_lo)) {
+			break;
+		}
+		estimate--;
+		const uint64_t previous = remainder_hat;
+		remainder_hat += normalized_divisor_hi;
+		if (remainder_hat < previous) break;
+	}
+
+	for (int correction = 0; correction <= 4; correction++) {
+		uint64_t low_product_lo;
+		uint64_t low_product_hi;
+		uint64_t high_product_lo;
+		uint64_t high_product_hi;
+		umul64(&low_product_lo, &low_product_hi, estimate, divisor_lo);
+		umul64(&high_product_lo, &high_product_hi, estimate, divisor_hi);
+		const uint64_t product_hi = low_product_hi + high_product_lo;
+		const bool overflow = high_product_hi != 0 || product_hi < low_product_hi;
+		const int128_box product = {
+			static_cast<int64_t>(low_product_lo),
+			static_cast<int64_t>(product_hi)
+		};
+		if (!overflow && u128_compare(&product, dividend) <= 0) {
+			u128_subtract(remainder, dividend, &product);
+			while (u128_compare(remainder, divisor) >= 0) {
+				u128_subtract(remainder, remainder, divisor);
+				estimate++;
+			}
+			quotient->lo = static_cast<int64_t>(estimate);
+			quotient->hi = 0;
+			return;
+		}
+		estimate--;
+	}
+	u128_divmod_restoring(dividend, divisor, quotient, remainder);
+}
+
+void int128_div(int128_box *out, const int128_box *a, const int128_box *b) {
+	int128_box dividend;
+	int128_box divisor;
+	abs_value(&dividend, a);
+	abs_value(&divisor, b);
+	if (is_zero(&divisor)) {
+		out->lo = 0;
+		out->hi = 0;
+		return;
+	}
+	int128_box quotient;
+	int128_box remainder;
+	u128_divmod_unsigned(&dividend, &divisor, &quotient, &remainder);
+	if (is_neg(a) != is_neg(b)) {
 		neg_abs(out, &quotient);
 	} else {
 		*out = quotient;
@@ -323,11 +402,23 @@ void int128_div(int128_box *out, const int128_box *a, const int128_box *b) {
 }
 
 void int128_mod(int128_box *out, const int128_box *a, const int128_box *b) {
-	int128_box q;
-	int128_div(&q, a, b);
-	int128_box prod;
-	int128_mul(&prod, &q, b);
-	int128_sub(out, a, &prod);
+	int128_box dividend;
+	int128_box divisor;
+	abs_value(&dividend, a);
+	abs_value(&divisor, b);
+	if (is_zero(&divisor)) {
+		out->lo = 0;
+		out->hi = 0;
+		return;
+	}
+	int128_box quotient;
+	int128_box remainder;
+	u128_divmod_unsigned(&dividend, &divisor, &quotient, &remainder);
+	if (is_neg(a)) {
+		neg_abs(out, &remainder);
+	} else {
+		*out = remainder;
+	}
 }
 
 void int128_neg(int128_box *out, const int128_box *a) {
@@ -367,14 +458,34 @@ char *int128_to_string(const int128_box *a, int radix) {
 	char buf[256];
 	int pos = 255;
 	buf[pos] = '\0';
-	const int128_box radix_box = {(int64_t)radix, 0};
-	while (!is_zero(&val)) {
-		int128_box remainder;
-		int128_mod(&remainder, &val, &radix_box);
-		buf[--pos] = digit_char((unsigned)(uint64_t)remainder.lo);
-		int128_box quotient;
-		int128_div(&quotient, &val, &radix_box);
-		val = quotient;
+	if (radix == 10) {
+		const int128_box chunk_base = {1000000000, 0};
+		while (!is_zero(&val)) {
+			int128_box quotient;
+			int128_box remainder;
+			u128_divmod_unsigned(&val, &chunk_base, &quotient, &remainder);
+			uint32_t chunk = static_cast<uint32_t>(remainder.lo);
+			const int digits = is_zero(&quotient) ? 1 : 9;
+			int written = 0;
+			do {
+				buf[--pos] = static_cast<char>('0' + chunk % 10);
+				chunk /= 10;
+				written++;
+			} while (chunk != 0);
+			while (written++ < digits) {
+				buf[--pos] = '0';
+			}
+			val = quotient;
+		}
+	} else {
+		const int128_box radix_box = {static_cast<int64_t>(radix), 0};
+		while (!is_zero(&val)) {
+			int128_box quotient;
+			int128_box remainder;
+			u128_divmod_unsigned(&val, &radix_box, &quotient, &remainder);
+			buf[--pos] = digit_char(static_cast<unsigned>(static_cast<uint64_t>(remainder.lo)));
+			val = quotient;
+		}
 	}
 	if (neg) buf[--pos] = '-';
 	char *s = (char *)malloc(255 - pos + 1);

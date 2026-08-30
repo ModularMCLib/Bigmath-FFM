@@ -19,7 +19,6 @@ extern "C" {
 
 BIGMATH_EXPORT void int128_from_i64(int128_box *out, int64_t val);
 BIGMATH_EXPORT void int128_from_u64(int128_box *out, uint64_t val);
-BIGMATH_EXPORT void int128_from_string(int128_box *out, const char *str, int radix);
 BIGMATH_EXPORT void int128_add(int128_box *out, const int128_box *a, const int128_box *b);
 BIGMATH_EXPORT void int128_sub(int128_box *out, const int128_box *a, const int128_box *b);
 BIGMATH_EXPORT void int128_mul(int128_box *out, const int128_box *a, const int128_box *b);
