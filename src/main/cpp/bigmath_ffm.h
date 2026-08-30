@@ -25,6 +25,33 @@ struct BigmathFormatResult {
 	uint64_t size;
 };
 
+struct BigmathRuntimeSnapshot {
+	uint64_t threshold_bits[4];
+	uint64_t square_threshold_bits;
+	uint64_t workspace_budget_bytes;
+	uint64_t workspace_in_use_bytes;
+	uint64_t cpu_fallback_count;
+	uint64_t product_cache_hits;
+	uint64_t product_cache_misses;
+	uint64_t product_cache_admissions;
+	uint64_t product_cache_evictions;
+	uint64_t product_cache_bytes;
+	uint32_t schema_version;
+	uint32_t calibration_status;
+	uint32_t active_backend;
+	uint32_t configured_backend;
+	uint32_t cuda_available;
+	uint32_t device_count;
+	int32_t selected_device;
+	uint32_t ntt_enabled;
+	uint32_t ntt_transform_mask;
+	uint32_t workspace_capacity;
+	uint32_t workspace_in_use;
+	uint32_t probe_count;
+	char device_name[256];
+	char status_message[512];
+};
+
 extern "C" {
 
 BIGMATH_EXPORT uint32_t    bigmath_abi_version();
@@ -35,6 +62,17 @@ BIGMATH_EXPORT uint64_t    bigmath_product_cache_misses();
 BIGMATH_EXPORT uint64_t    bigmath_product_cache_admissions();
 BIGMATH_EXPORT uint64_t    bigmath_product_cache_evictions();
 BIGMATH_EXPORT uint64_t    bigmath_product_cache_bytes();
+BIGMATH_EXPORT int32_t bigmath_runtime_configure(
+	int32_t product_cache_enabled,
+	uint64_t product_cache_bytes,
+	double gpu_workspace_fraction,
+	uint64_t gpu_workspace_max_bytes,
+	uint64_t calibration_millis,
+	int32_t cuda_device,
+	int32_t cuda_backend
+);
+BIGMATH_EXPORT int32_t bigmath_runtime_initialize();
+BIGMATH_EXPORT int32_t bigmath_runtime_snapshot(BigmathRuntimeSnapshot *snapshot);
 
 BIGMATH_EXPORT BigIntHandle *bigint_from_long(int64_t val);
 BIGMATH_EXPORT BigIntHandle *bigint_from_string(const char *str, int radix);

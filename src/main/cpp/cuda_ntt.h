@@ -6,6 +6,8 @@
 
 namespace bigmath::cuda {
 
+inline constexpr int NTT_MAX_TRANSFORM_SIZE = 1 << 23;
+
 // GPU integer NTT convolution with dual-modulus CRT reconstruction.
 //
 // Unlike the cuFFT (FP64) path, coefficients are computed in exact modular
@@ -21,7 +23,14 @@ bool convolve_ntt_u16_to_limbs(const std::vector<uint16_t> &a,
 		const std::vector<uint16_t> &b,
 		std::vector<uint64_t> &out,
 		unsigned bits_per_digit,
-		unsigned limb_bits);
+		unsigned limb_bits,
+		uint64_t max_queue_wait_nanos = 0);
+
+bool configure_ntt_workspace_pool(int device);
+uint64_t ntt_workspace_in_use_bytes();
+int ntt_workspace_capacity();
+int ntt_workspace_in_use();
+bool ntt_workspace_available(int transform_size);
 
 }
 

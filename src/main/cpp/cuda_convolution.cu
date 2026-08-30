@@ -1,8 +1,16 @@
 #include "cuda_convolution.h"
+#include "runtime/cuda_workspace_budget.h"
 
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <memory>
+#include <mutex>
+#include <utility>
 #include <vector>
 
 #include <cuda_runtime.h>
@@ -48,21 +56,6 @@ static bool next_pow2(size_t value, int &out) {
 	return true;
 }
 
-static bool has_enough_device_memory(size_t element_count, bool cache_spectra) {
-	size_t free_bytes = 0;
-	size_t total_bytes = 0;
-	if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
-		return false;
-	}
-	const size_t spectrum_size = element_count / 2 + 1;
-	const size_t spectrum_buffers = cache_spectra ? 2 + 2 * SPECTRUM_CACHE_WAYS : 2;
-	const size_t required = sizeof(double) * element_count * 2 +
-			sizeof(cufftDoubleComplex) * spectrum_size * spectrum_buffers +
-			sizeof(uint16_t) * element_count * 2;
-	// cuFFT may reserve temporary workspace in addition to both input arrays.
-	return required < free_bytes / 2;
-}
-
 static bool coefficients_fit_double(size_t result_size, unsigned bits_per_digit) {
 	if (bits_per_digit == 0 || bits_per_digit >= 32) {
 		return false;
@@ -73,19 +66,11 @@ static bool coefficients_fit_double(size_t result_size, unsigned bits_per_digit)
 }
 
 static bool round_nonnegative_to_u64(double value, uint64_t &out) {
-	if (value <= -0.5) {
+	if (!std::isfinite(value) || value <= -0.5 || value >= std::ldexp(1.0, 64)) {
 		return false;
 	}
 	out = static_cast<uint64_t>(value + 0.5);
 	return true;
-}
-
-static bool clear_device_tail(double *values, size_t used, int n) {
-	const size_t count = static_cast<size_t>(n);
-	if (used >= count) {
-		return true;
-	}
-	return cudaMemset(values + used, 0, sizeof(double) * (count - used)) == cudaSuccess;
 }
 
 struct CudaConvolutionWorkspace {
@@ -132,16 +117,22 @@ struct CudaConvolutionWorkspace {
 	cufftDoubleComplex *fb = nullptr;
 	cufftDoubleComplex *cached_fa[SPECTRUM_CACHE_WAYS] = {};
 	cufftDoubleComplex *cached_fb[SPECTRUM_CACHE_WAYS] = {};
+	cudaStream_t stream = nullptr;
 	cufftHandle forward_plan = 0;
 	cufftHandle inverse_plan = 0;
+	void *fft_work = nullptr;
+	size_t fft_work_bytes = 0;
 	int plan_size = 0;
 	int capacity = 0;
 	int spectrum_cache_capacity = 0;
 	uint64_t spectrum_cache_tick = 0;
-	std::vector<double> host_a;
-	std::vector<double> host_b;
+	uint16_t *host_digits_a = nullptr;
+	uint16_t *host_digits_b = nullptr;
+	int host_digits_capacity = 0;
 	double *host_result = nullptr;          // pinned (page-locked) staging for fast D2H
 	int host_result_capacity = 0;
+	size_t base_device_bytes = 0;
+	size_t spectrum_device_bytes = 0;
 	CachedSpectrum cache_a[SPECTRUM_CACHE_WAYS];
 	CachedSpectrum cache_b[SPECTRUM_CACHE_WAYS];
 
@@ -158,6 +149,9 @@ struct CudaConvolutionWorkspace {
 			cufftDestroy(inverse_plan);
 			inverse_plan = 0;
 		}
+		cudaFree(fft_work);
+		fft_work = nullptr;
+		fft_work_bytes = 0;
 		plan_size = 0;
 	}
 
@@ -171,6 +165,7 @@ struct CudaConvolutionWorkspace {
 			cache_b[i].clear();
 		}
 		spectrum_cache_capacity = 0;
+		spectrum_device_bytes = 0;
 		spectrum_cache_tick = 0;
 	}
 
@@ -190,11 +185,27 @@ struct CudaConvolutionWorkspace {
 		fa = nullptr;
 		fb = nullptr;
 		capacity = 0;
+		base_device_bytes = 0;
+		cudaFreeHost(host_digits_a);
+		cudaFreeHost(host_digits_b);
+		host_digits_a = nullptr;
+		host_digits_b = nullptr;
+		host_digits_capacity = 0;
 		cudaFreeHost(host_result);
 		host_result = nullptr;
 		host_result_capacity = 0;
-		host_a.clear();
-		host_b.clear();
+		if (stream != nullptr) {
+			cudaStreamDestroy(stream);
+			stream = nullptr;
+		}
+	}
+
+	size_t device_bytes() const {
+		return base_device_bytes + spectrum_device_bytes + fft_work_bytes;
+	}
+
+	bool ensure_stream() {
+		return stream != nullptr || cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking) == cudaSuccess;
 	}
 
 	bool ensure_capacity(int n) {
@@ -202,6 +213,7 @@ struct CudaConvolutionWorkspace {
 			return true;
 		}
 		release();
+		if (!ensure_stream()) return false;
 		const int spectrum_size = n / 2 + 1;
 		if (cudaMalloc(&da, sizeof(double) * n) != cudaSuccess) {
 			release();
@@ -228,6 +240,9 @@ struct CudaConvolutionWorkspace {
 			return false;
 		}
 		capacity = n;
+		base_device_bytes = sizeof(double) * static_cast<size_t>(n) * 2 +
+			sizeof(uint16_t) * static_cast<size_t>(n) * 2 +
+			sizeof(cufftDoubleComplex) * static_cast<size_t>(spectrum_size) * 2;
 		return true;
 	}
 
@@ -248,6 +263,8 @@ struct CudaConvolutionWorkspace {
 			}
 		}
 		spectrum_cache_capacity = n;
+		spectrum_device_bytes = sizeof(cufftDoubleComplex) *
+			static_cast<size_t>(spectrum_size) * 2 * SPECTRUM_CACHE_WAYS;
 		return true;
 	}
 
@@ -256,14 +273,31 @@ struct CudaConvolutionWorkspace {
 			return true;
 		}
 		release_plan();
-		if (cufftPlan1d(&forward_plan, n, CUFFT_D2Z, 1) != CUFFT_SUCCESS) {
-			forward_plan = 0;
-			plan_size = 0;
+		if (!ensure_stream() ||
+				cufftCreate(&forward_plan) != CUFFT_SUCCESS ||
+				cufftCreate(&inverse_plan) != CUFFT_SUCCESS ||
+				cufftSetAutoAllocation(forward_plan, 0) != CUFFT_SUCCESS ||
+				cufftSetAutoAllocation(inverse_plan, 0) != CUFFT_SUCCESS) {
+			release_plan();
 			return false;
 		}
-		if (cufftPlan1d(&inverse_plan, n, CUFFT_Z2D, 1) != CUFFT_SUCCESS) {
+		size_t forward_work = 0;
+		size_t inverse_work = 0;
+		if (cufftMakePlan1d(forward_plan, n, CUFFT_D2Z, 1, &forward_work) != CUFFT_SUCCESS ||
+				cufftMakePlan1d(inverse_plan, n, CUFFT_Z2D, 1, &inverse_work) != CUFFT_SUCCESS) {
 			release_plan();
-			plan_size = 0;
+			return false;
+		}
+		fft_work_bytes = std::max(forward_work, inverse_work);
+		if (fft_work_bytes != 0 && cudaMalloc(&fft_work, fft_work_bytes) != cudaSuccess) {
+			release_plan();
+			return false;
+		}
+		if (cufftSetWorkArea(forward_plan, fft_work) != CUFFT_SUCCESS ||
+				cufftSetWorkArea(inverse_plan, fft_work) != CUFFT_SUCCESS ||
+				cufftSetStream(forward_plan, stream) != CUFFT_SUCCESS ||
+				cufftSetStream(inverse_plan, stream) != CUFFT_SUCCESS) {
+			release_plan();
 			return false;
 		}
 		plan_size = n;
@@ -273,6 +307,32 @@ struct CudaConvolutionWorkspace {
 	// Allocate the D2H result staging buffer in page-locked (pinned) host memory
 	// so the device->host copy runs at full PCIe bandwidth instead of going
 	// through a pageable bounce buffer.
+	bool ensure_host_digits(int n) {
+		if (host_digits_capacity >= n) return true;
+		cudaFreeHost(host_digits_a);
+		cudaFreeHost(host_digits_b);
+		host_digits_a = nullptr;
+		host_digits_b = nullptr;
+		host_digits_capacity = 0;
+		if (cudaHostAlloc(
+				reinterpret_cast<void **>(&host_digits_a),
+				sizeof(uint16_t) * static_cast<size_t>(n),
+				cudaHostAllocDefault
+		) != cudaSuccess || cudaHostAlloc(
+				reinterpret_cast<void **>(&host_digits_b),
+				sizeof(uint16_t) * static_cast<size_t>(n),
+				cudaHostAllocDefault
+		) != cudaSuccess) {
+			cudaFreeHost(host_digits_a);
+			cudaFreeHost(host_digits_b);
+			host_digits_a = nullptr;
+			host_digits_b = nullptr;
+			return false;
+		}
+		host_digits_capacity = n;
+		return true;
+	}
+
 	bool ensure_host_result(size_t result_size) {
 		if (host_result_capacity >= static_cast<int>(result_size)) {
 			return true;
@@ -289,13 +349,293 @@ struct CudaConvolutionWorkspace {
 		return true;
 	}
 
-	void prepare_host_inputs(size_t a_size, size_t b_size) {
-		host_a.resize(a_size);
-		host_b.resize(b_size);
-	}
 };
 
+class CudaWorkspacePool {
+private:
+	struct Slot {
+		std::unique_ptr<CudaConvolutionWorkspace> workspace;
+		int transform_size = 0;
+		size_t device_bytes = 0;
+		bool busy = false;
+		uint64_t last_used = 0;
+		std::chrono::steady_clock::time_point acquired_at{};
+	};
+
+public:
+	class Lease {
+	public:
+		Lease() = default;
+		Lease(CudaWorkspacePool *pool, Slot *slot) : pool_(pool), slot_(slot) {}
+		~Lease() { release(); }
+
+		Lease(const Lease &) = delete;
+		Lease &operator=(const Lease &) = delete;
+
+		Lease(Lease &&other) noexcept : pool_(other.pool_), slot_(other.slot_) {
+			other.pool_ = nullptr;
+		}
+
+		Lease &operator=(Lease &&other) noexcept {
+			if (this != &other) {
+				release();
+				pool_ = other.pool_;
+				slot_ = other.slot_;
+				other.pool_ = nullptr;
+			}
+			return *this;
+		}
+
+		explicit operator bool() const { return pool_ != nullptr; }
+
+		CudaConvolutionWorkspace &workspace() {
+			return *slot_->workspace;
+		}
+
+	private:
+		void release() {
+			if (pool_ != nullptr) {
+				pool_->release(slot_);
+				pool_ = nullptr;
+			}
+		}
+
+		CudaWorkspacePool *pool_ = nullptr;
+		Slot *slot_ = nullptr;
+	};
+
+	bool configure(int device, uint64_t budget_bytes) {
+		std::lock_guard lock(mutex_);
+		if (reserved_bytes_ != 0) return false;
+		for (const auto &slot : slots_) {
+			if (slot->busy) return false;
+		}
+		for (const auto &slot : slots_) {
+			bigmath::runtime::release_cuda_workspace_bytes(device_, slot->device_bytes);
+		}
+		slots_.clear();
+		allocated_bytes_ = 0;
+		reserved_bytes_ = 0;
+		device_ = device;
+		budget_bytes_ = static_cast<size_t>(std::min<uint64_t>(budget_bytes, SIZE_MAX));
+		if (!bigmath::runtime::configure_cuda_workspace_budget(device_, budget_bytes_)) return false;
+		configured_ = true;
+		return true;
+	}
+
+	Lease acquire(int n, bool cache_spectra, uint64_t max_wait_nanos) {
+		const auto deadline = std::chrono::steady_clock::now() +
+			std::chrono::nanoseconds(max_wait_nanos);
+		for (;;) {
+			std::unique_lock lock(mutex_);
+			if (!ensure_default_configuration(lock)) return Lease{};
+			for (size_t index = 0; index < slots_.size(); index++) {
+				Slot &slot = *slots_[index];
+				if (!slot.busy && slot.transform_size == n &&
+						(!cache_spectra || slot.workspace->spectrum_cache_capacity >= n)) {
+					slot.busy = true;
+					slot.acquired_at = std::chrono::steady_clock::now();
+					slot.last_used = next_tick();
+					if (cudaSetDevice(device_) != cudaSuccess) {
+						slot.busy = false;
+						return Lease{};
+					}
+					return Lease(this, &slot);
+				}
+			}
+
+			const size_t estimate = estimate_device_bytes(n, cache_spectra);
+			while (allocated_bytes_ + reserved_bytes_ > budget_bytes_ - std::min(estimate, budget_bytes_)) {
+				if (!evict_idle_lru()) break;
+			}
+			if (estimate <= budget_bytes_ &&
+					allocated_bytes_ + reserved_bytes_ <= budget_bytes_ - estimate) {
+				if (!bigmath::runtime::reserve_cuda_workspace_bytes(device_, estimate)) {
+					if (evict_idle_lru()) continue;
+				} else {
+				reserved_bytes_ += estimate;
+				const int device = device_;
+				lock.unlock();
+				auto workspace = std::make_unique<CudaConvolutionWorkspace>();
+				const bool initialized = cudaSetDevice(device) == cudaSuccess &&
+					workspace->ensure_capacity(n) &&
+					workspace->ensure_plan(n) &&
+					workspace->ensure_host_digits(n) &&
+					workspace->ensure_host_result(static_cast<size_t>(n)) &&
+					(!cache_spectra || workspace->ensure_spectrum_cache_capacity(n));
+				const size_t actual = initialized ? workspace->device_bytes() : 0;
+				lock.lock();
+				reserved_bytes_ -= estimate;
+				bool actual_reserved = initialized;
+				if (initialized && actual < estimate) {
+					bigmath::runtime::release_cuda_workspace_bytes(device_, estimate - actual);
+				} else if (initialized && actual > estimate) {
+					actual_reserved = bigmath::runtime::reserve_cuda_workspace_bytes(
+						device_,
+						actual - estimate
+					);
+				}
+				if (!initialized || !actual_reserved || actual > budget_bytes_ - allocated_bytes_) {
+					bigmath::runtime::release_cuda_workspace_bytes(
+						device_,
+						actual_reserved ? actual : estimate
+					);
+					lock.unlock();
+					workspace.reset();
+					lock.lock();
+					condition_.notify_all();
+					return Lease{};
+				}
+				auto slot = std::make_unique<Slot>();
+				slot->workspace = std::move(workspace);
+				slot->transform_size = n;
+				slot->device_bytes = actual;
+				slot->busy = true;
+				slot->acquired_at = std::chrono::steady_clock::now();
+				slot->last_used = next_tick();
+				allocated_bytes_ += actual;
+				Slot *acquired_slot = slot.get();
+				slots_.push_back(std::move(slot));
+				return Lease(this, acquired_slot);
+				}
+			}
+
+			if (max_wait_nanos == 0 ||
+					condition_.wait_until(lock, deadline) == std::cv_status::timeout) {
+				return Lease{};
+			}
+		}
+	}
+
+	uint64_t budget_bytes() const {
+		std::lock_guard lock(mutex_);
+		return budget_bytes_;
+	}
+
+	uint64_t in_use_bytes() const {
+		std::lock_guard lock(mutex_);
+		uint64_t bytes = 0;
+		for (const auto &slot : slots_) {
+			if (slot->busy) bytes += slot->device_bytes;
+		}
+		return bytes;
+	}
+
+	int capacity() const {
+		std::lock_guard lock(mutex_);
+		return static_cast<int>(slots_.size());
+	}
+
+	int in_use() const {
+		std::lock_guard lock(mutex_);
+		return static_cast<int>(std::count_if(slots_.begin(), slots_.end(), [](const auto &slot) {
+			return slot->busy;
+		}));
+	}
+
+	bool available(int n) const {
+		std::lock_guard lock(mutex_);
+		for (const auto &slot : slots_) {
+			if (!slot->busy && slot->transform_size == n) return true;
+		}
+		const size_t estimate = estimate_device_bytes(n, true);
+		const uint64_t shared_allocated =
+			bigmath::runtime::cuda_workspace_allocated_bytes(device_);
+		return configured_ && estimate <= budget_bytes_ &&
+			allocated_bytes_ + reserved_bytes_ <= budget_bytes_ - estimate &&
+			shared_allocated <= budget_bytes_ - estimate;
+	}
+
+private:
+	bool ensure_default_configuration(std::unique_lock<std::mutex> &) {
+		if (configured_) return true;
+		int device = 0;
+		size_t free_bytes = 0;
+		size_t total_bytes = 0;
+		if (cudaGetDevice(&device) != cudaSuccess ||
+				cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+			return false;
+		}
+		device_ = device;
+		budget_bytes_ = std::min<size_t>(free_bytes / 4, 512 * 1024 * 1024);
+		if (!bigmath::runtime::configure_cuda_workspace_budget(device_, budget_bytes_)) return false;
+		configured_ = true;
+		return true;
+	}
+
+	static size_t estimate_device_bytes(int n, bool cache_spectra) {
+		const size_t count = static_cast<size_t>(n);
+		const size_t spectrum = count / 2 + 1;
+		const size_t base = sizeof(double) * count * 2 +
+			sizeof(uint16_t) * count * 2 +
+			sizeof(cufftDoubleComplex) * spectrum * 2;
+		const size_t cached = cache_spectra
+			? sizeof(cufftDoubleComplex) * spectrum * 2 * SPECTRUM_CACHE_WAYS
+			: 0;
+		const size_t conservative_fft_work = sizeof(cufftDoubleComplex) * count * 8;
+		return base + cached + conservative_fft_work;
+	}
+
+	uint64_t next_tick() {
+		if (++tick_ == 0) tick_ = 1;
+		return tick_;
+	}
+
+	bool evict_idle_lru() {
+		size_t target = slots_.size();
+		for (size_t index = 0; index < slots_.size(); index++) {
+			if (slots_[index]->busy) continue;
+			if (target == slots_.size() || slots_[index]->last_used < slots_[target]->last_used) {
+				target = index;
+			}
+		}
+		if (target == slots_.size()) return false;
+		allocated_bytes_ -= slots_[target]->device_bytes;
+		bigmath::runtime::release_cuda_workspace_bytes(device_, slots_[target]->device_bytes);
+		slots_.erase(slots_.begin() + static_cast<std::ptrdiff_t>(target));
+		return true;
+	}
+
+	void release(Slot *slot) {
+		cudaError_t synchronized = cudaErrorInvalidResourceHandle;
+		if (slot != nullptr && cudaSetDevice(device_) == cudaSuccess) {
+			synchronized = cudaStreamSynchronize(slot->workspace->stream);
+		}
+		std::lock_guard lock(mutex_);
+		if (slot != nullptr && synchronized == cudaSuccess) {
+			slot->busy = false;
+			slot->last_used = next_tick();
+		} else if (slot != nullptr) {
+			for (auto iterator = slots_.begin(); iterator != slots_.end(); ++iterator) {
+				if (iterator->get() == slot) {
+					allocated_bytes_ -= slot->device_bytes;
+					bigmath::runtime::release_cuda_workspace_bytes(device_, slot->device_bytes);
+					slots_.erase(iterator);
+					break;
+				}
+			}
+		}
+		condition_.notify_one();
+	}
+
+	mutable std::mutex mutex_;
+	std::condition_variable condition_;
+	std::vector<std::unique_ptr<Slot>> slots_;
+	bool configured_ = false;
+	int device_ = 0;
+	size_t budget_bytes_ = 0;
+	size_t allocated_bytes_ = 0;
+	size_t reserved_bytes_ = 0;
+	uint64_t tick_ = 0;
+};
+
+CudaWorkspacePool &workspace_pool() {
+	static CudaWorkspacePool pool;
+	return pool;
+}
+
 static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
+		uint16_t *host_digits,
 		uint16_t *device_digits,
 		double *device_values,
 		cufftDoubleComplex *spectrum,
@@ -303,6 +643,7 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 		CudaConvolutionWorkspace::CachedSpectrum *caches,
 		uint64_t &cache_tick,
 		cufftHandle forward_plan,
+		cudaStream_t stream,
 		int n,
 		unsigned bits_per_digit,
 		int block_size) {
@@ -318,15 +659,33 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 		for (int i = 0; i < SPECTRUM_CACHE_WAYS; i++) {
 			if (cached_spectra[i] != nullptr && caches[i].matches(digits, n, bits_per_digit)) {
 				caches[i].last_used = use_tick;
-				return cudaMemcpy(spectrum, cached_spectra[i], spectrum_bytes, cudaMemcpyDeviceToDevice) == cudaSuccess;
+				return cudaMemcpyAsync(
+					spectrum,
+					cached_spectra[i],
+					spectrum_bytes,
+					cudaMemcpyDeviceToDevice,
+					stream
+				) == cudaSuccess;
 			}
 		}
 	}
-	if (cudaMemcpy(device_digits, digits.data(), sizeof(uint16_t) * digits.size(), cudaMemcpyHostToDevice) != cudaSuccess) {
+	std::memcpy(host_digits, digits.data(), sizeof(uint16_t) * digits.size());
+	if (cudaMemcpyAsync(
+			device_digits,
+			host_digits,
+			sizeof(uint16_t) * digits.size(),
+			cudaMemcpyHostToDevice,
+			stream
+	) != cudaSuccess) {
 		return false;
 	}
 	const int grid_size = (n + block_size - 1) / block_size;
-	load_u16_digits<<<grid_size, block_size>>>(device_digits, static_cast<int>(digits.size()), device_values, n);
+	load_u16_digits<<<grid_size, block_size, 0, stream>>>(
+		device_digits,
+		static_cast<int>(digits.size()),
+		device_values,
+		n
+	);
 	if (cudaGetLastError() != cudaSuccess) {
 		return false;
 	}
@@ -346,7 +705,13 @@ static bool prepare_u16_spectrum(const std::vector<uint16_t> &digits,
 			target = i;
 		}
 	}
-	if (cudaMemcpy(cached_spectra[target], spectrum, spectrum_bytes, cudaMemcpyDeviceToDevice) != cudaSuccess) {
+	if (cudaMemcpyAsync(
+			cached_spectra[target],
+			spectrum,
+			spectrum_bytes,
+			cudaMemcpyDeviceToDevice,
+			stream
+	) != cudaSuccess) {
 		return false;
 	}
 	caches[target].store(digits, n, bits_per_digit, use_tick);
@@ -438,7 +803,9 @@ static bool convolve_u16_digits_impl(const std::vector<uint16_t> &a,
 		std::vector<uint16_t> *digit_out,
 		std::vector<uint64_t> *limb_out,
 		unsigned bits_per_digit,
-		unsigned limb_bits) {
+		unsigned limb_bits,
+		uint64_t max_queue_wait_nanos,
+		bool cache_spectra) {
 	if (a.empty() || b.empty()) {
 		if (digit_out != nullptr) {
 			digit_out->clear();
@@ -456,43 +823,50 @@ static bool convolve_u16_digits_impl(const std::vector<uint16_t> &a,
 		return false;
 	}
 	static constexpr int SPECTRUM_CACHE_MIN_SIZE = 32768;
-	const bool use_spectrum_cache = n >= SPECTRUM_CACHE_MIN_SIZE;
-	thread_local CudaConvolutionWorkspace workspace;
-	if (workspace.capacity < n && !has_enough_device_memory(static_cast<size_t>(n), use_spectrum_cache)) {
-		return false;
-	}
-	if (!workspace.ensure_capacity(n) || !workspace.ensure_plan(n)) {
-		return false;
-	}
-	if (use_spectrum_cache && !workspace.ensure_spectrum_cache_capacity(n)) {
-		return false;
-	}
+	const bool use_spectrum_cache = cache_spectra && n >= SPECTRUM_CACHE_MIN_SIZE;
+	CudaWorkspacePool::Lease lease = workspace_pool().acquire(
+		n,
+		use_spectrum_cache,
+		max_queue_wait_nanos
+	);
+	if (!lease) return false;
+	CudaConvolutionWorkspace &workspace = lease.workspace();
 
 	const int block_size = 256;
-	if (!prepare_u16_spectrum(a, workspace.digits_a, workspace.da, workspace.fa,
+	if (!prepare_u16_spectrum(a, workspace.host_digits_a, workspace.digits_a, workspace.da, workspace.fa,
 				use_spectrum_cache ? workspace.cached_fa : nullptr,
 				use_spectrum_cache ? workspace.cache_a : nullptr,
 				workspace.spectrum_cache_tick,
-				workspace.forward_plan, n, bits_per_digit, block_size)) {
+				workspace.forward_plan, workspace.stream, n, bits_per_digit, block_size)) {
 		return false;
 	}
 
 	const int spectrum_size = n / 2 + 1;
 	const size_t spectrum_bytes = sizeof(cufftDoubleComplex) * static_cast<size_t>(spectrum_size);
 	if (&a == &b) {
-		if (cudaMemcpy(workspace.fb, workspace.fa, spectrum_bytes, cudaMemcpyDeviceToDevice) != cudaSuccess) {
+		if (cudaMemcpyAsync(
+				workspace.fb,
+				workspace.fa,
+				spectrum_bytes,
+				cudaMemcpyDeviceToDevice,
+				workspace.stream
+		) != cudaSuccess) {
 			return false;
 		}
-	} else if (!prepare_u16_spectrum(b, workspace.digits_b, workspace.db, workspace.fb,
+	} else if (!prepare_u16_spectrum(b, workspace.host_digits_b, workspace.digits_b, workspace.db, workspace.fb,
 			use_spectrum_cache ? workspace.cached_fb : nullptr,
 			use_spectrum_cache ? workspace.cache_b : nullptr,
 			workspace.spectrum_cache_tick,
-			workspace.forward_plan, n, bits_per_digit, block_size)) {
+			workspace.forward_plan, workspace.stream, n, bits_per_digit, block_size)) {
 		return false;
 	}
 
 	const int grid_size = (spectrum_size + block_size - 1) / block_size;
-	pointwise_multiply<<<grid_size, block_size>>>(workspace.fa, workspace.fb, spectrum_size);
+	pointwise_multiply<<<grid_size, block_size, 0, workspace.stream>>>(
+		workspace.fa,
+		workspace.fb,
+		spectrum_size
+	);
 	if (cudaGetLastError() != cudaSuccess) {
 		return false;
 	}
@@ -502,7 +876,13 @@ static bool convolve_u16_digits_impl(const std::vector<uint16_t> &a,
 	if (!workspace.ensure_host_result(result_size)) {
 		return false;
 	}
-	if (cudaMemcpy(workspace.host_result, workspace.da, sizeof(double) * result_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
+	if (cudaMemcpyAsync(
+			workspace.host_result,
+			workspace.da,
+			sizeof(double) * result_size,
+			cudaMemcpyDeviceToHost,
+			workspace.stream
+	) != cudaSuccess || cudaStreamSynchronize(workspace.stream) != cudaSuccess) {
 		return false;
 	}
 
@@ -517,87 +897,63 @@ static bool convolve_u16_digits_impl(const std::vector<uint16_t> &a,
 bool convolve_u16_digits(const std::vector<uint16_t> &a,
 		const std::vector<uint16_t> &b,
 		std::vector<uint16_t> &out,
-		unsigned bits_per_digit) {
-	return convolve_u16_digits_impl(a, b, &out, nullptr, bits_per_digit, 0);
+		unsigned bits_per_digit,
+		uint64_t max_queue_wait_nanos,
+		bool cache_spectra) {
+	return convolve_u16_digits_impl(
+		a,
+		b,
+		&out,
+		nullptr,
+		bits_per_digit,
+		0,
+		max_queue_wait_nanos,
+		cache_spectra
+	);
 }
 
 bool convolve_u16_digits_to_limbs(const std::vector<uint16_t> &a,
 		const std::vector<uint16_t> &b,
 		std::vector<uint64_t> &out,
 		unsigned bits_per_digit,
-		unsigned limb_bits) {
-	return convolve_u16_digits_impl(a, b, nullptr, &out, bits_per_digit, limb_bits);
+		unsigned limb_bits,
+		uint64_t max_queue_wait_nanos,
+		bool cache_spectra) {
+	return convolve_u16_digits_impl(
+		a,
+		b,
+		nullptr,
+		&out,
+		bits_per_digit,
+		limb_bits,
+		max_queue_wait_nanos,
+		cache_spectra
+	);
 }
 
-bool convolve_digits(const std::vector<uint64_t> &a,
-		const std::vector<uint64_t> &b,
-		std::vector<uint64_t> &out,
-		unsigned bits_per_digit) {
-	if (a.empty() || b.empty()) {
-		out.clear();
-		return true;
-	}
+bool configure_convolution_workspace_pool(int device, uint64_t budget_bytes) {
+	if (device < 0 || cudaSetDevice(device) != cudaSuccess) return false;
+	return workspace_pool().configure(device, budget_bytes);
+}
 
-	const size_t result_size = a.size() + b.size() - 1;
-	int n = 0;
-	if (!coefficients_fit_double(result_size, bits_per_digit) ||
-			!next_pow2(result_size, n)) {
-		return false;
-	}
-	thread_local CudaConvolutionWorkspace workspace;
-	if (workspace.capacity < n && !has_enough_device_memory(static_cast<size_t>(n), false)) {
-		return false;
-	}
-	if (!workspace.ensure_capacity(n) || !workspace.ensure_plan(n)) {
-		return false;
-	}
+uint64_t convolution_workspace_budget_bytes() {
+	return workspace_pool().budget_bytes();
+}
 
-	workspace.prepare_host_inputs(a.size(), b.size());
-	for (size_t i = 0; i < a.size(); i++) {
-		workspace.host_a[i] = static_cast<double>(a[i]);
-	}
-	for (size_t i = 0; i < b.size(); i++) {
-		workspace.host_b[i] = static_cast<double>(b[i]);
-	}
+uint64_t convolution_workspace_in_use_bytes() {
+	return workspace_pool().in_use_bytes();
+}
 
-	if (cudaMemcpy(workspace.da, workspace.host_a.data(), sizeof(double) * a.size(), cudaMemcpyHostToDevice) != cudaSuccess ||
-			cudaMemcpy(workspace.db, workspace.host_b.data(), sizeof(double) * b.size(), cudaMemcpyHostToDevice) != cudaSuccess ||
-			!clear_device_tail(workspace.da, a.size(), n) ||
-			!clear_device_tail(workspace.db, b.size(), n)) {
-		return false;
-	}
-	if (cufftExecD2Z(workspace.forward_plan, workspace.da, workspace.fa) != CUFFT_SUCCESS ||
-			cufftExecD2Z(workspace.forward_plan, workspace.db, workspace.fb) != CUFFT_SUCCESS) {
-		return false;
-	}
+int convolution_workspace_capacity() {
+	return workspace_pool().capacity();
+}
 
-	const int block_size = 256;
-	const int spectrum_size = n / 2 + 1;
-	const int grid_size = (spectrum_size + block_size - 1) / block_size;
-	pointwise_multiply<<<grid_size, block_size>>>(workspace.fa, workspace.fb, spectrum_size);
-	if (cudaGetLastError() != cudaSuccess) {
-		return false;
-	}
-	if (cufftExecZ2D(workspace.inverse_plan, workspace.fa, workspace.da) != CUFFT_SUCCESS) {
-		return false;
-	}
-	if (!workspace.ensure_host_result(result_size)) {
-		return false;
-	}
-	if (cudaMemcpy(workspace.host_result, workspace.da, sizeof(double) * result_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
-		return false;
-	}
+int convolution_workspace_in_use() {
+	return workspace_pool().in_use();
+}
 
-	out.resize(result_size);
-	const double scale = 1.0 / static_cast<double>(n);
-	for (size_t i = 0; i < result_size; i++) {
-		uint64_t rounded = 0;
-		if (!round_nonnegative_to_u64(workspace.host_result[i] * scale, rounded)) {
-			return false;
-		}
-		out[i] = rounded;
-	}
-	return true;
+bool convolution_workspace_available(int transform_size) {
+	return workspace_pool().available(transform_size);
 }
 
 }

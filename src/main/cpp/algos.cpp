@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <new>
 #include <utility>
 #include <vector>
@@ -256,7 +257,12 @@ void modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
 	// so engage only at >= 2^19 bits ~= 158k decimal digits.
 	static constexpr mp_bitcnt_t MODPOW_BIT_THRESHOLD = 524288;
 	if (mpz_sgn(mod) <= 0 || mpz_sgn(exp) < 0 || mpz_cmp_ui(mod, 1) == 0 ||
-			mpz_sizeinbase(mod, 2) < MODPOW_BIT_THRESHOLD) {
+			mpz_sizeinbase(mod, 2) < MODPOW_BIT_THRESHOLD ||
+			!cuda_dispatch_favorable(
+				mpz_sizeinbase(mod, 2),
+				mpz_sizeinbase(mod, 2),
+				true
+			)) {
 		mpz_powm(out, base, exp, mod);
 		return;
 	}
@@ -328,6 +334,14 @@ struct CachedCudaU16Digits {
 	std::vector<mp_limb_t> limbs;
 	std::vector<uint16_t> digits;
 
+	void clear() {
+		source = nullptr;
+		limb_count = 0;
+		bits_per_digit = 0;
+		limbs.clear();
+		digits.clear();
+	}
+
 	const std::vector<uint16_t> &load(mpz_ptr value, mp_bitcnt_t bits, unsigned digit_bits) {
 #if GMP_NUMB_BITS % 16 == 0
 		const int signed_limb_count = value->_mp_size;
@@ -374,6 +388,13 @@ struct CudaMultiplyHostWorkspace {
 	CachedCudaU16Digits bd;
 	std::vector<uint16_t> conv;
 	std::vector<uint64_t> packed_limbs;
+
+	void clear() {
+		ad.clear();
+		bd.clear();
+		conv.clear();
+		packed_limbs.clear();
+	}
 };
 
 static void export_abs_mpz_to_u16_digits(mpz_ptr value, mp_bitcnt_t bits, std::vector<uint16_t> &out) {
@@ -539,83 +560,76 @@ static void write_u64_limbs_to_mpz(mpz_ptr out, const std::vector<uint64_t> &lim
 #endif
 }
 
-#ifdef BIGMATH_HAS_CUDA
-// Opt-in (BIGMATH_CUDA_NTT=1) switch to the integer-NTT GPU path instead of the
-// default cuFFT (FP64) path. The integer path keeps 16-bit digits at every size
-// because CRT reconstruction is exact, avoiding the FP64 2^50 coefficient cap
-// that forces the cuFFT path onto smaller digits (and more transform points) for
-// very large operands.
-static bool cuda_ntt_enabled() {
-	static const int enabled = [] {
-		const char *value = std::getenv("BIGMATH_CUDA_NTT");
-		if (value == nullptr) {
-			return 0;
-		}
-		switch (value[0]) {
-			case '1': case 't': case 'T': case 'y': case 'Y': case 'o': case 'O':
-				return 1;
-			default:
-				return 0;
-		}
-	}();
-	return enabled != 0;
+static int cuda_transform_size(uint64_t left_bits, uint64_t right_bits) {
+	const uint64_t digits = (left_bits + 15) / 16 + (right_bits + 15) / 16 - 1;
+	if (digits > static_cast<uint64_t>(std::numeric_limits<int>::max() / 2)) return 0;
+	int transform = 1;
+	while (static_cast<uint64_t>(transform) < digits) transform <<= 1;
+	return transform;
 }
-#endif
 
-static constexpr mp_bitcnt_t CUDA_BIT_THRESHOLD = 262144;
+static cuda::DispatchDecision cuda_dispatch_decision(
+		uint64_t left_bits,
+		uint64_t right_bits,
+		bool square
+) {
+	return cuda::choose_dispatch({
+		left_bits,
+		right_bits,
+		cuda_transform_size(left_bits, right_bits),
+		square,
+		false
+	});
+}
 
-static caching::ProductBackend selected_product_backend(mpz_ptr a, mpz_ptr b) {
-#ifndef BIGMATH_HAS_CUDA
-	(void)a;
-	(void)b;
+static caching::ProductBackend product_backend(const cuda::DispatchDecision &decision) {
+	if (decision.backend == cuda::RuntimeBackend::NTT) return caching::ProductBackend::CUDA_NTT;
+	if (decision.backend == cuda::RuntimeBackend::CUFFT) return caching::ProductBackend::CUDA_CUFFT;
 	return caching::ProductBackend::CPU_GMP;
-#else
-	if (!cuda::is_available()) return caching::ProductBackend::CPU_GMP;
-	const mp_bitcnt_t bits_a = mpz_sizeinbase(a, 2);
-	const mp_bitcnt_t bits_b = mpz_sizeinbase(b, 2);
-	if (bits_a < CUDA_BIT_THRESHOLD && bits_b < CUDA_BIT_THRESHOLD) {
-		return caching::ProductBackend::CPU_GMP;
-	}
-#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
-	if (cuda_ntt_enabled()) return caching::ProductBackend::CUDA_NTT;
-#endif
-	return caching::ProductBackend::CUDA_CUFFT;
-#endif
 }
 
-static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
+bool cuda_dispatch_favorable(uint64_t left_bits, uint64_t right_bits, bool square) {
+	return cuda_dispatch_decision(left_bits, right_bits, square).backend != cuda::RuntimeBackend::CPU;
+}
+
+static bool execute_cuda_multiply(
+		mpz_ptr out,
+		mpz_ptr abs_a,
+		mpz_ptr abs_b,
+		CudaMultiplyHostWorkspace &workspace,
+		DirectCudaBackend backend,
+		uint64_t max_queue_wait_nanos,
+		bool cache_spectra
+) {
 #ifndef BIGMATH_HAS_CUDA
 	(void)out;
 	(void)abs_a;
 	(void)abs_b;
+	(void)workspace;
+	(void)backend;
+	(void)max_queue_wait_nanos;
+	(void)cache_spectra;
 	return false;
 #else
 	static constexpr unsigned CUDA_DIGIT_BITS[] = {16, 12, 8};
-	// Only hand off to the GPU once it actually beats CPU GMP. Measured crossover
-	// on an RTX 3050 (cuFFT path, pinned-D2H build) is ~80k decimal digits
-	// ~= 2^18 bits; below this the fixed GPU overhead makes mpz_mul faster, so a
-	// lower threshold (was 131072) regressed ~40-70k-digit multiplies ~2x.
-	if (!cuda::is_available()) {
-		return false;
-	}
 	const mp_bitcnt_t bits_a = mpz_sizeinbase(abs_a, 2);
 	const mp_bitcnt_t bits_b = mpz_sizeinbase(abs_b, 2);
-	if (bits_a < CUDA_BIT_THRESHOLD && bits_b < CUDA_BIT_THRESHOLD) {
-		return false;
-	}
-
-	thread_local CudaMultiplyHostWorkspace workspace;
-
 #if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
-	if (cuda_ntt_enabled()) {
+	if (backend == DirectCudaBackend::NTT) {
 		const std::vector<uint16_t> &ad = workspace.ad.load(abs_a, bits_a, 16);
 		const std::vector<uint16_t> &bd = abs_a == abs_b ? ad : workspace.bd.load(abs_b, bits_b, 16);
-		if (cuda::convolve_ntt_u16_to_limbs(ad, bd, workspace.packed_limbs, 16, GMP_NUMB_BITS)) {
+		if (cuda::convolve_ntt_u16_to_limbs(
+				ad,
+				bd,
+				workspace.packed_limbs,
+				16,
+				GMP_NUMB_BITS,
+				max_queue_wait_nanos
+		)) {
 			write_u64_limbs_to_mpz(out, workspace.packed_limbs);
-			cuda::record_multiply();
 			return true;
 		}
-		// Fall through to the cuFFT path on any failure.
+		return false;
 	}
 #endif
 
@@ -625,24 +639,95 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 #if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
 		if (GMP_NUMB_BITS % bits_per_digit == 0) {
 			if (!cuda::convolve_u16_digits_to_limbs(ad, bd, workspace.packed_limbs,
-						bits_per_digit, GMP_NUMB_BITS)) {
+						bits_per_digit, GMP_NUMB_BITS, max_queue_wait_nanos, cache_spectra)) {
 				continue;
 			}
 			write_u64_limbs_to_mpz(out, workspace.packed_limbs);
-			cuda::record_multiply();
 			return true;
 		}
 #else
 		(void)workspace.packed_limbs;
 #endif
-		if (!cuda::convolve_u16_digits(ad, bd, workspace.conv, bits_per_digit)) {
+		if (!cuda::convolve_u16_digits(
+				ad,
+				bd,
+				workspace.conv,
+				bits_per_digit,
+				max_queue_wait_nanos,
+				cache_spectra
+		)) {
 			continue;
 		}
 		write_u16_digits_to_mpz(out, workspace.conv, bits_per_digit);
-		cuda::record_multiply();
 		return true;
 	}
 	return false;
+#endif
+}
+
+bool cuda_multiply_direct(
+		mpz_ptr out,
+		mpz_ptr a,
+		mpz_ptr b,
+		DirectCudaBackend backend,
+		uint64_t max_queue_wait_nanos,
+		bool cache_spectra,
+		bool reset_host_cache
+) {
+	thread_local CudaMultiplyHostWorkspace workspace;
+	if (reset_host_cache) workspace.clear();
+	return execute_cuda_multiply(
+		out,
+		a,
+		b,
+		workspace,
+		backend,
+		max_queue_wait_nanos,
+		cache_spectra
+	);
+}
+
+static bool cuda_multiply(
+		mpz_ptr out,
+		mpz_ptr abs_a,
+		mpz_ptr abs_b,
+		const cuda::DispatchDecision &decision
+) {
+#ifndef BIGMATH_HAS_CUDA
+	(void)out;
+	(void)abs_a;
+	(void)abs_b;
+	(void)decision;
+	return false;
+#else
+	if (decision.backend == cuda::RuntimeBackend::CPU) return false;
+	thread_local CudaMultiplyHostWorkspace workspace;
+	bool completed = false;
+	if (decision.backend == cuda::RuntimeBackend::NTT) {
+		completed = execute_cuda_multiply(
+			out,
+			abs_a,
+			abs_b,
+			workspace,
+			DirectCudaBackend::NTT,
+			decision.max_queue_wait_nanos,
+			false
+		);
+	}
+	if (!completed) {
+		completed = execute_cuda_multiply(
+			out,
+			abs_a,
+			abs_b,
+			workspace,
+			DirectCudaBackend::CUFFT,
+			decision.max_queue_wait_nanos,
+			true
+		);
+	}
+	if (completed) cuda::record_multiply();
+	else cuda::record_cpu_fallback();
+	return completed;
 #endif
 }
 
@@ -684,13 +769,16 @@ static void fft_multiply_impl(
 
 	bool a_neg = (mpz_sgn(a) < 0);
 	bool b_neg = (mpz_sgn(b) < 0);
+	const uint64_t bits_a = mpz_sizeinbase(a, 2);
+	const uint64_t bits_b = mpz_sizeinbase(b, 2);
+	const cuda::DispatchDecision dispatch = cuda_dispatch_decision(bits_a, bits_b, a == b);
 	caching::ProductCacheKey resolved_cache_key{};
 	const caching::ProductCacheKey *resolved_cache_key_ptr = nullptr;
 	if (cache_key != nullptr) {
 		resolved_cache_key = *cache_key;
 		resolved_cache_key.config = caching::with_product_backend(
 			cache_key->config,
-			selected_product_backend(a, b)
+			product_backend(dispatch)
 		);
 		resolved_cache_key_ptr = &resolved_cache_key;
 	}
@@ -725,7 +813,7 @@ static void fft_multiply_impl(
 		clear_abs_b = true;
 	}
 
-	if (cuda_multiply(out, abs_a, abs_b)) {
+	if (cuda_multiply(out, abs_a, abs_b, dispatch)) {
 		store_product_result(resolved_cache_key_ptr, admit_product, out);
 		if (clear_abs_a) mpz_clear(abs_a_storage);
 		if (clear_abs_b) mpz_clear(abs_b_storage);
@@ -788,6 +876,15 @@ void product_tree_factorial(mpz_ptr, uint64_t) {}
 void fft_multiply(mpz_ptr, mpz_ptr, mpz_ptr, const caching::ProductCacheKey *) {}
 void fft_multiply_into(mpz_ptr, mpz_ptr, mpz_ptr, const caching::ProductCacheKey *) {}
 void accelerated_mul(mpz_ptr, mpz_ptr, mpz_ptr, const caching::ProductCacheKey *) {}
+bool cuda_multiply_direct(
+		mpz_ptr,
+		mpz_ptr,
+		mpz_ptr,
+		DirectCudaBackend,
+		uint64_t,
+		bool,
+		bool
+) { return false; }
 void modpow(mpz_ptr, mpz_ptr, mpz_ptr, mpz_ptr) {}
 #endif // BIGMATH_NO_GMP
 

@@ -6,6 +6,7 @@ import java.lang.invoke.MethodHandle;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystemAlreadyExistsException;
 import java.nio.file.FileSystems;
@@ -86,8 +87,35 @@ public final class BigmathFFM {
 	final MethodHandle cudaDeviceNameHandle;
 	final MethodHandle cudaStatusMessageHandle;
 	static final String NATIVE_RESOURCE_ROOT = "native";
+	static final MemoryLayout RUNTIME_SNAPSHOT_LAYOUT = MemoryLayout.structLayout(
+		MemoryLayout.sequenceLayout(4, ValueLayout.JAVA_LONG).withName("threshold_bits"),
+		ValueLayout.JAVA_LONG.withName("square_threshold_bits"),
+		ValueLayout.JAVA_LONG.withName("workspace_budget_bytes"),
+		ValueLayout.JAVA_LONG.withName("workspace_in_use_bytes"),
+		ValueLayout.JAVA_LONG.withName("cpu_fallback_count"),
+		ValueLayout.JAVA_LONG.withName("product_cache_hits"),
+		ValueLayout.JAVA_LONG.withName("product_cache_misses"),
+		ValueLayout.JAVA_LONG.withName("product_cache_admissions"),
+		ValueLayout.JAVA_LONG.withName("product_cache_evictions"),
+		ValueLayout.JAVA_LONG.withName("product_cache_bytes"),
+		ValueLayout.JAVA_INT.withName("schema_version"),
+		ValueLayout.JAVA_INT.withName("calibration_status"),
+		ValueLayout.JAVA_INT.withName("active_backend"),
+		ValueLayout.JAVA_INT.withName("configured_backend"),
+		ValueLayout.JAVA_INT.withName("cuda_available"),
+		ValueLayout.JAVA_INT.withName("device_count"),
+		ValueLayout.JAVA_INT.withName("selected_device"),
+		ValueLayout.JAVA_INT.withName("ntt_enabled"),
+		ValueLayout.JAVA_INT.withName("ntt_transform_mask"),
+		ValueLayout.JAVA_INT.withName("workspace_capacity"),
+		ValueLayout.JAVA_INT.withName("workspace_in_use"),
+		ValueLayout.JAVA_INT.withName("probe_count"),
+		MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("device_name"),
+		MemoryLayout.sequenceLayout(512, ValueLayout.JAVA_BYTE).withName("status_message")
+	);
 
 	BigmathFFM() {
+		RuntimeOptions runtimeOptions = BigmathRuntime.beginNativeInitialization();
 		this.lookup = loadLibrary();
 		MethodHandle abiVersionHandle = requiredMetadataDowncall(
 			"bigmath_abi_version",
@@ -110,6 +138,7 @@ public final class BigmathFFM {
 		}
 		this.nativeBuildId = invokeMetadataString(buildIdHandle);
 		this.nativeCapabilities = invokeMetadataLong(capabilitiesHandle);
+		configureRuntime(runtimeOptions);
 		this.productCacheHitsHandle = optionalDowncall(
 			"bigmath_product_cache_hits",
 			FunctionDescriptors.PRODUCT_CACHE_LONG
@@ -136,6 +165,7 @@ public final class BigmathFFM {
 		this.cudaMultiplyCountHandle = optionalDowncall("bigmath_cuda_multiply_count", FunctionDescriptors.CUDA_INT);
 		this.cudaDeviceNameHandle = optionalDowncall("bigmath_cuda_device_name", FunctionDescriptors.CUDA_STRING);
 		this.cudaStatusMessageHandle = optionalDowncall("bigmath_cuda_status_message", FunctionDescriptors.CUDA_STRING);
+		initializeRuntime();
 	}
 
 	record DowncallKey(String name, FunctionDescriptor descriptor) {}
@@ -179,6 +209,43 @@ public final class BigmathFFM {
 			throw e;
 		} catch (Throwable t) {
 			throw new LinkageError("Failed to query Bigmath native build ID", t);
+		}
+	}
+
+	void configureRuntime(RuntimeOptions options) {
+		MethodHandle handle = downcall("bigmath_runtime_configure", FunctionDescriptors.RUNTIME_CONFIGURE);
+		long calibrationMillis = options.calibrationDuration().toMillis();
+		try {
+			int status = (int) handle.invokeExact(
+				options.productCacheEnabled() ? 1 : 0,
+				options.cpuProductCacheBytes(),
+				options.gpuWorkspaceFraction(),
+				options.gpuWorkspaceMaxBytes(),
+				calibrationMillis,
+				options.cudaDevice(),
+				options.cudaBackend().ordinal()
+			);
+			if (status != 0) {
+				throw new IllegalStateException("Native runtime configuration was rejected with status " + status);
+			}
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new LinkageError("Failed to configure the Bigmath Native runtime", t);
+		}
+	}
+
+	void initializeRuntime() {
+		MethodHandle handle = downcall("bigmath_runtime_initialize", FunctionDescriptors.RUNTIME_INT);
+		try {
+			int status = (int) handle.invokeExact();
+			if (status != 0) {
+				throw new IllegalStateException("Native runtime initialization failed with status " + status);
+			}
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new LinkageError("Failed to initialize the Bigmath Native runtime", t);
 		}
 	}
 
@@ -503,6 +570,91 @@ public final class BigmathFFM {
 				.map(addr -> linker.downcallHandle(addr, key.descriptor()))
 				.orElseThrow(() -> new UnsatisfiedLinkError("Symbol not found: " + key.name()))
 		);
+	}
+
+	RuntimeDiagnostics runtimeDiagnostics() {
+		try (Arena snapshotArena = Arena.ofConfined()) {
+			MemorySegment snapshot = snapshotArena.allocate(RUNTIME_SNAPSHOT_LAYOUT);
+			invokeRuntimeSnapshot(snapshot);
+			int schemaVersion = snapshotInt(snapshot, "schema_version");
+			if (schemaVersion != 1) {
+				throw new IllegalStateException("Unsupported Native runtime snapshot schema " + schemaVersion);
+			}
+			long thresholdOffset = RUNTIME_SNAPSHOT_LAYOUT.byteOffset(
+				MemoryLayout.PathElement.groupElement("threshold_bits")
+			);
+			RuntimeDiagnostics.DispatchThresholds thresholds =
+				new RuntimeDiagnostics.DispatchThresholds(
+					snapshot.get(ValueLayout.JAVA_LONG, thresholdOffset),
+					snapshot.get(ValueLayout.JAVA_LONG, thresholdOffset + Long.BYTES),
+					snapshot.get(ValueLayout.JAVA_LONG, thresholdOffset + 2L * Long.BYTES),
+					snapshot.get(ValueLayout.JAVA_LONG, thresholdOffset + 3L * Long.BYTES),
+					snapshotLong(snapshot, "square_threshold_bits")
+				);
+			RuntimeDiagnostics.CudaDiagnostics cuda = new RuntimeDiagnostics.CudaDiagnostics(
+				snapshotInt(snapshot, "device_count"),
+				snapshotInt(snapshot, "selected_device"),
+				snapshotText(snapshot, "device_name", 256),
+				snapshotText(snapshot, "status_message", 512),
+				RuntimeDiagnostics.CalibrationStatus.fromNative(
+					snapshotInt(snapshot, "calibration_status")
+				),
+				RuntimeOptions.CudaBackend.fromNative(snapshotInt(snapshot, "active_backend")),
+				snapshotInt(snapshot, "ntt_enabled") != 0,
+				snapshotInt(snapshot, "ntt_transform_mask"),
+				thresholds,
+				snapshotLong(snapshot, "workspace_budget_bytes"),
+				snapshotLong(snapshot, "workspace_in_use_bytes"),
+				snapshotInt(snapshot, "workspace_capacity"),
+				snapshotInt(snapshot, "workspace_in_use")
+			);
+			RuntimeDiagnostics.ProductCacheDiagnostics productCache =
+				new RuntimeDiagnostics.ProductCacheDiagnostics(
+					snapshotLong(snapshot, "product_cache_hits"),
+					snapshotLong(snapshot, "product_cache_misses"),
+					snapshotLong(snapshot, "product_cache_admissions"),
+					snapshotLong(snapshot, "product_cache_evictions"),
+					snapshotLong(snapshot, "product_cache_bytes")
+				);
+			return new RuntimeDiagnostics(
+				nativeAbiVersion,
+				nativeBuildId,
+				nativeCapabilities,
+				cuda,
+				productCache,
+				snapshotLong(snapshot, "cpu_fallback_count")
+			);
+		}
+	}
+
+	void invokeRuntimeSnapshot(MemorySegment snapshot) {
+		MethodHandle handle = downcall("bigmath_runtime_snapshot", FunctionDescriptors.RUNTIME_SNAPSHOT);
+		try {
+			int status = (int) handle.invokeExact(snapshot);
+			if (status != 0) throw new IllegalStateException("Native runtime snapshot failed with status " + status);
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new IllegalStateException("Failed to query the Native runtime snapshot", t);
+		}
+	}
+
+	static int snapshotInt(MemorySegment snapshot, String name) {
+		long offset = RUNTIME_SNAPSHOT_LAYOUT.byteOffset(MemoryLayout.PathElement.groupElement(name));
+		return snapshot.get(ValueLayout.JAVA_INT, offset);
+	}
+
+	static long snapshotLong(MemorySegment snapshot, String name) {
+		long offset = RUNTIME_SNAPSHOT_LAYOUT.byteOffset(MemoryLayout.PathElement.groupElement(name));
+		return snapshot.get(ValueLayout.JAVA_LONG, offset);
+	}
+
+	static String snapshotText(MemorySegment snapshot, String name, int capacity) {
+		long offset = RUNTIME_SNAPSHOT_LAYOUT.byteOffset(MemoryLayout.PathElement.groupElement(name));
+		byte[] bytes = snapshot.asSlice(offset, capacity).toArray(ValueLayout.JAVA_BYTE);
+		int length = 0;
+		while (length < bytes.length && bytes[length] != 0) length++;
+		return new String(bytes, 0, length, StandardCharsets.UTF_8);
 	}
 
 	static long productCacheHits() {

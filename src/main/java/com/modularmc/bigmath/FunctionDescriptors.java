@@ -206,6 +206,24 @@ final class FunctionDescriptors {
 			ValueLayout.JAVA_LONG
 	);
 
+	/** Runtime configuration scalar entry point. */
+	static final FunctionDescriptor RUNTIME_CONFIGURE = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT,
+			ValueLayout.JAVA_INT,
+			ValueLayout.JAVA_LONG,
+			ValueLayout.JAVA_DOUBLE,
+			ValueLayout.JAVA_LONG,
+			ValueLayout.JAVA_LONG,
+			ValueLayout.JAVA_INT,
+			ValueLayout.JAVA_INT
+	);
+
+	static final FunctionDescriptor RUNTIME_INT = FunctionDescriptor.of(ValueLayout.JAVA_INT);
+	static final FunctionDescriptor RUNTIME_SNAPSHOT = FunctionDescriptor.of(
+			ValueLayout.JAVA_INT,
+			ValueLayout.ADDRESS
+	);
+
 	// --- BigDeci ---
 
 	/** {@code void bigdecimal_from_double(void** out, double value, int precision)} */
