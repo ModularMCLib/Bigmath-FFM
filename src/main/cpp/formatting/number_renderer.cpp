@@ -238,6 +238,9 @@ FormatStatus render_plain_body(
 		);
 		integer.insert(0, padding);
 	}
+	if (descriptor.minimum_integer_digits == 0 && integer == "0" && !fraction.empty()) {
+		integer.clear();
+	}
 
 	std::string grouped;
 	if (descriptor.grouping() && descriptor.grouping_size > 0 &&
@@ -266,29 +269,66 @@ int64_t floor_multiple(int64_t value, int32_t divisor) {
 	return (remainder < 0 ? quotient - 1 : quotient) * divisor;
 }
 
+bool subtract_exact(int64_t left, int64_t right, int64_t &result) {
+	if ((right > 0 && left < std::numeric_limits<int64_t>::min() + right) ||
+			(right < 0 && left > std::numeric_limits<int64_t>::max() + right)) {
+		return false;
+	}
+	result = left - right;
+	return true;
+}
+
+bool scientific_displayed_exponent(
+		const FormatDescriptor &descriptor,
+		int64_t exponent,
+		int64_t &displayed_exponent
+) {
+	if (descriptor.maximum_integer_digits > descriptor.minimum_integer_digits &&
+			descriptor.maximum_integer_digits > 1) {
+		displayed_exponent = floor_multiple(exponent, descriptor.maximum_integer_digits);
+		return true;
+	}
+	return subtract_exact(
+		exponent,
+		static_cast<int64_t>(descriptor.minimum_integer_digits) - 1,
+		displayed_exponent
+	);
+}
+
 FormatStatus render_scientific_body(
 		const FormatDescriptor &descriptor,
 		DecimalQuantity value,
 		std::string &body
 ) {
+	const int64_t minimum_significant_digits =
+		static_cast<int64_t>(descriptor.minimum_integer_digits) + descriptor.minimum_fraction_digits;
+	const int64_t maximum_significant_digits = std::max<int64_t>(
+		1,
+		static_cast<int64_t>(descriptor.maximum_integer_digits) + descriptor.maximum_fraction_digits
+	);
 	int64_t exponent = value.zero() ? 0 : decimal_exponent(value);
-	const int32_t exponent_group = std::max(1, descriptor.maximum_integer_digits);
-	int64_t displayed_exponent = exponent_group > 1 ? floor_multiple(exponent, exponent_group) : exponent;
+	int64_t displayed_exponent = 0;
+	if (!value.zero() && !scientific_displayed_exponent(descriptor, exponent, displayed_exponent)) {
+		return FormatStatus::RESULT_TOO_LARGE;
+	}
 	for (int attempt = 0; attempt < 2; attempt++) {
-		if ((displayed_exponent > 0 && descriptor.maximum_fraction_digits <
-				std::numeric_limits<int64_t>::min() + displayed_exponent) ||
-				(displayed_exponent < 0 && descriptor.maximum_fraction_digits >
-					std::numeric_limits<int64_t>::max() + displayed_exponent)) {
+		int64_t target_scale;
+		if (!subtract_exact(maximum_significant_digits - 1, exponent, target_scale)) {
 			return FormatStatus::RESULT_TOO_LARGE;
 		}
-		const int64_t target_scale = static_cast<int64_t>(descriptor.maximum_fraction_digits) - displayed_exponent;
 		FormatStatus status = round_to_scale(value, target_scale, descriptor.rounding);
 		if (status != FormatStatus::OK) return status;
 		const int64_t rounded_exponent = value.zero() ? 0 : decimal_exponent(value);
-		const int64_t next_displayed = exponent_group > 1
-			? floor_multiple(rounded_exponent, exponent_group)
-			: rounded_exponent;
+		int64_t next_displayed = 0;
+		if (!value.zero() && !scientific_displayed_exponent(
+				descriptor,
+				rounded_exponent,
+				next_displayed
+		)) {
+			return FormatStatus::RESULT_TOO_LARGE;
+		}
 		if (next_displayed == displayed_exponent) break;
+		exponent = rounded_exponent;
 		displayed_exponent = next_displayed;
 	}
 
@@ -296,8 +336,20 @@ FormatStatus render_scientific_body(
 	if (!add_scale(mantissa.scale, displayed_exponent)) return FormatStatus::RESULT_TOO_LARGE;
 	FormatDescriptor mantissa_descriptor = descriptor;
 	mantissa_descriptor.flags &= ~1u;
+	const int64_t integer_digits = value.zero()
+		? descriptor.minimum_integer_digits
+		: decimal_exponent(value) - displayed_exponent + 1;
+	mantissa_descriptor.minimum_fraction_digits = static_cast<int32_t>(std::max<int64_t>(
+		0,
+		minimum_significant_digits - integer_digits
+	));
+	mantissa_descriptor.maximum_fraction_digits = static_cast<int32_t>(std::max<int64_t>(
+		0,
+		maximum_significant_digits - integer_digits
+	));
 	FormatStatus status = render_plain_body(mantissa_descriptor, mantissa, body);
 	if (status != FormatStatus::OK) return status;
+	if (value.zero() && minimum_significant_digits == 0) body.clear();
 	body += descriptor.exponent_separator;
 	uint64_t exponent_magnitude = displayed_exponent < 0
 		? static_cast<uint64_t>(-(displayed_exponent + 1)) + 1
