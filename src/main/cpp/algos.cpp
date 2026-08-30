@@ -573,7 +573,7 @@ static caching::ProductBackend selected_product_backend(mpz_ptr a, mpz_ptr b) {
 	if (!cuda::is_available()) return caching::ProductBackend::CPU_GMP;
 	const mp_bitcnt_t bits_a = mpz_sizeinbase(a, 2);
 	const mp_bitcnt_t bits_b = mpz_sizeinbase(b, 2);
-	if (bits_a < CUDA_BIT_THRESHOLD && bits_b < CUDA_BIT_THRESHOLD) {
+	if (bits_a < CUDA_BIT_THRESHOLD || bits_b < CUDA_BIT_THRESHOLD) {
 		return caching::ProductBackend::CPU_GMP;
 	}
 #if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
@@ -600,7 +600,7 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 	}
 	const mp_bitcnt_t bits_a = mpz_sizeinbase(abs_a, 2);
 	const mp_bitcnt_t bits_b = mpz_sizeinbase(abs_b, 2);
-	if (bits_a < CUDA_BIT_THRESHOLD && bits_b < CUDA_BIT_THRESHOLD) {
+	if (bits_a < CUDA_BIT_THRESHOLD || bits_b < CUDA_BIT_THRESHOLD) {
 		return false;
 	}
 
