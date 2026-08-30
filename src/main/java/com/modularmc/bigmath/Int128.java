@@ -1,10 +1,5 @@
 package com.modularmc.bigmath;
 
-import java.lang.foreign.Arena;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
-import java.lang.invoke.MethodHandle;
-
 /**
  * 128-bit signed integer value.
  * <p>
@@ -13,17 +8,12 @@ import java.lang.invoke.MethodHandle;
  */
 public final class Int128 extends Number implements AutoCloseable, Comparable<Int128> {
 
-	static final long STRUCT_SIZE = 16L;
 	static final long UNSIGNED_INT_MASK = 0xffff_ffffL;
 	static final long UNSIGNED_INT_BASE = 1L << 32;
 	static final long DECIMAL_CHUNK_BASE = 1_000_000_000L;
 	static final int DECIMAL_CHUNK_DIGITS = 9;
 	static final char[] DIGITS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 	static final char[] PADDED_THREE_DIGIT_TABLE = createPaddedThreeDigitTable();
-	static final MethodHandle INT128_FROM_STRING_HANDLE = BigmathFFM.getInstance().downcall(
-			"int128_from_string",
-			FunctionDescriptors.INT128_FROM_STRING
-	);
 
 	public static final Int128 ZERO = fromLong(0);
 	public static final Int128 ONE = fromLong(1);
@@ -34,7 +24,6 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	final long lo;
 	final long hi;
 	String cachedDecimalString;
-	String cachedFormattedDecimalString;
 
 	Int128(long lo, long hi) {
 		this.lo = lo;
@@ -46,23 +35,40 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	}
 
 	public static Int128 fromString(String value, int radix) {
-		try (Arena arena = Arena.ofConfined()) {
-			MemorySegment ptr = arena.allocate(STRUCT_SIZE);
-			MemorySegment str = arena.allocateFrom(value, java.nio.charset.StandardCharsets.UTF_8);
-			invokeOutAddressInt(ptr, str, radix);
-			return fromSegment(ptr);
+		if (radix < 2 || radix > DIGITS.length) {
+			throw new IllegalArgumentException("radix must be between 2 and 62");
 		}
+		int index = 0;
+		boolean negative = false;
+		if (!value.isEmpty()) {
+			char sign = value.charAt(0);
+			if (sign == '-' || sign == '+') {
+				negative = sign == '-';
+				index = 1;
+			}
+		}
+		long resultLo = 0;
+		long resultHi = 0;
+		for (; index < value.length(); index++) {
+			int digit = digitValue(value.charAt(index), radix);
+			if (digit < 0 || digit >= radix) {
+				break;
+			}
+			long nextLo = resultLo * radix;
+			long nextHi = Math.unsignedMultiplyHigh(resultLo, radix) + resultHi * radix;
+			long withDigit = nextLo + digit;
+			if (Long.compareUnsigned(withDigit, nextLo) < 0) {
+				nextHi++;
+			}
+			resultLo = withDigit;
+			resultHi = nextHi;
+		}
+		Int128 result = new Int128(resultLo, resultHi);
+		return negative ? result.negate() : result;
 	}
 
 	static Int128 fromWords(long lo, long hi) {
 		return new Int128(lo, hi);
-	}
-
-	static Int128 fromSegment(MemorySegment value) {
-		return new Int128(
-				value.get(ValueLayout.JAVA_LONG, 0),
-				value.get(ValueLayout.JAVA_LONG, 8)
-		);
 	}
 
 	public long lo() {
@@ -118,7 +124,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		} else if (divisorHi == 0) {
 			quotient = unsignedDivideByUnsignedLong(dividendLo, dividendHi, divisorLo);
 		} else {
-			quotient = unsignedDivMod(dividendLo, dividendHi, divisorLo, divisorHi, false);
+			quotient = unsignedDivModNormalized(dividendLo, dividendHi, divisorLo, divisorHi, false);
 		}
 		return (hi < 0) != (other.hi < 0) ? quotient.negate() : quotient;
 	}
@@ -148,7 +154,7 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		} else if (divisorHi == 0) {
 			remainder = fromLong(unsignedRemainderByUnsignedLong(dividendLo, dividendHi, divisorLo));
 		} else {
-			remainder = unsignedDivMod(dividendLo, dividendHi, divisorLo, divisorHi, true);
+			remainder = unsignedDivModNormalized(dividendLo, dividendHi, divisorLo, divisorHi, true);
 		}
 		return hi < 0 ? remainder.negate() : remainder;
 	}
@@ -187,7 +193,15 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 
 	@Override
 	public double doubleValue() {
-		return Double.parseDouble(toString());
+		if (hi == 0 && lo == 0) {
+			return 0.0;
+		}
+		boolean negative = hi < 0;
+		long magnitudeLo = negative ? ~lo + 1L : lo;
+		long magnitudeHi = negative ? ~hi + (magnitudeLo == 0 ? 1L : 0L) : hi;
+		double magnitude = Math.scalb(unsignedLongToDouble(magnitudeHi), 64)
+				+ unsignedLongToDouble(magnitudeLo);
+		return negative ? -magnitude : magnitude;
 	}
 
 	public int signum() {
@@ -222,18 +236,10 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 	}
 
 	public String toFormattedString() {
-		String cached = cachedFormattedDecimalString;
-		if (cached != null) {
-			return cached;
-		}
-		String value;
 		if (fitsInLong() || hi == 0) {
-			value = formatGroupedDecimalDefault(toString());
-		} else {
-			value = toFormattedDecimalStringDefault();
+			return formatGroupedDecimalDefault(toString());
 		}
-		cachedFormattedDecimalString = value;
-		return value;
+		return toFormattedDecimalStringDefault();
 	}
 
 	public String toFormattedString(int groupSize, String groupSep) {
@@ -558,6 +564,26 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return new String(formatted);
 	}
 
+	static int digitValue(char value, int radix) {
+		if (value >= '0' && value <= '9') {
+			return value - '0';
+		}
+		if (value >= 'a' && value <= 'z') {
+			return value - 'a' + 10;
+		}
+		if (value >= 'A' && value <= 'Z') {
+			return radix <= 36 ? value - 'A' + 10 : value - 'A' + 36;
+		}
+		return -1;
+	}
+
+	static double unsignedLongToDouble(long value) {
+		if (value >= 0) {
+			return value;
+		}
+		return Math.scalb((double) (value >>> 1), 1) + (value & 1L);
+	}
+
 	static Int128 unsignedDivideByUnsignedInt(long dividendLo, long dividendHi, long divisor) {
 		long remainder = 0;
 
@@ -703,6 +729,96 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		copyPaddedThreeDigits(low, buffer, pos + 6);
 	}
 
+	static Int128 unsignedDivModNormalized(
+			long dividendLo,
+			long dividendHi,
+			long divisorLo,
+			long divisorHi,
+			boolean returnRemainder
+	) {
+		int shift = Long.numberOfLeadingZeros(divisorHi);
+		long normalizedDivisorHi;
+		long normalizedDivisorLo;
+		long numeratorTop;
+		long normalizedDividendHi;
+		long normalizedDividendLo;
+		if (shift == 0) {
+			normalizedDivisorHi = divisorHi;
+			normalizedDivisorLo = divisorLo;
+			numeratorTop = 0;
+			normalizedDividendHi = dividendHi;
+			normalizedDividendLo = dividendLo;
+		} else {
+			normalizedDivisorHi = (divisorHi << shift) | (divisorLo >>> (64 - shift));
+			normalizedDivisorLo = divisorLo << shift;
+			numeratorTop = dividendHi >>> (64 - shift);
+			normalizedDividendHi = (dividendHi << shift) | (dividendLo >>> (64 - shift));
+			normalizedDividendLo = dividendLo << shift;
+		}
+
+		long quotient = unsignedDivideByUnsignedLongLow(
+				normalizedDividendHi,
+				numeratorTop,
+				normalizedDivisorHi
+		);
+		long remainderHat = unsignedRemainderByUnsignedLongLow(
+				normalizedDividendHi,
+				numeratorTop,
+				normalizedDivisorHi
+		);
+		for (int correction = 0; correction < 3; correction++) {
+			long productLo = quotient * normalizedDivisorLo;
+			long productHi = Math.unsignedMultiplyHigh(quotient, normalizedDivisorLo);
+			if (Long.compareUnsigned(productHi, remainderHat) < 0 ||
+					(productHi == remainderHat &&
+						Long.compareUnsigned(productLo, normalizedDividendLo) <= 0)) {
+				break;
+			}
+			quotient--;
+			long previous = remainderHat;
+			remainderHat += normalizedDivisorHi;
+			if (Long.compareUnsigned(remainderHat, previous) < 0) {
+				break;
+			}
+		}
+
+		int corrections = 0;
+		long productLo;
+		long productHi;
+		while (true) {
+			productLo = quotient * divisorLo;
+			long lowProductHi = Math.unsignedMultiplyHigh(quotient, divisorLo);
+			long highProductLo = quotient * divisorHi;
+			productHi = lowProductHi + highProductLo;
+			boolean overflow = Math.unsignedMultiplyHigh(quotient, divisorHi) != 0 ||
+					Long.compareUnsigned(productHi, lowProductHi) < 0;
+			if (!overflow && compareUnsigned(productLo, productHi, dividendLo, dividendHi) <= 0) {
+				break;
+			}
+			if (++corrections > 3) {
+				return unsignedDivMod(dividendLo, dividendHi, divisorLo, divisorHi, returnRemainder);
+			}
+			quotient--;
+		}
+
+		long remainderLo = dividendLo - productLo;
+		long borrow = Long.compareUnsigned(dividendLo, productLo) < 0 ? 1L : 0L;
+		long remainderHi = dividendHi - productHi - borrow;
+		while (compareUnsigned(remainderLo, remainderHi, divisorLo, divisorHi) >= 0) {
+			long nextLo = remainderLo - divisorLo;
+			borrow = Long.compareUnsigned(remainderLo, divisorLo) < 0 ? 1L : 0L;
+			remainderHi = remainderHi - divisorHi - borrow;
+			remainderLo = nextLo;
+			quotient++;
+			if (++corrections > 4) {
+				return unsignedDivMod(dividendLo, dividendHi, divisorLo, divisorHi, returnRemainder);
+			}
+		}
+		return returnRemainder
+				? new Int128(remainderLo, remainderHi)
+				: new Int128(quotient, 0);
+	}
+
 	static Int128 unsignedDivMod(
 			long dividendLo,
 			long dividendHi,
@@ -760,16 +876,6 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 			table[pos + 2] = (char) ('0' + value % 10);
 		}
 		return table;
-	}
-
-	static void invokeOutAddressInt(MemorySegment out, MemorySegment value, int radix) {
-		try {
-			INT128_FROM_STRING_HANDLE.invokeExact(out, value, radix);
-		} catch (RuntimeException | Error e) {
-			throw e;
-		} catch (Throwable t) {
-			throw new RuntimeException(t);
-		}
 	}
 
 	@Override
