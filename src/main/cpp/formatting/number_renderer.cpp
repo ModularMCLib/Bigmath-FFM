@@ -373,6 +373,31 @@ FormatStatus render_finite(
 		std::string &out
 );
 
+FormatStatus round_for_compact_promotion(
+		const FormatDescriptor &descriptor,
+		DecimalQuantity &value
+) {
+	int64_t target_scale;
+	if (descriptor.scientific()) {
+		const int64_t maximum_significant_digits = std::max<int64_t>(
+			1,
+			static_cast<int64_t>(descriptor.maximum_integer_digits) +
+				descriptor.maximum_fraction_digits
+		);
+		if (!subtract_exact(
+				maximum_significant_digits - 1,
+				decimal_exponent(value),
+				target_scale
+		)) {
+			return FormatStatus::RESULT_TOO_LARGE;
+		}
+	} else {
+		target_scale = static_cast<int64_t>(descriptor.maximum_fraction_digits) +
+			std::max(0, multiplier_power10(descriptor.multiplier));
+	}
+	return round_to_scale(value, target_scale, descriptor.rounding);
+}
+
 FormatStatus render_fallback(
 		const FormatDescriptor &descriptor,
 		const DecimalQuantity &value,
@@ -417,12 +442,7 @@ FormatStatus render_finite(
 
 		if (!milli_suffix) {
 			DecimalQuantity promotion = working;
-			const int multiplier_digits = std::max(0, multiplier_power10(descriptor.multiplier));
-			FormatStatus status = round_to_scale(
-				promotion,
-				static_cast<int64_t>(descriptor.maximum_fraction_digits) + multiplier_digits,
-				descriptor.rounding
-			);
+			FormatStatus status = round_for_compact_promotion(descriptor, promotion);
 			if (status != FormatStatus::OK) return status;
 			if (decimal_exponent(promotion) >= 3) {
 				compact_index++;
