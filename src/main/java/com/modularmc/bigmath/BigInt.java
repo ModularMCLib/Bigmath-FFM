@@ -12,8 +12,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Arbitrary-precision integer backed by the native bigmath library (GMP).
  * <p>
- * Supports arithmetic, bitwise, comparison, primality testing, and formatted
- * string conversion. Each instance wraps an ABI-v2 native handle; call
+ * Supports arithmetic, bitwise, comparison, primality testing, and radix string
+ * conversion. Use {@link BigNumberFormat} for pattern- and locale-aware output.
+ * Each instance wraps a native handle; call
  * {@link #close()} to free the underlying resource, or use try-with-resources.
  * A cleaner is retained only as a fallback for abandoned owned values.
  * <p>

@@ -19,8 +19,16 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
- * Immutable, thread-safe Native number formatter compiled from DecimalFormat
+ * Immutable, thread-safe number formatter compiled from {@link java.text.DecimalFormat}
  * pattern and locale semantics.
+ * <p>
+ * Construction validates and compiles the Java pattern into a read-only descriptor. Numeric
+ * conversion, scaling, rounding, grouping, digit localization, and final string assembly are
+ * performed by the Native library. A formatter captures its locale when it is built and does not
+ * follow later changes to the default FORMAT locale.
+ * <p>
+ * A {@link BigInt} or {@link BigDeci} passed to {@code format} must remain open and must not be
+ * mutated concurrently with the call. The formatter itself can be shared by multiple threads.
  */
 @NullMarked
 public final class BigNumberFormat {
@@ -37,6 +45,12 @@ public final class BigNumberFormat {
 		this.resultCache = new ResultCache(cacheEntries, cacheBytes);
 	}
 
+	/**
+	 * Creates the localized readable preset {@code #,##0.#} with 1000-based compact units,
+	 * {@link RoundingMode#HALF_EVEN}, and a localized {@code 0.00E00} overflow fallback.
+	 *
+	 * @return a formatter bound to the current default FORMAT locale
+	 */
 	public static BigNumberFormat readable() {
 		return builder("#,##0.#")
 				.compactUnits(true)
@@ -45,32 +59,87 @@ public final class BigNumberFormat {
 				.build();
 	}
 
+	/**
+	 * Creates the localized {@code 0.00E00} scientific preset.
+	 *
+	 * @return a formatter bound to the current default FORMAT locale
+	 */
 	public static BigNumberFormat scientific() {
 		return builder("0.00E00")
 				.roundingMode(RoundingMode.HALF_EVEN)
 				.build();
 	}
 
+	/**
+	 * Compiles a non-localized DecimalFormat pattern using the current default FORMAT locale.
+	 *
+	 * @param pattern the DecimalFormat pattern
+	 * @return the compiled formatter
+	 * @throws NullPointerException if {@code pattern} is {@code null}
+	 * @throws IllegalArgumentException if the pattern is invalid
+	 */
 	public static BigNumberFormat ofPattern(String pattern) {
 		return builder(pattern).build();
 	}
 
+	/**
+	 * Compiles a non-localized DecimalFormat pattern using an explicit locale.
+	 *
+	 * @param pattern the DecimalFormat pattern
+	 * @param locale the locale whose symbols are captured
+	 * @return the compiled formatter
+	 * @throws NullPointerException if an argument is {@code null}
+	 * @throws IllegalArgumentException if the pattern is invalid
+	 */
 	public static BigNumberFormat ofPattern(String pattern, Locale locale) {
 		return builder(pattern).locale(locale).build();
 	}
 
+	/**
+	 * Compiles a localized DecimalFormat pattern using an explicit locale.
+	 *
+	 * @param pattern the localized DecimalFormat pattern
+	 * @param locale the locale used to interpret the localized pattern and symbols
+	 * @return the compiled formatter
+	 * @throws NullPointerException if an argument is {@code null}
+	 * @throws IllegalArgumentException if the pattern is invalid
+	 */
 	public static BigNumberFormat ofLocalizedPattern(String pattern, Locale locale) {
 		return localizedBuilder(pattern).locale(locale).build();
 	}
 
+	/**
+	 * Starts a builder for a non-localized DecimalFormat pattern.
+	 *
+	 * @param pattern the DecimalFormat pattern
+	 * @return a new builder
+	 * @throws NullPointerException if {@code pattern} is {@code null}
+	 */
 	public static Builder builder(String pattern) {
 		return new Builder(pattern, false);
 	}
 
+	/**
+	 * Starts a builder for a localized DecimalFormat pattern.
+	 *
+	 * @param pattern the localized pattern
+	 * @return a new builder
+	 * @throws NullPointerException if {@code pattern} is {@code null}
+	 */
 	public static Builder localizedBuilder(String pattern) {
 		return new Builder(pattern, true);
 	}
 
+	/**
+	 * Formats an open Native-backed integer and caches eligible results by handle ID and mutation
+	 * version.
+	 *
+	 * @param value the value to format
+	 * @return the localized formatted string
+	 * @throws NullPointerException if {@code value} is {@code null}
+	 * @throws IllegalStateException if the value is closed or its Native backend is unavailable
+	 * @throws ArithmeticException if rounding is required with {@link RoundingMode#UNNECESSARY}
+	 */
 	public String format(BigInt value) {
 		Objects.requireNonNull(value, "value");
 		HandleKey key = new HandleKey(1, value.nativeId(), value.nativeVersion());
@@ -78,6 +147,16 @@ public final class BigNumberFormat {
 				NativeNumberRenderer.formatBigInt(descriptor, value.nativePtr()));
 	}
 
+	/**
+	 * Formats an open Native-backed decimal and caches eligible results by handle ID and mutation
+	 * version. NaN, infinities, and signed zero retain their specified formatting semantics.
+	 *
+	 * @param value the value to format
+	 * @return the localized formatted string
+	 * @throws NullPointerException if {@code value} is {@code null}
+	 * @throws IllegalStateException if the value is closed or its Native backend is unavailable
+	 * @throws ArithmeticException if rounding is required with {@link RoundingMode#UNNECESSARY}
+	 */
 	public String format(BigDeci value) {
 		Objects.requireNonNull(value, "value");
 		HandleKey key = new HandleKey(2, value.nativeId(), value.nativeVersion());
@@ -85,6 +164,14 @@ public final class BigNumberFormat {
 				NativeNumberRenderer.formatBigDeci(descriptor, value.nativePtr()));
 	}
 
+	/**
+	 * Formats a signed 128-bit value and caches eligible results by its two words.
+	 *
+	 * @param value the value to format
+	 * @return the localized formatted string
+	 * @throws NullPointerException if {@code value} is {@code null}
+	 * @throws ArithmeticException if rounding is required with {@link RoundingMode#UNNECESSARY}
+	 */
 	public String format(Int128 value) {
 		Objects.requireNonNull(value, "value");
 		Int128Key key = new Int128Key(value.lo(), value.hi());
@@ -92,19 +179,50 @@ public final class BigNumberFormat {
 				NativeNumberRenderer.formatInt128(descriptor, value.lo(), value.hi()));
 	}
 
+	/**
+	 * Formats a signed 64-bit integer.
+	 *
+	 * @param value the value to format
+	 * @return the localized formatted string
+	 * @throws ArithmeticException if rounding is required with {@link RoundingMode#UNNECESSARY}
+	 */
 	public String format(long value) {
 		return NativeNumberRenderer.formatLong(descriptor, value);
 	}
 
+	/**
+	 * Formats the exact IEEE-754 value, preserving NaN, infinities, and negative zero.
+	 *
+	 * @param value the value to format
+	 * @return the localized formatted string
+	 * @throws ArithmeticException if rounding is required with {@link RoundingMode#UNNECESSARY}
+	 */
 	public String format(double value) {
 		return NativeNumberRenderer.formatDouble(descriptor, value);
 	}
 
+	/**
+	 * Formats an arbitrary-precision JDK integer through the portable Native decimal engine.
+	 *
+	 * @param value the value to format
+	 * @return the localized formatted string
+	 * @throws NullPointerException if {@code value} is {@code null}
+	 * @throws ArithmeticException if rounding is required with {@link RoundingMode#UNNECESSARY}
+	 */
 	public String format(BigInteger value) {
 		Objects.requireNonNull(value, "value");
 		return NativeNumberRenderer.formatDecimal(descriptor, value.toByteArray(), 0);
 	}
 
+	/**
+	 * Formats a JDK decimal from its signed unscaled bytes and scale through the portable Native
+	 * decimal engine.
+	 *
+	 * @param value the value to format
+	 * @return the localized formatted string
+	 * @throws NullPointerException if {@code value} is {@code null}
+	 * @throws ArithmeticException if rounding is required with {@link RoundingMode#UNNECESSARY}
+	 */
 	public String format(BigDecimal value) {
 		Objects.requireNonNull(value, "value");
 		return NativeNumberRenderer.formatDecimal(
@@ -114,6 +232,7 @@ public final class BigNumberFormat {
 		);
 	}
 
+	/** Builds an immutable formatter while capturing all pattern, locale, and cache options. */
 	public static final class Builder {
 
 		private final String pattern;
@@ -133,41 +252,101 @@ public final class BigNumberFormat {
 			this.localizedPattern = localizedPattern;
 		}
 
+		/**
+		 * Selects the locale used to interpret localized patterns and capture output symbols.
+		 *
+		 * @param locale the formatter locale
+		 * @return this builder
+		 * @throws NullPointerException if {@code locale} is {@code null}
+		 */
 		public Builder locale(Locale locale) {
 			this.locale = Objects.requireNonNull(locale, "locale");
 			return this;
 		}
 
+		/**
+		 * Overrides the locale's currency for currency signs in the pattern.
+		 *
+		 * @param currency the selected currency
+		 * @return this builder
+		 * @throws NullPointerException if {@code currency} is {@code null}
+		 */
 		public Builder currency(Currency currency) {
 			this.currency = Objects.requireNonNull(currency, "currency");
 			return this;
 		}
 
+		/**
+		 * Selects the decimal rounding policy used by Native rendering.
+		 *
+		 * @param roundingMode the rounding policy
+		 * @return this builder
+		 * @throws NullPointerException if {@code roundingMode} is {@code null}
+		 */
 		public Builder roundingMode(RoundingMode roundingMode) {
 			this.roundingMode = Objects.requireNonNull(roundingMode, "roundingMode");
 			return this;
 		}
 
+		/**
+		 * Enables or disables 1000-based compact suffixes.
+		 *
+		 * @param enabled whether compact units are enabled
+		 * @return this builder
+		 */
 		public Builder compactUnits(boolean enabled) {
 			this.compactUnits = enabled;
 			return this;
 		}
 
+		/**
+		 * Treats nonzero magnitudes below 1000 as milli input and divides larger input by 1000 before
+		 * applying compact-unit selection.
+		 *
+		 * @param enabled whether milli-input semantics are enabled
+		 * @return this builder
+		 */
 		public Builder milliInput(boolean enabled) {
 			this.milliInput = enabled;
 			return this;
 		}
 
+		/**
+		 * Appends an application unit after any compact suffix and before the pattern suffix.
+		 *
+		 * @param unit the unit text, which may be empty
+		 * @return this builder
+		 * @throws NullPointerException if {@code unit} is {@code null}
+		 */
 		public Builder unit(String unit) {
 			this.unit = Objects.requireNonNull(unit, "unit");
 			return this;
 		}
 
+		/**
+		 * Selects the complete DecimalFormat pattern used when a compact value exceeds the final
+		 * suffix. The overflow pattern has its own affixes and multiplier while inheriting locale,
+		 * currency, rounding mode, and application unit.
+		 *
+		 * @param pattern the non-localized overflow pattern
+		 * @return this builder
+		 * @throws NullPointerException if {@code pattern} is {@code null}
+		 */
 		public Builder scientificOverflowPattern(String pattern) {
 			this.scientificOverflowPattern = Objects.requireNonNull(pattern, "pattern");
 			return this;
 		}
 
+		/**
+		 * Configures the per-formatter result cache. A zero entry or byte limit disables caching.
+		 * The cache applies only to BigInt, BigDeci, and Int128 values; outputs larger than 4 KiB are
+		 * not cached.
+		 *
+		 * @param entries maximum cached results
+		 * @param bytes maximum UTF-8 result bytes
+		 * @return this builder
+		 * @throws IllegalArgumentException if either limit is negative
+		 */
 		public Builder resultCacheLimits(int entries, long bytes) {
 			if (entries < 0 || bytes < 0) {
 				throw new IllegalArgumentException("Cache limits must be non-negative");
@@ -177,6 +356,14 @@ public final class BigNumberFormat {
 			return this;
 		}
 
+		/**
+		 * Validates and compiles the configured pattern and captures the selected locale. If no locale
+		 * was supplied, this method captures {@link Locale#getDefault(Locale.Category)} for the FORMAT
+		 * category.
+		 *
+		 * @return the immutable formatter
+		 * @throws IllegalArgumentException if either the primary or overflow pattern is invalid
+		 */
 		public BigNumberFormat build() {
 			Locale resolvedLocale = locale != null
 					? locale

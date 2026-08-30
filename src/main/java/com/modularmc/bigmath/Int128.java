@@ -3,8 +3,9 @@ package com.modularmc.bigmath;
 /**
  * 128-bit signed integer value.
  * <p>
- * Hot-path small operations are implemented directly on two Java {@code long}
- * words. Native helpers remain for parsing.
+ * Operations, parsing, and conversion are implemented directly on two Java {@code long} words;
+ * creating or parsing an Int128 does not load the Native library. Use {@link BigNumberFormat} for
+ * pattern- and locale-aware output.
  */
 public final class Int128 extends Number implements AutoCloseable, Comparable<Int128> {
 

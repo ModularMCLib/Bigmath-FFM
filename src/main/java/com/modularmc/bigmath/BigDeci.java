@@ -12,7 +12,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * library (MPFR).
  * <p>
  * Supports arithmetic, trigonometric, logarithmic, exponential, and rounding
- * operations. Each instance wraps an ABI-v2 native handle; call
+ * operations. Use {@link BigNumberFormat} for pattern- and locale-aware output.
+ * Each instance wraps a native handle; call
  * {@link #close()} to free the underlying resource. A cleaner is retained only
  * as a fallback for abandoned owned values.
  * <p>
