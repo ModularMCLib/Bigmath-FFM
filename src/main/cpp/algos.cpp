@@ -664,6 +664,18 @@ static void fft_multiply_impl(
 
 	bool a_neg = (mpz_sgn(a) < 0);
 	bool b_neg = (mpz_sgn(b) < 0);
+	bool admit_product = false;
+#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
+	if (cache_key != nullptr) {
+		caching::ProductCacheLookup lookup = caching::lookup_product(*cache_key);
+		admit_product = lookup.admit;
+		if (lookup.hit) {
+			write_u64_limbs_to_mpz(out, *lookup.packed_limbs);
+			if (a_neg != b_neg) mpz_neg(out, out);
+			return;
+		}
+	}
+#endif
 
 	mpz_t abs_a_storage, abs_b_storage;
 	mpz_ptr abs_a = a;
@@ -682,21 +694,6 @@ static void fft_multiply_impl(
 		abs_b = abs_b_storage;
 		clear_abs_b = true;
 	}
-
-	bool admit_product = false;
-#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
-	if (cache_key != nullptr) {
-		caching::ProductCacheLookup lookup = caching::lookup_product(*cache_key);
-		admit_product = lookup.admit;
-		if (lookup.hit) {
-			write_u64_limbs_to_mpz(out, *lookup.packed_limbs);
-			if (clear_abs_a) mpz_clear(abs_a_storage);
-			if (clear_abs_b) mpz_clear(abs_b_storage);
-			if (a_neg != b_neg) mpz_neg(out, out);
-			return;
-		}
-	}
-#endif
 
 	if (cuda_multiply(out, abs_a, abs_b)) {
 		store_product_result(cache_key, admit_product, out);
