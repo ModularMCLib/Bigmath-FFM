@@ -4,9 +4,6 @@
 #include "caching/product_cache.h"
 
 #include <cstdint>
-#include <cstdlib>
-#include <cstring>
-#include <algorithm>
 
 #if __has_include(<gmp.h>)
 #include <gmp.h>
@@ -19,24 +16,14 @@ typedef struct __bigmath_mpz *mpz_ptr;
 
 namespace bigmath {
 
-constexpr int KARATSUBA_THRESHOLD = 32;
-constexpr int ALGO_THRESHOLD     = 64;
-constexpr int NTT_THRESHOLD      = 4096;
-
-using limb_t = uint64_t;
+constexpr int NTT_THRESHOLD = 4096;
 
 enum class DirectCudaBackend {
 	CUFFT,
 	NTT
 };
 
-void karatsuba_mul(limb_t *out, const limb_t *a, int alen, const limb_t *b, int blen);
-
-void binary_gcd(mpz_ptr out, mpz_ptr a, mpz_ptr b);
-
 void fast_pow(mpz_ptr out, mpz_ptr base, uint64_t exp);
-
-void product_tree_factorial(mpz_ptr out, uint64_t n);
 
 void fft_multiply(
 	mpz_ptr out,
@@ -79,10 +66,6 @@ bool try_cuda_multiply(
 bool cuda_dispatch_favorable(uint64_t left_bits, uint64_t right_bits, bool square);
 
 void modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod);
-
-inline limb_t *limb_alloc(int n) {
-	return static_cast<limb_t *>(calloc(n, sizeof(limb_t)));
-}
 
 }
 
