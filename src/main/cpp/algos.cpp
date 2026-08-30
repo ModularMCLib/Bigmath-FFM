@@ -562,6 +562,27 @@ static bool cuda_ntt_enabled() {
 }
 #endif
 
+static constexpr mp_bitcnt_t CUDA_BIT_THRESHOLD = 262144;
+
+static caching::ProductBackend selected_product_backend(mpz_ptr a, mpz_ptr b) {
+#ifndef BIGMATH_HAS_CUDA
+	(void)a;
+	(void)b;
+	return caching::ProductBackend::CPU_GMP;
+#else
+	if (!cuda::is_available()) return caching::ProductBackend::CPU_GMP;
+	const mp_bitcnt_t bits_a = mpz_sizeinbase(a, 2);
+	const mp_bitcnt_t bits_b = mpz_sizeinbase(b, 2);
+	if (bits_a < CUDA_BIT_THRESHOLD && bits_b < CUDA_BIT_THRESHOLD) {
+		return caching::ProductBackend::CPU_GMP;
+	}
+#if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
+	if (cuda_ntt_enabled()) return caching::ProductBackend::CUDA_NTT;
+#endif
+	return caching::ProductBackend::CUDA_CUFFT;
+#endif
+}
+
 static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 #ifndef BIGMATH_HAS_CUDA
 	(void)out;
@@ -574,7 +595,6 @@ static bool cuda_multiply(mpz_ptr out, mpz_ptr abs_a, mpz_ptr abs_b) {
 	// on an RTX 3050 (cuFFT path, pinned-D2H build) is ~80k decimal digits
 	// ~= 2^18 bits; below this the fixed GPU overhead makes mpz_mul faster, so a
 	// lower threshold (was 131072) regressed ~40-70k-digit multiplies ~2x.
-	static constexpr mp_bitcnt_t CUDA_BIT_THRESHOLD = 262144;
 	if (!cuda::is_available()) {
 		return false;
 	}
@@ -664,10 +684,20 @@ static void fft_multiply_impl(
 
 	bool a_neg = (mpz_sgn(a) < 0);
 	bool b_neg = (mpz_sgn(b) < 0);
+	caching::ProductCacheKey resolved_cache_key{};
+	const caching::ProductCacheKey *resolved_cache_key_ptr = nullptr;
+	if (cache_key != nullptr) {
+		resolved_cache_key = *cache_key;
+		resolved_cache_key.config = caching::with_product_backend(
+			cache_key->config,
+			selected_product_backend(a, b)
+		);
+		resolved_cache_key_ptr = &resolved_cache_key;
+	}
 	bool admit_product = false;
 #if GMP_NUMB_BITS % 16 == 0 && GMP_NUMB_BITS <= 64
-	if (cache_key != nullptr) {
-		caching::ProductCacheLookup lookup = caching::lookup_product(*cache_key);
+	if (resolved_cache_key_ptr != nullptr) {
+		caching::ProductCacheLookup lookup = caching::lookup_product(*resolved_cache_key_ptr);
 		admit_product = lookup.admit;
 		if (lookup.hit) {
 			write_u64_limbs_to_mpz(out, *lookup.packed_limbs);
@@ -696,7 +726,7 @@ static void fft_multiply_impl(
 	}
 
 	if (cuda_multiply(out, abs_a, abs_b)) {
-		store_product_result(cache_key, admit_product, out);
+		store_product_result(resolved_cache_key_ptr, admit_product, out);
 		if (clear_abs_a) mpz_clear(abs_a_storage);
 		if (clear_abs_b) mpz_clear(abs_b_storage);
 		if (a_neg != b_neg) mpz_neg(out, out);
@@ -704,7 +734,7 @@ static void fft_multiply_impl(
 	}
 
 	mpz_mul(out, a, b);
-	store_product_result(cache_key, admit_product, out);
+	store_product_result(resolved_cache_key_ptr, admit_product, out);
 	if (clear_abs_a) mpz_clear(abs_a_storage);
 	if (clear_abs_b) mpz_clear(abs_b_storage);
 }
