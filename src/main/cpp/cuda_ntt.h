@@ -6,6 +6,8 @@
 
 namespace bigmath::cuda {
 
+inline constexpr int NTT_MAX_TRANSFORM_SIZE = 1 << 23;
+
 // GPU integer NTT convolution with dual-modulus CRT reconstruction.
 //
 // Unlike the cuFFT (FP64) path, coefficients are computed in exact modular

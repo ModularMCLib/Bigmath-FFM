@@ -196,9 +196,9 @@ struct NttWorkspace {
 };
 
 bool next_pow2(size_t value, int &out_n, int &out_logn) {
+	if (value > static_cast<size_t>(NTT_MAX_TRANSFORM_SIZE)) return false;
 	int p = 1, logn = 0;
 	while (static_cast<size_t>(p) < value) {
-		if (p > (1 << 27)) return false;   // keep within configured root order
 		p <<= 1;
 		logn++;
 	}
