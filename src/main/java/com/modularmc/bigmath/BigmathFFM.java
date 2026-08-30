@@ -16,6 +16,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
@@ -48,6 +49,14 @@ import java.util.stream.Stream;
 public final class BigmathFFM {
 
 	public static final Logger LOGGER = Logger.getLogger(BigmathFFM.class.getName());
+	static final Set<String> SUPPORTED_NATIVE_CLASSIFIERS = Set.of(
+		"linux-x86-64",
+		"linux-aarch64",
+		"macos-x86-64",
+		"macos-aarch64",
+		"windows-x86-64",
+		"windows-aarch64"
+	);
 
 	static final Os CURRENT_OS = detectOs();
 	static final Arch CURRENT_ARCH = detectArch();
@@ -78,28 +87,37 @@ public final class BigmathFFM {
 	record DowncallKey(String name, FunctionDescriptor descriptor) {}
 
 	enum Os {
-		LINUX, MACOS, WINDOWS, ANDROID
+		LINUX, MACOS, WINDOWS
 	}
 
 	enum Arch {
-		X86_64, AARCH64, UNKNOWN
+		X86_64, AARCH64
 	}
 
 	static Os detectOs() {
-		String name = System.getProperty("os.name", "").toLowerCase();
-		if (name.contains("win")) return Os.WINDOWS;
-		if (name.contains("mac") || name.contains("darwin")) return Os.MACOS;
-		if (name.contains("android") || "android".equalsIgnoreCase(System.getProperty("java.vendor", ""))) {
-			return Os.ANDROID;
+		String rawName = System.getProperty("os.name", "");
+		String name = rawName.toLowerCase(Locale.ROOT);
+		String vendor = System.getProperty("java.vendor", "").toLowerCase(Locale.ROOT);
+		String runtimeName = System.getProperty("java.runtime.name", "").toLowerCase(Locale.ROOT);
+		String vmName = System.getProperty("java.vm.name", "").toLowerCase(Locale.ROOT);
+		if (name.contains("android") || vendor.contains("android") || runtimeName.contains("android") ||
+			vmName.contains("android") || vmName.equals("dalvik")) {
+			throw new UnsupportedOperationException("Android is not a supported Bigmath FFM runtime platform");
 		}
-		return Os.LINUX;
+		if (name.contains("mac") || name.contains("darwin")) return Os.MACOS;
+		if (name.contains("win")) return Os.WINDOWS;
+		if (name.contains("linux")) return Os.LINUX;
+		throw new UnsupportedOperationException("Unsupported Bigmath FFM operating system: " + rawName);
 	}
 
 	static Arch detectArch() {
-		String arch = System.getProperty("os.arch", "").toLowerCase();
-		if (arch.contains("amd64") || arch.contains("x86_64") || arch.contains("x86-64")) return Arch.X86_64;
-		if (arch.contains("aarch64") || arch.contains("arm64") || arch.contains("armv8")) return Arch.AARCH64;
-		return Arch.UNKNOWN;
+		String rawArch = System.getProperty("os.arch", "");
+		String arch = rawArch.toLowerCase(Locale.ROOT);
+		return switch (arch) {
+			case "amd64", "x86_64", "x86-64" -> Arch.X86_64;
+			case "aarch64", "arm64", "armv8", "armv8-a" -> Arch.AARCH64;
+			default -> throw new UnsupportedOperationException("Unsupported Bigmath FFM architecture: " + rawArch);
+		};
 	}
 
 	/**
@@ -111,36 +129,40 @@ public final class BigmathFFM {
 	 * architecture pair and therefore stays aligned with native artifact
 	 * packaging.
 	 * <p>
-	 * Typical results include:
+	 * Supported results are:
 	 * <ul>
-	 *   <li>{@code windows-x86-64}</li>
-	 *   <li>{@code linux-aarch64}</li>
-	 *   <li>{@code android-arm64-v8a}</li>
+	 *   <li>{@code linux-x86-64} and {@code linux-aarch64}</li>
+	 *   <li>{@code macos-x86-64} and {@code macos-aarch64}</li>
+	 *   <li>{@code windows-x86-64} and {@code windows-aarch64}</li>
 	 * </ul>
 	 *
 	 * @return the native classifier for the current process
 	 */
 	static String platformClassifier() {
-		StringBuilder sb = new StringBuilder();
-		switch (CURRENT_OS) {
-			case ANDROID -> sb.append("android");
-			case LINUX -> sb.append("linux");
-			case MACOS -> sb.append("macos");
-			case WINDOWS -> sb.append("windows");
+		String os = switch (CURRENT_OS) {
+			case LINUX -> "linux";
+			case MACOS -> "macos";
+			case WINDOWS -> "windows";
+		};
+		String arch = switch (CURRENT_ARCH) {
+			case X86_64 -> "x86-64";
+			case AARCH64 -> "aarch64";
+		};
+		return os + "-" + arch;
+	}
+
+	static String nativeClassifier() {
+		String override = System.getProperty("bigmath.native.classifier");
+		if (override == null) {
+			return platformClassifier();
 		}
-		sb.append("-");
-		switch (CURRENT_ARCH) {
-			case X86_64 -> sb.append("x86-64");
-			case AARCH64 -> {
-				if (CURRENT_OS == Os.ANDROID) {
-					sb.append("arm64-v8a");
-				} else {
-					sb.append("aarch64");
-				}
-			}
-			case UNKNOWN -> sb.append("unknown");
+		if (!SUPPORTED_NATIVE_CLASSIFIERS.contains(override)) {
+			throw new IllegalArgumentException(
+				"Unsupported bigmath.native.classifier: " + override + ". Supported classifiers: " +
+					SUPPORTED_NATIVE_CLASSIFIERS
+			);
 		}
-		return sb.toString();
+		return override;
 	}
 
 	static String platformLibName() {
@@ -208,14 +230,10 @@ public final class BigmathFFM {
 	 * @throws UnsatisfiedLinkError if the library cannot be found or loaded
 	 */
 	static SymbolLookup loadLibrary() {
-		String classifier = System.getProperty("bigmath.native.classifier");
-		if (classifier == null) {
-			classifier = platformClassifier();
-		}
+		String classifier = nativeClassifier();
 		String libName = platformLibName();
 
-		String finalClassifier = classifier;
-		LOGGER.info(() -> "OS: " + CURRENT_OS + ", Arch: " + CURRENT_ARCH + ", Classifier: " + finalClassifier + ", Lib: " + libName);
+		LOGGER.info(() -> "OS: " + CURRENT_OS + ", Arch: " + CURRENT_ARCH + ", Classifier: " + classifier + ", Lib: " + libName);
 
 		String explicitPath = System.getProperty("bigmath.native.path");
 		if (explicitPath != null) {
@@ -257,8 +275,7 @@ public final class BigmathFFM {
 			LOGGER.warning(() -> "System.loadLibrary failed: " + e.getMessage());
 		}
 
-		String finalClassifier1 = classifier;
-		LOGGER.severe(() -> "Failed to load " + libName + " for " + finalClassifier1 +
+		LOGGER.severe(() -> "Failed to load " + libName + " for " + classifier +
 			". Tried: " + absolutePath + " and java.library.path=" + System.getProperty("java.library.path"));
 		throw new UnsatisfiedLinkError(
 			"Failed to load " + libName + " for " + classifier + ". " +

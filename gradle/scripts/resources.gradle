@@ -1,14 +1,52 @@
-def nativeClassifier = {
-	def os = System.getProperty("os.name").toLowerCase()
-	def arch = System.getProperty("os.arch").toLowerCase()
-	def osPart = os.contains("win") ? "windows" : os.contains("mac") ? "macos" : "linux"
-	def archPart = arch.contains("amd64") || arch.contains("x86_64") ? "x86-64" : "aarch64"
-	"${osPart}-${archPart}"
-}()
+def supportedNativeClassifiers = [
+		"linux-x86-64",
+		"linux-aarch64",
+		"macos-x86-64",
+		"macos-aarch64",
+		"windows-x86-64",
+		"windows-aarch64"
+].asImmutable()
+def rawOsName = System.getProperty("os.name", "")
+def rawJavaVendor = System.getProperty("java.vendor", "")
+def rawRuntimeName = System.getProperty("java.runtime.name", "")
+def rawVmName = System.getProperty("java.vm.name", "")
+def normalizedOsName = rawOsName.toLowerCase(Locale.ROOT)
+def isAndroidRuntime = normalizedOsName.contains("android") ||
+		rawJavaVendor.toLowerCase(Locale.ROOT).contains("android") ||
+		rawRuntimeName.toLowerCase(Locale.ROOT).contains("android") ||
+		rawVmName.toLowerCase(Locale.ROOT).contains("android") ||
+		rawVmName.equalsIgnoreCase("dalvik")
+if (isAndroidRuntime) {
+	throw new GradleException("Android is not a supported Bigmath FFM build platform")
+}
+def osPart
+if (normalizedOsName.contains("mac") || normalizedOsName.contains("darwin")) {
+	osPart = "macos"
+} else if (normalizedOsName.contains("win")) {
+	osPart = "windows"
+} else if (normalizedOsName.contains("linux")) {
+	osPart = "linux"
+} else {
+	throw new GradleException("Unsupported Bigmath FFM build operating system: ${rawOsName}")
+}
+def rawArchName = System.getProperty("os.arch", "")
+def normalizedArchName = rawArchName.toLowerCase(Locale.ROOT)
+def archPart
+if (normalizedArchName in ["amd64", "x86_64", "x86-64"]) {
+	archPart = "x86-64"
+} else if (normalizedArchName in ["aarch64", "arm64", "armv8", "armv8-a"]) {
+	archPart = "aarch64"
+} else {
+	throw new GradleException("Unsupported Bigmath FFM build architecture: ${rawArchName}")
+}
+def nativeClassifier = "${osPart}-${archPart}".toString()
+if (!(nativeClassifier in supportedNativeClassifiers)) {
+	throw new GradleException("Unsupported Bigmath FFM native classifier: ${nativeClassifier}")
+}
 
-def nativeLibName = System.getProperty("os.name").toLowerCase().contains("win")
+def nativeLibName = osPart == "windows"
 		? "bigmath_ffm.dll"
-		: System.getProperty("os.name").toLowerCase().contains("mac")
+		: osPart == "macos"
 				? "libbigmath_ffm.dylib"
 				: "libbigmath_ffm.so"
 
@@ -16,17 +54,15 @@ def cmakeBuildDir = layout.buildDirectory.dir("native").get().asFile
 def cmakeInstallLibDir = new File(cmakeBuildDir, "lib")
 def generatedNativeRootDir = layout.buildDirectory.dir("generated/local-native").get().asFile
 def generatedNativeDir = new File(generatedNativeRootDir, nativeClassifier)
-def nativePatterns = System.getProperty("os.name").toLowerCase().contains("win")
+def nativePatterns = osPart == "windows"
 		? ["*.dll"]
-		: System.getProperty("os.name").toLowerCase().contains("mac")
+		: osPart == "macos"
 				? ["*.dylib"]
 				: ["*.so", "*.so.*"]
-def isWindowsHost = System.getProperty("os.name").toLowerCase().contains("win")
-def isX64Host = {
-	def arch = System.getProperty("os.arch").toLowerCase()
-	arch.contains("amd64") || arch.contains("x86_64")
-}()
-def isLinuxHost = System.getProperty("os.name").toLowerCase().contains("linux")
+def isWindowsHost = osPart == "windows"
+def isX64Host = archPart == "x86-64"
+def isLinuxHost = osPart == "linux"
+def windowsVcpkgTriplet = isWindowsHost ? (isX64Host ? "x64-windows" : "arm64-windows") : null
 def isCudaSupportedHost = (isWindowsHost || isLinuxHost) && isX64Host
 def cudaTestRequested = gradle.startParameter.taskNames.any { taskName ->
 	taskName == "cudaTest" || taskName.endsWith(":cudaTest")
@@ -96,10 +132,9 @@ def resolveCmakePrefixPath = {
 	def tripletHint = (project.findProperty("vcpkgTriplet")
 			?: System.getenv("BIGMATH_VCPKG_TRIPLET")
 			?: System.getenv("VCPKG_TARGET_TRIPLET")
-			?: (isWindowsHost && isX64Host ? "x64-windows" : null))?.toString()
-	def arch = System.getProperty("os.arch").toLowerCase()
-	def archPrefix = arch.contains("aarch64") || arch.contains("arm64") ? "arm64-" : "x64-"
-	def isWindows = System.getProperty("os.name").toLowerCase().contains("win")
+			?: windowsVcpkgTriplet)?.toString()
+	def archPrefix = archPart == "aarch64" ? "arm64-" : "x64-"
+	def isWindows = isWindowsHost
 	def installedRoots = [
 			layout.projectDirectory.dir("vcpkg_installed").asFile,
 			System.getenv("VCPKG_ROOT") ? new File(System.getenv("VCPKG_ROOT"), "installed") : null
@@ -180,16 +215,14 @@ def cmakeConfigure = tasks.register('cmakeConfigure', Exec) {
 		if (cudaEnabled && cudaRoot == null) {
 			throw new GradleException("CUDA Toolkit was not found. Set -PcudaToolkitRoot=... or CUDAToolkit_ROOT/CUDA_PATH.")
 		}
-		if (isWindowsHost && isX64Host && msvcCompiler == null) {
+		if (isWindowsHost && msvcCompiler == null) {
 			throw new GradleException("MSVC cl.exe was not found. Run from a VS Developer shell or install Visual Studio C++ build tools.")
 		}
-		if (isWindowsHost && isX64Host && !cmakePrefixPath) {
-			throw new GradleException("Windows native builds require GMP/MPFR from the vcpkg x64-windows triplet. Install it or set -PcmakePrefixPath=...")
+		if (isWindowsHost && !cmakePrefixPath) {
+			throw new GradleException("Windows native builds require GMP/MPFR from the vcpkg ${windowsVcpkgTriplet} triplet. Install it or set -PcmakePrefixPath=...")
 		}
 		if (cmakePrefixPath) {
 			logger.lifecycle("Using CMake prefix path: ${cmakePrefixPath}")
-		} else if (System.getProperty("os.name").toLowerCase().contains("win")) {
-			logger.lifecycle("No CMake prefix path detected on Windows; native build may fall back to stubs")
 		}
 		def command = [
 				cmakeExecutable.absolutePath,
@@ -198,13 +231,14 @@ def cmakeConfigure = tasks.register('cmakeConfigure', Exec) {
 				'-G', 'Ninja',
 				"-DCMAKE_MAKE_PROGRAM=${ninjaExecutable.absolutePath.replace('\\', '/')}",
 				"-DCMAKE_BUILD_TYPE=${project.findProperty('buildType') ?: 'Release'}",
-				"-DCMAKE_INSTALL_PREFIX=${cmakeBuildDir}"
+				"-DCMAKE_INSTALL_PREFIX=${cmakeBuildDir}",
+				"-DUSE_GMP=ON"
 		]
 		if (cmakePrefixPath) {
 			command << "-DCMAKE_PREFIX_PATH=${cmakePrefixPath}"
 		}
-		if (isWindowsHost && isX64Host) {
-			command << "-DVCPKG_TARGET_TRIPLET=x64-windows"
+		if (isWindowsHost) {
+			command << "-DVCPKG_TARGET_TRIPLET=${windowsVcpkgTriplet}"
 		}
 		if (cudaEnabled) {
 			command << "-DBIGMATH_ENABLE_CUDA=ON"
@@ -257,7 +291,7 @@ tasks.named('processResources') {
 	from(layout.projectDirectory.dir('native')) {
 		into('native')
 		includeEmptyDirs = false
-		include '**/*'
+		include supportedNativeClassifiers.collect { classifier -> "${classifier}/**" }
 		exclude { details ->
 			details.relativePath.segments.length == 2 &&
 					details.relativePath.segments[0] == nativeClassifier &&

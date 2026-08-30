@@ -1,16 +1,7 @@
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 	cmake_minimum_required(VERSION 3.21)
 	option(BIGMATH_ENABLE_CUDA "Build the experimental CUDA bigint backend" OFF)
-	if(BIGMATH_ENABLE_CUDA)
-		if(DEFINED ENV{BIGMATH_CUDA_ARCH} AND NOT "$ENV{BIGMATH_CUDA_ARCH}" STREQUAL "")
-			set(CMAKE_CUDA_ARCHITECTURES "$ENV{BIGMATH_CUDA_ARCH}" CACHE STRING "CUDA architectures" FORCE)
-		elseif(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-			set(CMAKE_CUDA_ARCHITECTURES native CACHE STRING "CUDA architectures")
-		endif()
-		project(bigmath-ffm-native VERSION 0.1.0 LANGUAGES CXX CUDA)
-	else()
-		project(bigmath-ffm-native VERSION 0.1.0 LANGUAGES CXX)
-	endif()
+	project(bigmath-ffm-native VERSION 0.1.0 LANGUAGES CXX)
 endif()
 
 option(USE_GMP "Build with GMP/MPFR native bigint/bigdecimal support" ON)
@@ -23,9 +14,22 @@ if(WIN32 AND NOT MSVC)
 	message(FATAL_ERROR "Windows native builds on this experimental CUDA branch require MSVC")
 endif()
 
+set(BIGMATH_SUPPORTED_TARGET OFF)
+if(CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Windows)$"
+		AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|x86-64|amd64|AMD64|X86_64|aarch64|arm64|ARM64)$")
+	set(BIGMATH_SUPPORTED_TARGET ON)
+endif()
+
+if(NOT BIGMATH_SUPPORTED_TARGET)
+	message(FATAL_ERROR
+		"Unsupported Bigmath FFM target: ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}. "
+		"Supported targets are Linux, macOS, and Windows on x86-64 or aarch64."
+	)
+endif()
+
 set(BIGMATH_CUDA_SUPPORTED_PLATFORM OFF)
 if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
-		AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64|X86_64)$")
+		AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|x86-64|amd64|AMD64|X86_64)$")
 	set(BIGMATH_CUDA_SUPPORTED_PLATFORM ON)
 endif()
 
@@ -95,7 +99,7 @@ if(USE_GMP)
 			endif()
 			set(MPFR_FOUND TRUE)
 		endif()
-	elseif(UNIX AND NOT APPLE AND NOT ANDROID)
+	elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 		find_path(GMP_INCLUDE_DIR
 			NAMES gmp.h
 			PATH_SUFFIXES include
@@ -163,6 +167,13 @@ if(USE_GMP)
 			add_library(MPFR::MPFR ALIAS PkgConfig::MPFR)
 		endif()
 	endif()
+
+	if(NOT GMP_FOUND OR NOT MPFR_FOUND)
+		message(FATAL_ERROR
+			"USE_GMP=ON requires both GMP and MPFR. Install both dependencies, provide a CMake prefix/toolchain, "
+			"or configure explicitly with -DUSE_GMP=OFF for the portable Int128-only build."
+		)
+	endif()
 endif()
 
 # Always add all sources so CLion indexes every file
@@ -187,10 +198,10 @@ if(WIN32)
 	set_target_properties(bigmath_ffm PROPERTIES PREFIX "")
 endif()
 
-if(GMP_FOUND AND MPFR_FOUND)
+if(USE_GMP)
 	target_link_libraries(bigmath_ffm PRIVATE MPFR::MPFR GMP::GMP)
 	target_compile_definitions(bigmath_ffm PRIVATE BIGMATH_HAS_GMP)
-	if(UNIX AND NOT APPLE AND NOT ANDROID AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+	if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 		target_link_options(bigmath_ffm PRIVATE -static-libstdc++ -static-libgcc)
 	endif()
 	if(APPLE)
@@ -206,12 +217,7 @@ if(GMP_FOUND AND MPFR_FOUND)
 	endif()
 else()
 	target_compile_definitions(bigmath_ffm PRIVATE BIGMATH_NO_GMP)
-	if(NOT USE_GMP)
-		message(STATUS "GMP/MPFR disabled by USE_GMP=OFF - building stubs only")
-	else()
-		message(STATUS "GMP/MPFR not found - building stubs only. "
-			"Install GMP/MPFR and reconfigure to enable BigInt/BigDecimal")
-	endif()
+	message(STATUS "GMP/MPFR disabled by USE_GMP=OFF - building the portable Int128-only native library")
 endif()
 
 install(TARGETS bigmath_ffm
@@ -219,14 +225,14 @@ install(TARGETS bigmath_ffm
 	RUNTIME DESTINATION lib
 )
 
-if(WIN32 AND GMP_FOUND AND MPFR_FOUND)
+if(USE_GMP AND WIN32)
 	install(FILES
 		$<TARGET_RUNTIME_DLLS:bigmath_ffm>
 		DESTINATION lib
 	)
 endif()
 
-if(UNIX AND NOT APPLE AND NOT ANDROID AND GMP_FOUND AND MPFR_FOUND)
+if(USE_GMP AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	install(FILES
 		${GMP_RUNTIME}
 		${MPFR_RUNTIME}
