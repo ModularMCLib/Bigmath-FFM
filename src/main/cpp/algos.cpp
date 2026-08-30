@@ -685,7 +685,7 @@ static void fft_multiply_impl(
 		caching::ProductCacheLookup lookup = caching::lookup_product(*cache_key);
 		admit_product = lookup.admit;
 		if (lookup.hit) {
-			write_u64_limbs_to_mpz(out, lookup.packed_limbs);
+			write_u64_limbs_to_mpz(out, *lookup.packed_limbs);
 			if (clear_abs_a) mpz_clear(abs_a_storage);
 			if (clear_abs_b) mpz_clear(abs_b_storage);
 			if (a_neg != b_neg) mpz_neg(out, out);

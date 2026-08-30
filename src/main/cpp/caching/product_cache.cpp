@@ -1,6 +1,7 @@
 #include "product_cache.h"
 
 #include <array>
+#include <memory>
 #include <mutex>
 #include <new>
 #include <utility>
@@ -21,7 +22,7 @@ struct CachedProduct {
 	ProductCacheKey key{};
 	uint64_t last_used = 0;
 	size_t bytes = 0;
-	std::vector<uint64_t> packed_limbs;
+	std::shared_ptr<const std::vector<uint64_t>> packed_limbs;
 };
 
 struct AdmissionCandidate {
@@ -70,6 +71,7 @@ public:
 			return;
 		}
 		const size_t result_bytes = packed_limbs.capacity() * sizeof(uint64_t);
+		auto shared_limbs = std::make_shared<const std::vector<uint64_t>>(std::move(packed_limbs));
 		std::lock_guard lock(mutex_);
 		const uint64_t use_tick = next_tick();
 		for (CachedProduct &entry : results_) {
@@ -91,7 +93,7 @@ public:
 				entry.key = key;
 				entry.last_used = use_tick;
 				entry.bytes = result_bytes;
-				entry.packed_limbs = std::move(packed_limbs);
+				entry.packed_limbs = std::move(shared_limbs);
 				result_count_++;
 				bytes_ += result_bytes;
 				metrics_.admissions++;

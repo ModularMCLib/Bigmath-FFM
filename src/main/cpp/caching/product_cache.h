@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace bigmath::caching {
@@ -32,7 +33,7 @@ struct ProductCacheKey {
 struct ProductCacheLookup {
 	bool hit = false;
 	bool admit = false;
-	std::vector<uint64_t> packed_limbs;
+	std::shared_ptr<const std::vector<uint64_t>> packed_limbs;
 };
 
 struct ProductCacheMetrics {
