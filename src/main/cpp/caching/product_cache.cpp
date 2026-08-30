@@ -66,10 +66,10 @@ public:
 			std::vector<uint64_t> packed_limbs,
 			bool admitted
 	) {
-		if (!admitted || packed_limbs.size() > MAX_RESULT_BYTES / sizeof(uint64_t)) {
+		if (!admitted || packed_limbs.capacity() > MAX_RESULT_BYTES / sizeof(uint64_t)) {
 			return;
 		}
-		const size_t result_bytes = packed_limbs.size() * sizeof(uint64_t);
+		const size_t result_bytes = packed_limbs.capacity() * sizeof(uint64_t);
 		std::lock_guard lock(mutex_);
 		const uint64_t use_tick = next_tick();
 		for (CachedProduct &entry : results_) {
