@@ -14,6 +14,7 @@ import java.util.SplittableRandom;
  * compared with public JDK or Bigmath values rather than private Native exports.
  */
 public final class CudaVerify {
+	private static boolean requireResidentModPow;
 
 	public static void main(String[] args) {
 		RuntimeOptions.CudaBackend backend = args.length > 0
@@ -24,6 +25,7 @@ public final class CudaVerify {
 			.productCacheEnabled(false)
 			.build());
 		RuntimeDiagnostics diagnostics = BigmathRuntime.initializeAsync().join();
+		requireResidentModPow = backend == RuntimeOptions.CudaBackend.NTT;
 		if (backend != RuntimeOptions.CudaBackend.CPU &&
 				diagnostics.cuda().calibrationStatus() != RuntimeDiagnostics.CalibrationStatus.READY) {
 			throw new IllegalStateException(diagnostics.cuda().statusMessage());
@@ -47,9 +49,9 @@ public final class CudaVerify {
 			failures += checkBigDeci(precisionBits, random) ? 0 : 1;
 		}
 
-		for (int modulusDigits : new int[]{200000, 250000}) {
-			failures += checkModPow(modulusDigits, random) ? 0 : 1;
-		}
+		failures += checkModPow(200000, true, ExponentDensity.LOW, random) ? 0 : 1;
+		failures += checkModPow(200000, false, ExponentDensity.HIGH, random) ? 0 : 1;
+		failures += checkModPow(250000, true, ExponentDensity.MEDIUM, random) ? 0 : 1;
 
 		System.out.printf("%nRESULT: %s%n", failures == 0 ? "ALL PASS" : failures + " FAILED");
 		if (failures != 0) {
@@ -94,10 +96,20 @@ public final class CudaVerify {
 		}
 	}
 
-	static boolean checkModPow(int modulusDigits, SplittableRandom random) {
+	static boolean checkModPow(
+			int modulusDigits,
+			boolean oddModulus,
+			ExponentDensity density,
+			SplittableRandom random
+	) {
 		BigInteger baseValue = new BigInteger(randDigits(modulusDigits, random));
 		BigInteger modulusValue = new BigInteger(randDigits(modulusDigits, random));
-		BigInteger exponentValue = BigInteger.valueOf(random.nextLong(1L << 40, 1L << 46));
+		modulusValue = oddModulus ? modulusValue.setBit(0) : modulusValue.clearBit(0);
+		BigInteger exponentValue = switch (density) {
+			case LOW -> BigInteger.ONE.setBit(45).setBit(7);
+			case MEDIUM -> BigInteger.valueOf(random.nextLong(1L << 45, 1L << 46));
+			case HIGH -> BigInteger.ONE.shiftLeft(46).subtract(BigInteger.ONE);
+		};
 		BigInteger expected = baseValue.modPow(exponentValue, modulusValue);
 		long fallbackBefore = BigmathRuntime.diagnostics().cpuFallbackCount();
 		try (BigInt base = BigInt.fromBigInteger(baseValue);
@@ -105,10 +117,24 @@ public final class CudaVerify {
 			BigInt modulus = BigInt.fromBigInteger(modulusValue);
 			BigInt result = base.modPow(exponent, modulus)) {
 			long fallbacks = BigmathRuntime.diagnostics().cpuFallbackCount() - fallbackBefore;
-			boolean matches = expected.equals(result.toBigInteger());
+			boolean matches = expected.equals(result.toBigInteger()) &&
+				(!requireResidentModPow || fallbacks == 0);
+			String caseName = (oddModulus ? "odd" : "even") + density.displayName;
 			System.out.printf("%-9d %-8s %14d   %s%n",
-				modulusDigits, "modPow", fallbacks, matches ? "PASS" : "MISMATCH");
+				modulusDigits, caseName, fallbacks, matches ? "PASS" : "MISMATCH");
 			return matches;
+		}
+	}
+
+	enum ExponentDensity {
+		LOW("Low"),
+		MEDIUM("Medium"),
+		HIGH("High");
+
+		final String displayName;
+
+		ExponentDensity(String displayName) {
+			this.displayName = displayName;
 		}
 	}
 

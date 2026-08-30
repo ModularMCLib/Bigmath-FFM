@@ -11,6 +11,38 @@
 
 #ifndef BIGMATH_NO_GMP
 
+#ifdef BIGMATH_HAS_CUDA
+namespace {
+
+struct GpuMpfrMultiplyScratch {
+	mpz_t left;
+	mpz_t right;
+	mpz_t product;
+
+	GpuMpfrMultiplyScratch() {
+		mpz_init(left);
+		mpz_init(right);
+		mpz_init(product);
+	}
+
+	~GpuMpfrMultiplyScratch() {
+		mpz_clear(left);
+		mpz_clear(right);
+		mpz_clear(product);
+	}
+
+	GpuMpfrMultiplyScratch(const GpuMpfrMultiplyScratch &) = delete;
+	GpuMpfrMultiplyScratch &operator=(const GpuMpfrMultiplyScratch &) = delete;
+};
+
+GpuMpfrMultiplyScratch &gpu_mpfr_multiply_scratch() {
+	static thread_local GpuMpfrMultiplyScratch scratch;
+	return scratch;
+}
+
+}
+#endif
+
 // GPU-accelerated MPFR multiply for very high precision. The expensive part of
 // mpfr_mul is the integer significand product; route that through the GPU bigint
 // multiply (accelerated_mul) and let MPFR round exactly once via mpfr_set_z_2exp.
@@ -44,17 +76,28 @@ static bool gpu_mpfr_mul(
 			)) {
 		return false;
 	}
-	mpz_t za, zb, zp;
-	mpz_init(za);
-	mpz_init(zb);
-	mpz_init(zp);
-	const mpfr_exp_t ea = mpfr_get_z_2exp(za, a);   // a = za * 2^ea
-	const mpfr_exp_t eb = mpfr_get_z_2exp(zb, b);   // b = zb * 2^eb
-	bigmath::accelerated_mul(zp, za, zb, cache_key); // exact significand product (GPU)
-	mpfr_set_z_2exp(out, zp, ea + eb, MPFR_RNDN);   // single correct rounding to out's prec
-	mpz_clear(za);
-	mpz_clear(zb);
-	mpz_clear(zp);
+	GpuMpfrMultiplyScratch &scratch = gpu_mpfr_multiply_scratch();
+	const mpfr_exp_t left_exponent = mpfr_get_z_2exp(scratch.left, a);
+	mpz_ptr right_significand = scratch.left;
+	mpfr_exp_t right_exponent = left_exponent;
+	if (a != b) {
+		right_exponent = mpfr_get_z_2exp(scratch.right, b);
+		right_significand = scratch.right;
+	}
+	if (!bigmath::try_cuda_multiply(
+		scratch.product,
+		scratch.left,
+		right_significand,
+		cache_key
+	)) {
+		return false;
+	}
+	mpfr_set_z_2exp(
+		out,
+		scratch.product,
+		left_exponent + right_exponent,
+		MPFR_RNDN
+	);
 	return true;
 #endif
 }

@@ -1,4 +1,5 @@
 #include "cuda_ntt.h"
+#include "cuda_ntt_device.cuh"
 #include "runtime/cuda_workspace_budget.h"
 
 #include <algorithm>
@@ -15,145 +16,9 @@
 
 namespace bigmath::cuda {
 
-// NTT-friendly primes = k*2^b + 1 with primitive root 3. CRT reconstructs
-// exact coefficients over MOD1*MOD3 (~2^58.8).
-// Every modulus is < 2^30, so a product of two reduced residues is < 2^60 and
-// fits in u64 without 128-bit arithmetic.
 namespace {
 
-using u64 = uint64_t;
-
-constexpr u64 MOD1 = 998244353;   // 119 * 2^23 + 1
-constexpr u64 MOD3 = 469762049;   //   7 * 2^26 + 1
-constexpr u64 PRIMITIVE_ROOT = 3;
-
-constexpr u64 host_mulmod(u64 a, u64 b, u64 mod) {
-	return (a % mod) * (b % mod) % mod;
-}
-
-constexpr u64 host_powmod(u64 a, u64 e, u64 mod) {
-	u64 r = 1;
-	while (e) {
-		if (e & 1) r = host_mulmod(r, a, mod);
-		a = host_mulmod(a, a, mod);
-		e >>= 1;
-	}
-	return r;
-}
-
-constexpr u64 MOD1_INV_MOD3 = host_powmod(MOD1, MOD3 - 2, MOD3);
-
-// Barrett constant mu = floor(2^64 / p). For an odd prime p, (~0ULL)/p equals
-// floor(2^64 / p) exactly (p never divides 2^64).
-constexpr u64 barrett_mu(u64 p) { return (~static_cast<u64>(0)) / p; }
-constexpr u64 MU1 = barrett_mu(MOD1);
-constexpr u64 MU3 = barrett_mu(MOD3);
-
-// Barrett reduction of a*b mod p for a,b < p < 2^30 (so a*b < 2^60 < 2^64).
-// Replaces the slow 64-bit hardware modulo on the hottest NTT path. q is
-// floor(x*mu / 2^64) and underestimates floor(x/p) by at most 1, so at most two
-// conditional subtractions restore the canonical residue.
-__device__ __forceinline__ u64 dmul(u64 a, u64 b, u64 p, u64 mu) {
-	const u64 x = a * b;                 // < 2^60
-	const u64 q = __umul64hi(x, mu);     // ~ x / p
-	u64 r = x - q * p;
-	if (r >= p) r -= p;
-	if (r >= p) r -= p;
-	return r;
-}
-
-__global__ void k_bit_reverse(u64 *a, int n, int logn) {
-	const int i = blockIdx.x * blockDim.x + threadIdx.x;
-	if (i >= n) return;
-	// reverse the low logn bits of i
-	unsigned x = static_cast<unsigned>(i);
-	x = (x >> 16) | (x << 16);
-	x = ((x & 0x00ff00ffu) << 8) | ((x & 0xff00ff00u) >> 8);
-	x = ((x & 0x0f0f0f0fu) << 4) | ((x & 0xf0f0f0f0u) >> 4);
-	x = ((x & 0x33333333u) << 2) | ((x & 0xccccccccu) >> 2);
-	x = ((x & 0x55555555u) << 1) | ((x & 0xaaaaaaaau) >> 1);
-	const int j = static_cast<int>(x >> (32 - logn));
-	if (i < j) {
-		const u64 t = a[i];
-		a[i] = a[j];
-		a[j] = t;
-	}
-}
-
-// One Cooley-Tukey stage. `twiddles` holds powers of the primitive n-th root
-// (forward or inverse); stage `len` reads index j*(n/len).
-__global__ void k_butterfly(u64 *a, const u64 *twiddles, int n, int len, u64 p, u64 mu) {
-	const int t = blockIdx.x * blockDim.x + threadIdx.x;
-	const int half = len >> 1;
-	if (t >= (n >> 1)) return;
-	const int block = t / half;
-	const int j = t - block * half;
-	const int i = block * len + j;
-	const int step = n / len;
-	const u64 u = a[i];
-	const u64 v = dmul(a[i + half], twiddles[j * step], p, mu);
-	u64 s = u + v;
-	if (s >= p) s -= p;
-	u64 d = u >= v ? u - v : u + p - v;
-	a[i] = s;
-	a[i + half] = d;
-}
-
-// Fused shared-memory stages. Each block owns one `tile`-element span of the
-// (already bit-reversed) array and runs every Cooley-Tukey stage with len <=
-// tile entirely in shared memory, so those ~log2(tile) stages cost a single
-// global read + write instead of one full global pass each. Twiddle indices
-// (j * n/len) are identical to the global k_butterfly because the span is
-// tile-aligned and tile is a multiple of len, so the same global twiddle table
-// is reused. Launch with blockDim = tile/2 threads and tile*sizeof(u64) smem.
-__global__ void k_ntt_shared(u64 *a, const u64 *twiddles, int n, int tile, u64 p, u64 mu) {
-	extern __shared__ u64 s[];
-	const int base = blockIdx.x * tile;
-	const int tid = threadIdx.x;          // 0 .. tile/2 - 1
-	const int halfTile = tile >> 1;
-	s[tid] = a[base + tid];
-	s[tid + halfTile] = a[base + tid + halfTile];
-	__syncthreads();
-	for (int len = 2; len <= tile; len <<= 1) {
-		const int half = len >> 1;
-		const int step = n / len;
-		const int block = tid / half;
-		const int j = tid - block * half;
-		const int i = block * len + j;
-		const u64 u = s[i];
-		const u64 v = dmul(s[i + half], twiddles[j * step], p, mu);
-		u64 sp = u + v;
-		if (sp >= p) sp -= p;
-		s[i] = sp;
-		s[i + half] = u >= v ? u - v : u + p - v;
-		__syncthreads();
-	}
-	a[base + tid] = s[tid];
-	a[base + tid + halfTile] = s[tid + halfTile];
-}
-
-__global__ void k_pointwise(u64 *fa, const u64 *fb, int n, u64 p, u64 mu) {
-	const int i = blockIdx.x * blockDim.x + threadIdx.x;
-	if (i >= n) return;
-	fa[i] = dmul(fa[i], fb[i], p, mu);
-}
-
-__global__ void k_scale(u64 *a, int n, u64 inv_n, u64 p, u64 mu) {
-	const int i = blockIdx.x * blockDim.x + threadIdx.x;
-	if (i >= n) return;
-	a[i] = dmul(a[i], inv_n, p, mu);
-}
-
-// out[i] = CRT(c1[i] mod MOD1, c3[i] mod MOD3)  in [0, MOD1*MOD3)
-__global__ void k_crt(const u64 *c1, const u64 *c3, u64 *out, int count, u64 mu3) {
-	const int i = blockIdx.x * blockDim.x + threadIdx.x;
-	if (i >= count) return;
-	const u64 r1 = c1[i];
-	const u64 r3 = c3[i];
-	const u64 r1m = r1 % MOD3;
-	const u64 delta = r3 >= r1m ? r3 - r1m : r3 + MOD3 - r1m;
-	out[i] = r1 + dmul(delta, MOD1_INV_MOD3, MOD3, mu3) * MOD1;
-}
+using namespace ntt_device;
 
 struct NttWorkspace {
 	int capacity = 0;          // allocated element count (n)
@@ -485,18 +350,6 @@ NttWorkspacePool &ntt_workspace_pool() {
 	return pool;
 }
 
-bool next_pow2(size_t value, int &out_n, int &out_logn) {
-	if (value > static_cast<size_t>(NTT_MAX_TRANSFORM_SIZE)) return false;
-	int p = 1, logn = 0;
-	while (static_cast<size_t>(p) < value) {
-		p <<= 1;
-		logn++;
-	}
-	out_n = p;
-	out_logn = logn;
-	return true;
-}
-
 // Fill `host_w` with powers of the primitive n-th root of unity mod p and
 // upload to `dst` (n/2 entries). `inverse` uses the inverse root.
 bool upload_twiddles(NttWorkspace &ws, u64 *dst, int n, u64 p, bool inverse) {
@@ -560,37 +413,6 @@ bool load_digits(
 	) == cudaSuccess;
 }
 
-constexpr int BLOCK = 256;
-// Largest fused shared-memory tile. tile/2 threads/block (<= 1024) and
-// tile*8 bytes of shared memory (16 KiB at 2048); fuses log2(tile)=11 stages.
-constexpr int SHARED_TILE = 2048;
-
-// Run all butterfly stages for one transform: the low stages (len <= tile)
-// fused in shared memory, the remaining high-stride stages as global passes.
-void run_stages(u64 *a, const u64 *tw, int n, u64 p, u64 mu, cudaStream_t stream) {
-	const int tile = n < SHARED_TILE ? n : SHARED_TILE;
-	k_ntt_shared<<<n / tile, tile / 2, sizeof(u64) * static_cast<size_t>(tile), stream>>>(
-			a, tw, n, tile, p, mu);
-	const int butter = (n / 2 + BLOCK - 1) / BLOCK;
-	for (int len = 2 * tile; len <= n; len <<= 1) {
-		k_butterfly<<<butter, BLOCK, 0, stream>>>(a, tw, n, len, p, mu);
-	}
-}
-
-bool forward_ntt(u64 *a, const u64 *wf, int n, int logn, u64 p, u64 mu, cudaStream_t stream) {
-	k_bit_reverse<<<(n + BLOCK - 1) / BLOCK, BLOCK, 0, stream>>>(a, n, logn);
-	run_stages(a, wf, n, p, mu, stream);
-	return cudaGetLastError() == cudaSuccess;
-}
-
-bool inverse_ntt(u64 *a, const u64 *wi, int n, int logn, u64 p, u64 mu, cudaStream_t stream) {
-	k_bit_reverse<<<(n + BLOCK - 1) / BLOCK, BLOCK, 0, stream>>>(a, n, logn);
-	run_stages(a, wi, n, p, mu, stream);
-	const u64 inv_n = host_powmod(static_cast<u64>(n), p - 2, p);
-	k_scale<<<(n + BLOCK - 1) / BLOCK, BLOCK, 0, stream>>>(a, n, inv_n, p, mu);
-	return cudaGetLastError() == cudaSuccess;
-}
-
 // fa <- IDFT( DFT(a) .* DFT(b) ) mod p, results left in workspace.fa.
 // Twiddles must already be uploaded for this n (see ensure_twiddles).
 bool convolve_one_prime(NttWorkspace &ws, const std::vector<uint16_t> &a,
@@ -606,18 +428,24 @@ bool convolve_one_prime(NttWorkspace &ws, const std::vector<uint16_t> &a,
 	if (!squaring && !load_digits(ws, ws.host_b, ws.fb, b, n)) {
 		return false;
 	}
-	if (!forward_ntt(ws.fa, wf, n, logn, p, mu, ws.stream)) {
+	if (!forward(ws.fa, wf, n, logn, p, mu, ws.stream)) {
 		return false;
 	}
-	if (!squaring && !forward_ntt(ws.fb, wf, n, logn, p, mu, ws.stream)) {
+	if (!squaring && !forward(ws.fb, wf, n, logn, p, mu, ws.stream)) {
 		return false;
 	}
 	const u64 *rhs = squaring ? ws.fa : ws.fb;
-	k_pointwise<<<(n + BLOCK - 1) / BLOCK, BLOCK, 0, ws.stream>>>(ws.fa, rhs, n, p, mu);
+	pointwise_multiply<<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, ws.stream>>>(
+		ws.fa,
+		rhs,
+		n,
+		p,
+		mu
+	);
 	if (cudaGetLastError() != cudaSuccess) {
 		return false;
 	}
-	return inverse_ntt(ws.fa, wi, n, logn, p, mu, ws.stream) &&
+	return inverse(ws.fa, wi, n, logn, p, mu, ws.stream) &&
 		cudaStreamSynchronize(ws.stream) == cudaSuccess;
 }
 
@@ -639,7 +467,7 @@ bool convolve_ntt_u16_to_limbs(const std::vector<uint16_t> &a,
 
 	const size_t result_size = a.size() + b.size() - 1;
 	int n = 0, logn = 0;
-	if (!next_pow2(result_size, n, logn)) {
+	if (!next_power_of_two(result_size, n, logn)) {
 		return false;
 	}
 
@@ -671,8 +499,12 @@ bool convolve_ntt_u16_to_limbs(const std::vector<uint16_t> &a,
 	if (!convolve_one_prime(ws, a, b, n, logn, MOD3, MU3, ws.wf3, ws.wi3)) {
 		return false;
 	}
-	k_crt<<<(static_cast<int>(result_size) + BLOCK - 1) / BLOCK, BLOCK, 0, ws.stream>>>(
-			ws.c1, ws.fa, ws.out, static_cast<int>(result_size), MU3);
+	reconstruct_crt<<<
+		(static_cast<int>(result_size) + BLOCK_SIZE - 1) / BLOCK_SIZE,
+		BLOCK_SIZE,
+		0,
+		ws.stream
+	>>>(ws.c1, ws.fa, ws.out, static_cast<int>(result_size));
 	if (cudaGetLastError() != cudaSuccess) {
 		return false;
 	}

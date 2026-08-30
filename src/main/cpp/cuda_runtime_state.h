@@ -45,12 +45,18 @@ struct DispatchDecision {
 	uint64_t max_queue_wait_nanos = 0;
 };
 
+struct ModularOperationCosts {
+	uint64_t multiply_nanos = 1;
+	uint64_t square_nanos = 1;
+};
+
 bool configure(const RuntimeConfiguration &configuration);
 int initialize_async();
 bool is_available();
 bool calibration_ready();
 RuntimeBackend active_backend();
 DispatchDecision choose_dispatch(const DispatchRequest &request);
+ModularOperationCosts modular_operation_costs(int transform_size);
 int device_count();
 int device_id();
 int probe_count();

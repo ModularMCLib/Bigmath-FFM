@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 @Fork(1)
 public class BigDeciBenchmark {
 	private static final BigNumberFormat GROUPED_FORMAT = BigNumberFormat.ofPattern("#,##0.################");
+	private static final int MULTIPLY_PAIRS = 32;
 
 	@State(Scope.Thread)
 	public static class PrecisionState {
@@ -94,6 +95,58 @@ public class BigDeciBenchmark {
 		}
 	}
 
+	@State(Scope.Thread)
+	public static class HighPrecisionMultiplyState {
+		@Param({"131072", "196608", "262144", "393216", "524288", "1048576"})
+		public int precision;
+
+		BigDeci[] left;
+		BigDeci[] alternateLeft;
+		BigDeci[] right;
+		BigDeci result;
+		int pair;
+		int selectedPair;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			int digits = (int) (precision * 0.30103) - 8;
+			left = new BigDeci[MULTIPLY_PAIRS];
+			alternateLeft = new BigDeci[MULTIPLY_PAIRS];
+			right = new BigDeci[MULTIPLY_PAIRS];
+			for (int index = 0; index < MULTIPLY_PAIRS; index++) {
+				String suffix = Integer.toString(10 + index);
+				String leftDigits = repeatDigits("1234567890", digits - suffix.length()) + suffix;
+				String alternateDigits = repeatDigits("2234567890", digits - suffix.length()) + suffix;
+				String rightDigits = repeatDigits("9876543210", digits - suffix.length()) + suffix;
+				try (BigInt leftInteger = BigInt.fromString(leftDigits, 10);
+					BigInt alternateInteger = BigInt.fromString(alternateDigits, 10);
+					BigInt rightInteger = BigInt.fromString(rightDigits, 10)) {
+					left[index] = BigDeci.fromBigInt(leftInteger, precision);
+					alternateLeft[index] = BigDeci.fromBigInt(alternateInteger, precision);
+					right[index] = BigDeci.fromBigInt(rightInteger, precision);
+				}
+			}
+			result = BigDeci.fromDouble(0.0, precision);
+		}
+
+		@Setup(Level.Invocation)
+		public void prepareInvocation() {
+			selectedPair = pair;
+			pair = (pair + 1) % MULTIPLY_PAIRS;
+			left[selectedPair].set(alternateLeft[selectedPair]);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			for (int index = 0; index < MULTIPLY_PAIRS; index++) {
+				left[index].close();
+				alternateLeft[index].close();
+				right[index].close();
+			}
+			result.close();
+		}
+	}
+
 	@Benchmark
 	public void add(PrecisionState state, Blackhole blackhole) {
 		try (BigDeci result = state.left.add(state.right)) {
@@ -121,6 +174,20 @@ public class BigDeciBenchmark {
 	@Benchmark
 	public void divideInto(PrecisionState state, Blackhole blackhole) {
 		blackhole.consume(state.result.divideInto(state.left, state.right));
+	}
+
+	@Benchmark
+	public void highPrecisionMultiply(HighPrecisionMultiplyState state, Blackhole blackhole) {
+		int pair = state.selectedPair;
+		try (BigDeci result = state.left[pair].multiply(state.right[pair])) {
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void highPrecisionMultiplyInto(HighPrecisionMultiplyState state, Blackhole blackhole) {
+		int pair = state.selectedPair;
+		blackhole.consume(state.result.multiplyInto(state.left[pair], state.right[pair]));
 	}
 
 	@Benchmark

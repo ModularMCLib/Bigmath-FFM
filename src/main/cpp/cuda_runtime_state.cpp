@@ -16,6 +16,7 @@
 
 #ifdef BIGMATH_HAS_CUDA
 #include "cuda_convolution.h"
+#include "cuda_modular.h"
 #include "cuda_ntt.h"
 #include <cuda_runtime.h>
 #endif
@@ -141,7 +142,8 @@ RuntimeState probe_runtime(const RuntimeConfiguration &configuration) {
 		fraction_bytes
 	);
 	if (!configure_convolution_workspace_pool(selected, result.workspace_budget_bytes) ||
-			!configure_ntt_workspace_pool(selected)) {
+			!configure_ntt_workspace_pool(selected) ||
+			!configure_modular_workspace_pool(selected)) {
 		result.available = false;
 		result.active_backend = RuntimeBackend::CPU;
 		calibration_status.store(
@@ -448,6 +450,29 @@ DispatchDecision choose_dispatch(const DispatchRequest &request) {
 	return decision;
 }
 
+ModularOperationCosts modular_operation_costs(int transform_size) {
+	ModularOperationCosts costs;
+	if (!calibration_ready() || transform_size <= 0) return costs;
+	int logarithm = 0;
+	int candidate = transform_size;
+	while (candidate > 1 && (candidate & 1) == 0) {
+		candidate >>= 1;
+		logarithm++;
+	}
+	if (candidate != 1 ||
+			logarithm >= static_cast<int>(bigmath::runtime::CUDA_TRANSFORM_BUCKETS)) {
+		return costs;
+	}
+	std::lock_guard lock(state_mutex);
+	const bigmath::runtime::DispatchProfileCell &multiply =
+		state.calibration.cells[0][static_cast<size_t>(logarithm)];
+	const bigmath::runtime::DispatchProfileCell &square =
+		state.calibration.cells[4][static_cast<size_t>(logarithm)];
+	if (multiply.ntt_nanos != 0) costs.multiply_nanos = multiply.ntt_nanos;
+	if (square.ntt_nanos != 0) costs.square_nanos = square.ntt_nanos;
+	return costs;
+}
+
 int device_count() {
 	return probe_state_snapshot().count;
 }
@@ -521,12 +546,15 @@ int snapshot(BigmathRuntimeSnapshot *out) {
 	if (current.available) {
 		out->workspace_budget_bytes = convolution_workspace_budget_bytes();
 		out->workspace_in_use_bytes =
-			convolution_workspace_in_use_bytes() + ntt_workspace_in_use_bytes();
+			convolution_workspace_in_use_bytes() + ntt_workspace_in_use_bytes() +
+			modular_workspace_in_use_bytes();
 		out->workspace_capacity = static_cast<uint32_t>(
-			convolution_workspace_capacity() + ntt_workspace_capacity()
+			convolution_workspace_capacity() + ntt_workspace_capacity() +
+			modular_workspace_capacity()
 		);
 		out->workspace_in_use = static_cast<uint32_t>(
-			convolution_workspace_in_use() + ntt_workspace_in_use()
+			convolution_workspace_in_use() + ntt_workspace_in_use() +
+			modular_workspace_in_use()
 		);
 	}
 #endif
