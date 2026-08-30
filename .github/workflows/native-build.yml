@@ -111,7 +111,7 @@ jobs:
         if: matrix.platform == 'linux'
         shell: bash
         run: |
-          chmod +x gradlew
+          chmod +x gradlew .github/scripts/stage-native-runtime-unix.sh
           ./gradlew buildNative -PbigmathEnableCuda=true '-PbigmathCudaArch=75;80;86;89;90'
           .github/scripts/stage-native-runtime-unix.sh \
             '${{ matrix.platform }}' '${{ matrix.classifier }}' '${{ matrix.main_library }}'
