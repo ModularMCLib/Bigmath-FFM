@@ -16,6 +16,7 @@
 
 #ifdef BIGMATH_HAS_CUDA
 #include "cuda_convolution.h"
+#include "cuda_modular.h"
 #include "cuda_ntt.h"
 #include <cuda_runtime.h>
 #endif
@@ -141,7 +142,8 @@ RuntimeState probe_runtime(const RuntimeConfiguration &configuration) {
 		fraction_bytes
 	);
 	if (!configure_convolution_workspace_pool(selected, result.workspace_budget_bytes) ||
-			!configure_ntt_workspace_pool(selected)) {
+			!configure_ntt_workspace_pool(selected) ||
+			!configure_modular_workspace_pool(selected)) {
 		result.available = false;
 		result.active_backend = RuntimeBackend::CPU;
 		calibration_status.store(
@@ -521,12 +523,15 @@ int snapshot(BigmathRuntimeSnapshot *out) {
 	if (current.available) {
 		out->workspace_budget_bytes = convolution_workspace_budget_bytes();
 		out->workspace_in_use_bytes =
-			convolution_workspace_in_use_bytes() + ntt_workspace_in_use_bytes();
+			convolution_workspace_in_use_bytes() + ntt_workspace_in_use_bytes() +
+			modular_workspace_in_use_bytes();
 		out->workspace_capacity = static_cast<uint32_t>(
-			convolution_workspace_capacity() + ntt_workspace_capacity()
+			convolution_workspace_capacity() + ntt_workspace_capacity() +
+			modular_workspace_capacity()
 		);
 		out->workspace_in_use = static_cast<uint32_t>(
-			convolution_workspace_in_use() + ntt_workspace_in_use()
+			convolution_workspace_in_use() + ntt_workspace_in_use() +
+			modular_workspace_in_use()
 		);
 	}
 #endif

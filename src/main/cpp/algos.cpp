@@ -10,6 +10,7 @@
 #include <vector>
 
 #ifdef BIGMATH_HAS_CUDA
+#include "cuda_modular.h"
 #include "cuda_ntt.h"
 #endif
 
@@ -208,89 +209,127 @@ void fast_pow(mpz_ptr out, mpz_ptr base, uint64_t exp) {
 	mpz_clear(b);
 }
 
-// ---- Modular Exponentiation (Barrett reduction, GPU multiplies) ----
-// Barrett reducer for a fixed modulus m: maps x in [0, m^2) to x mod m without
-// division, using two big multiplies (x*mu and q*m) that route through
-// accelerated_mul (GPU above the CUDA threshold). mu = floor(2^(2k)/m) with
-// k = bit length of m, precomputed once per modpow call.
-namespace {
-struct Barrett {
-	mpz_t m, mu, q, qm;
-	mp_bitcnt_t k2 = 0;
+static void export_abs_mpz_to_u16_digits(
+	mpz_ptr value,
+	mp_bitcnt_t bits,
+	std::vector<uint16_t> &out
+);
+static void write_u16_digits_to_mpz(
+	mpz_ptr out,
+	const std::vector<uint16_t> &digits,
+	unsigned bits_per_digit
+);
+static cuda::DispatchDecision cuda_dispatch_decision(
+	uint64_t left_bits,
+	uint64_t right_bits,
+	bool square
+);
 
-	void init(mpz_ptr mod) {
-		mpz_init_set(m, mod);
-		const mp_bitcnt_t k = mpz_sizeinbase(m, 2);
-		k2 = 2 * k;
-		mpz_init2(mu, k2 + 2);
-		mpz_init(q);
-		mpz_init(qm);
-		mpz_setbit(mu, k2);          // mu = 2^(2k)
-		mpz_tdiv_q(mu, mu, m);       // mu = floor(2^(2k) / m)
+#ifdef BIGMATH_HAS_CUDA
+static bool try_resident_modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr modulus) {
+	const mp_bitcnt_t modulus_bits = mpz_sizeinbase(modulus, 2);
+	const cuda::DispatchDecision dispatch = cuda_dispatch_decision(
+		modulus_bits,
+		modulus_bits,
+		true
+	);
+	if (dispatch.backend != cuda::RuntimeBackend::NTT) return false;
+	const size_t modulus_digits = static_cast<size_t>((modulus_bits + 15) / 16);
+	if (modulus_digits == 0 ||
+			modulus_digits > static_cast<size_t>((cuda::NTT_MAX_TRANSFORM_SIZE - 4) / 2)) {
+		return false;
 	}
 
-	void clear() {
-		mpz_clear(m);
-		mpz_clear(mu);
-		mpz_clear(q);
-		mpz_clear(qm);
-	}
+	mpz_t reduced_base;
+	mpz_t radix;
+	mpz_t reduction_constant;
+	mpz_t identity;
+	mpz_init(reduced_base);
+	mpz_init(radix);
+	mpz_init(reduction_constant);
+	mpz_init(identity);
+	mpz_mod(reduced_base, base, modulus);
+	mpz_setbit(radix, static_cast<mp_bitcnt_t>(modulus_digits * 16));
 
-	// r = x mod m for 0 <= x < m^2. q = floor(x*mu / 2^(2k)) underestimates the
-	// quotient by a small bounded amount, so a few conditional subtractions fix r.
-	void reduce(mpz_ptr r, mpz_ptr x) {
-		accelerated_mul(q, x, mu);
-		mpz_tdiv_q_2exp(q, q, k2);    // q = (x*mu) >> 2k
-		accelerated_mul(qm, q, m);
-		mpz_sub(r, x, qm);           // r = x - q*m  (>= 0 since q <= x/m)
-		while (mpz_cmp(r, m) >= 0) {
-			mpz_sub(r, r, m);
+	cuda::ResidentReduction reduction = cuda::ResidentReduction::BARRETT;
+	bool prepared = true;
+	if (mpz_odd_p(modulus)) {
+		reduction = cuda::ResidentReduction::MONTGOMERY;
+		prepared = mpz_invert(reduction_constant, modulus, radix) != 0;
+		if (prepared) {
+			mpz_neg(reduction_constant, reduction_constant);
+			mpz_mod(reduction_constant, reduction_constant, radix);
+			mpz_mul(reduced_base, reduced_base, radix);
+			mpz_mod(reduced_base, reduced_base, modulus);
+			mpz_mod(identity, radix, modulus);
 		}
+	} else {
+		mpz_set_ui(reduction_constant, 0);
+		mpz_setbit(
+			reduction_constant,
+			static_cast<mp_bitcnt_t>(modulus_digits * 32)
+		);
+		mpz_tdiv_q(reduction_constant, reduction_constant, modulus);
+		mpz_set_ui(identity, 1);
 	}
-};
+
+	std::vector<uint16_t> base_digits;
+	std::vector<uint16_t> exponent_digits;
+	std::vector<uint16_t> modulus_value;
+	std::vector<uint16_t> constant_digits;
+	std::vector<uint16_t> identity_digits;
+	std::vector<uint16_t> result_digits;
+	bool completed = false;
+	if (prepared) {
+		export_abs_mpz_to_u16_digits(
+			reduced_base,
+			mpz_sizeinbase(reduced_base, 2),
+			base_digits
+		);
+		export_abs_mpz_to_u16_digits(exp, mpz_sizeinbase(exp, 2), exponent_digits);
+		export_abs_mpz_to_u16_digits(modulus, modulus_bits, modulus_value);
+		export_abs_mpz_to_u16_digits(
+			reduction_constant,
+			mpz_sizeinbase(reduction_constant, 2),
+			constant_digits
+		);
+		export_abs_mpz_to_u16_digits(
+			identity,
+			mpz_sizeinbase(identity, 2),
+			identity_digits
+		);
+		completed = cuda::resident_modpow_u16(
+			base_digits,
+			exponent_digits,
+			modulus_value,
+			constant_digits,
+			identity_digits,
+			reduction,
+			dispatch.max_queue_wait_nanos,
+			result_digits
+		);
+	}
+	if (completed) write_u16_digits_to_mpz(out, result_digits, 16);
+	mpz_clear(reduced_base);
+	mpz_clear(radix);
+	mpz_clear(reduction_constant);
+	mpz_clear(identity);
+	return completed;
 }
+#endif
 
 void modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod) {
-	// GMP handles small/edge cases (and is faster below the GPU threshold).
-	// Measured crossover on an RTX 3050: GPU Barrett modpow loses at 80k-digit
-	// moduli (0.77x) but wins from ~150k digits (1.45x at 200k, 1.65x at 400k),
-	// so engage only at >= 2^19 bits ~= 158k decimal digits.
 	static constexpr mp_bitcnt_t MODPOW_BIT_THRESHOLD = 524288;
 	if (mpz_sgn(mod) <= 0 || mpz_sgn(exp) < 0 || mpz_cmp_ui(mod, 1) == 0 ||
-			mpz_sizeinbase(mod, 2) < MODPOW_BIT_THRESHOLD ||
-			!cuda_dispatch_favorable(
-				mpz_sizeinbase(mod, 2),
-				mpz_sizeinbase(mod, 2),
-				true
-			)) {
+			mpz_sizeinbase(mod, 2) < MODPOW_BIT_THRESHOLD) {
 		mpz_powm(out, base, exp, mod);
 		return;
 	}
-
-	Barrett br;
-	br.init(mod);
-	mpz_t b, acc, t;
-	mpz_init(b);
-	mpz_init(acc);
-	mpz_init(t);
-	mpz_mod(b, base, mod);            // b = base mod m
-	mpz_set_ui(acc, 1);
-	const mp_bitcnt_t bits = mpz_sizeinbase(exp, 2);
-	for (mp_bitcnt_t i = 0; i < bits; i++) {
-		if (mpz_tstbit(exp, i)) {
-			accelerated_mul(t, acc, b);   // acc *= b (mod m)
-			br.reduce(acc, t);
-		}
-		if (i + 1 < bits) {
-			accelerated_mul(t, b, b);     // b = b^2 (mod m)
-			br.reduce(b, t);
-		}
-	}
-	mpz_set(out, acc);
-	mpz_clear(b);
-	mpz_clear(acc);
-	mpz_clear(t);
-	br.clear();
+#ifdef BIGMATH_HAS_CUDA
+	if (try_resident_modpow(out, base, exp, mod)) return;
+	cuda::record_cpu_fallback();
+#endif
+	mpz_powm(out, base, exp, mod);
 }
 
 // ---- Product Tree Factorial ----

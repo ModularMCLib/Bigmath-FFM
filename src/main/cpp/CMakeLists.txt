@@ -203,10 +203,10 @@ target_include_directories(bigmath_ffm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(bigmath_ffm PRIVATE BIGMATH_BUILD_ID="${BIGMATH_BUILD_ID}")
 
 if(BIGMATH_ENABLE_CUDA AND BIGMATH_CUDA_SUPPORTED_PLATFORM)
-	target_sources(bigmath_ffm PRIVATE cuda_convolution.cu cuda_ntt.cu)
+	target_sources(bigmath_ffm PRIVATE cuda_convolution.cu cuda_modular.cu cuda_ntt.cu)
 	target_compile_definitions(bigmath_ffm PRIVATE BIGMATH_HAS_CUDA)
 	target_link_libraries(bigmath_ffm PRIVATE CUDA::cudart CUDA::cufft)
-	set_source_files_properties(cuda_convolution.cu cuda_ntt.cu PROPERTIES LANGUAGE CUDA)
+	set_source_files_properties(cuda_convolution.cu cuda_modular.cu cuda_ntt.cu PROPERTIES LANGUAGE CUDA)
 endif()
 
 if(WIN32)
