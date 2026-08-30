@@ -29,6 +29,7 @@ inline constexpr u64 STATUS_OK = 0;
 inline constexpr u64 STATUS_CARRY_OVERFLOW = 1;
 inline constexpr u64 STATUS_MONTGOMERY_INVARIANT = 2;
 inline constexpr u64 STATUS_REDUCTION_RANGE = 3;
+inline constexpr u64 STATUS_WINDOW_RANGE = 4;
 
 std::atomic<uint64_t> resident_buffer_bytes{0};
 
@@ -147,6 +148,37 @@ static __global__ void set_one(u64 *value, int digits, u64 *status) {
 	if (blockIdx.x != 0 || threadIdx.x != 0 || *status != STATUS_OK) return;
 	for (int index = 0; index < digits; index++) value[index] = 0;
 	value[0] = 1;
+}
+
+static __global__ void select_window_power(
+		const u64 *exponent,
+		int exponent_digits,
+		int lower_bit,
+		int bit_count,
+		const u64 *window_table,
+		int table_entries,
+		int stride,
+		u64 *selected,
+		u64 *status
+) {
+	if (*status != STATUS_OK) return;
+	u64 window = 0;
+	for (int offset = 0; offset < bit_count; offset++) {
+		const int bit = lower_bit + offset;
+		const int digit = bit / 16;
+		if (digit < exponent_digits) {
+			window |= ((exponent[digit] >> (bit % 16)) & 1) << offset;
+		}
+	}
+	const int table_index = static_cast<int>(window >> 1);
+	if (window == 0 || (window & 1) == 0 || table_index >= table_entries) {
+		if (blockIdx.x == 0 && threadIdx.x == 0) *status = STATUS_WINDOW_RANGE;
+		return;
+	}
+	const int index = blockIdx.x * blockDim.x + threadIdx.x;
+	if (index < stride) {
+		selected[index] = window_table[static_cast<size_t>(table_index) * stride + index];
+	}
 }
 
 struct ModularNttWorkspace {
@@ -508,6 +540,8 @@ struct ResidentBuffers {
 	int modulus_digits = 0;
 	int stride = 0;
 	int full_digits = 0;
+	int exponent_digits = 0;
+	int window_entries = 0;
 	u64 *block = nullptr;
 	u64 *host_initial = nullptr;
 	u64 *modulus = nullptr;
@@ -515,10 +549,12 @@ struct ResidentBuffers {
 	u64 *accumulator = nullptr;
 	u64 *power = nullptr;
 	u64 *spare = nullptr;
+	u64 *exponent = nullptr;
 	u64 *full_first = nullptr;
 	u64 *full_second = nullptr;
 	u64 *quotient = nullptr;
 	u64 *status = nullptr;
+	u64 *window_table = nullptr;
 	uint64_t bytes = 0;
 
 	~ResidentBuffers() {
@@ -537,13 +573,22 @@ struct ResidentBuffers {
 		}
 	}
 
-	bool allocate(int selected_device, int digits) {
+	bool allocate(
+			int selected_device,
+			int digits,
+			int selected_exponent_digits,
+			int selected_window_entries
+	) {
 		device = selected_device;
 		modulus_digits = digits;
 		stride = digits + 1;
 		full_digits = 2 * digits + 4;
+		exponent_digits = selected_exponent_digits;
+		window_entries = selected_window_entries;
 		const size_t total_digits = static_cast<size_t>(stride) * 5 +
-			static_cast<size_t>(full_digits) * 2 + static_cast<size_t>(digits + 2) + 1;
+			static_cast<size_t>(exponent_digits) +
+			static_cast<size_t>(full_digits) * 2 + static_cast<size_t>(digits + 2) + 1 +
+			static_cast<size_t>(window_entries) * stride;
 		if (total_digits > std::numeric_limits<size_t>::max() / sizeof(u64)) return false;
 		bytes = static_cast<uint64_t>(total_digits * sizeof(u64));
 		if (!bigmath::runtime::reserve_cuda_workspace_bytes(device, bytes)) {
@@ -554,7 +599,7 @@ struct ResidentBuffers {
 		if (cudaMalloc(&block, static_cast<size_t>(bytes)) != cudaSuccess ||
 				cudaHostAlloc(
 					reinterpret_cast<void **>(&host_initial),
-					static_cast<size_t>(stride) * 5 * sizeof(u64),
+					(static_cast<size_t>(stride) * 5 + exponent_digits) * sizeof(u64),
 					cudaHostAllocDefault
 				) != cudaSuccess) {
 			release();
@@ -566,10 +611,12 @@ struct ResidentBuffers {
 		accumulator = cursor; cursor += stride;
 		power = cursor; cursor += stride;
 		spare = cursor; cursor += stride;
+		exponent = cursor; cursor += exponent_digits;
 		full_first = cursor; cursor += full_digits;
 		full_second = cursor; cursor += full_digits;
 		quotient = cursor; cursor += digits + 2;
-		status = cursor;
+		status = cursor; cursor++;
+		window_table = cursor;
 		return true;
 	}
 
@@ -585,6 +632,7 @@ struct ResidentBuffers {
 
 	bool initialize(
 			const std::vector<uint16_t> &base,
+			const std::vector<uint16_t> &exponent_value,
 			const std::vector<uint16_t> &modulus_value,
 			const std::vector<uint16_t> &reduction_constant,
 			const std::vector<uint16_t> &identity,
@@ -595,7 +643,13 @@ struct ResidentBuffers {
 		copy_to_padded(host_initial + stride * 2, stride, identity);
 		copy_to_padded(host_initial + stride * 3, stride, base);
 		for (int index = 0; index < stride; index++) host_initial[stride * 4 + index] = 0;
-		const size_t initial_bytes = static_cast<size_t>(stride) * 5 * sizeof(u64);
+		copy_to_padded(
+			host_initial + static_cast<size_t>(stride) * 5,
+			exponent_digits,
+			exponent_value
+		);
+		const size_t initial_bytes =
+			(static_cast<size_t>(stride) * 5 + exponent_digits) * sizeof(u64);
 		return cudaMemcpyAsync(
 			block,
 			host_initial,
@@ -908,6 +962,52 @@ bool exponent_bit(const std::vector<uint16_t> &exponent, size_t bit) {
 	return digit < exponent.size() && ((exponent[digit] >> (bit % 16)) & 1) != 0;
 }
 
+size_t window_start(
+		const std::vector<uint16_t> &exponent,
+		size_t position,
+		unsigned width
+) {
+	const size_t minimum = position > width ? position - width : 0;
+	size_t start = minimum;
+	while (!exponent_bit(exponent, start)) start++;
+	return start;
+}
+
+uint64_t window_operation_count(
+		const std::vector<uint16_t> &exponent,
+		size_t bits,
+		unsigned width
+) {
+	const uint64_t entries = UINT64_C(1) << (width - 1);
+	uint64_t operations = width == 1 ? 0 : entries;
+	size_t position = bits;
+	while (position > 0) {
+		if (!exponent_bit(exponent, position - 1)) {
+			position--;
+			continue;
+		}
+		position = window_start(exponent, position, width);
+		operations++;
+	}
+	return operations;
+}
+
+unsigned select_window_width(
+		const std::vector<uint16_t> &exponent,
+		size_t bits
+) {
+	unsigned selected = 1;
+	uint64_t selected_operations = window_operation_count(exponent, bits, selected);
+	for (unsigned width = 2; width <= 6; width++) {
+		const uint64_t operations = window_operation_count(exponent, bits, width);
+		if (operations < selected_operations) {
+			selected = width;
+			selected_operations = operations;
+		}
+	}
+	return selected;
+}
+
 bool less_than_modulus(
 		const std::vector<uint16_t> &value,
 		const std::vector<uint16_t> &modulus
@@ -952,6 +1052,10 @@ bool resident_modpow_u16(
 	if (base.empty() || modulus.empty() || reduction_constant.empty() || identity.empty()) {
 		return false;
 	}
+	if (exponent.empty() ||
+			exponent.size() > static_cast<size_t>(std::numeric_limits<int>::max() / 16)) {
+		return false;
+	}
 	if (modulus.size() > static_cast<size_t>((NTT_MAX_TRANSFORM_SIZE - 4) / 2)) {
 		return false;
 	}
@@ -961,6 +1065,9 @@ bool resident_modpow_u16(
 	if (!next_power_of_two(static_cast<size_t>(2 * digits + 3), transform_size, logarithm)) {
 		return false;
 	}
+	const size_t bits = exponent_bit_length(exponent);
+	const unsigned window_width = select_window_width(exponent, bits);
+	const int window_entries = 1 << (window_width - 1);
 
 	ModularWorkspacePool::Lease lease = workspace_pool().acquire(
 		transform_size,
@@ -978,8 +1085,14 @@ bool resident_modpow_u16(
 		return false;
 	}
 	ResidentBuffers buffers;
-	if (!buffers.allocate(device, digits) || !buffers.initialize(
+	if (!buffers.allocate(
+			device,
+			digits,
+			static_cast<int>(exponent.size()),
+			window_entries
+	) || !buffers.initialize(
 			base,
+			exponent,
 			modulus,
 			reduction_constant,
 			identity,
@@ -1011,22 +1124,77 @@ bool resident_modpow_u16(
 			);
 	};
 
-	const size_t bits = exponent_bit_length(exponent);
-	for (size_t bit = 0; bit < bits; bit++) {
-		if (exponent_bit(exponent, bit)) {
-			if (!modular_multiply(buffers.accumulator, buffers.power, buffers.spare)) {
+	if (cudaMemcpyAsync(
+			buffers.window_table,
+			buffers.power,
+			sizeof(u64) * static_cast<size_t>(buffers.stride),
+			cudaMemcpyDeviceToDevice,
+			workspace.stream
+	) != cudaSuccess) {
+		lease.discard();
+		return false;
+	}
+	if (window_entries > 1) {
+		if (!modular_multiply(buffers.power, buffers.power, buffers.spare)) {
+			lease.discard();
+			return false;
+		}
+		for (int entry = 1; entry < window_entries; entry++) {
+			if (!modular_multiply(
+				buffers.window_table + static_cast<size_t>(entry - 1) * buffers.stride,
+				buffers.spare,
+				buffers.window_table + static_cast<size_t>(entry) * buffers.stride
+			)) {
+				lease.discard();
+				return false;
+			}
+		}
+	}
+
+	size_t position = bits;
+	while (position > 0) {
+		if (!exponent_bit(exponent, position - 1)) {
+			if (!modular_multiply(buffers.accumulator, buffers.accumulator, buffers.spare)) {
+				lease.discard();
+				return false;
+			}
+			std::swap(buffers.accumulator, buffers.spare);
+			position--;
+			continue;
+		}
+
+		const size_t lower = window_start(exponent, position, window_width);
+		const int window_bits = static_cast<int>(position - lower);
+		for (int square = 0; square < window_bits; square++) {
+			if (!modular_multiply(buffers.accumulator, buffers.accumulator, buffers.spare)) {
 				lease.discard();
 				return false;
 			}
 			std::swap(buffers.accumulator, buffers.spare);
 		}
-		if (bit + 1 < bits) {
-			if (!modular_multiply(buffers.power, buffers.power, buffers.spare)) {
-				lease.discard();
-				return false;
-			}
-			std::swap(buffers.power, buffers.spare);
+		select_window_power<<<
+			(buffers.stride + BLOCK_SIZE - 1) / BLOCK_SIZE,
+			BLOCK_SIZE,
+			0,
+			workspace.stream
+		>>>(
+			buffers.exponent,
+			buffers.exponent_digits,
+			static_cast<int>(lower),
+			window_bits,
+			buffers.window_table,
+			window_entries,
+			buffers.stride,
+			buffers.power,
+			buffers.status
+		);
+		if (cudaGetLastError() != cudaSuccess ||
+				!modular_multiply(buffers.accumulator, buffers.power, buffers.spare)) {
+			lease.discard();
+			return false;
 		}
+		std::swap(buffers.accumulator, buffers.spare);
+		position = lower;
 	}
 
 	u64 *final_value = buffers.accumulator;
