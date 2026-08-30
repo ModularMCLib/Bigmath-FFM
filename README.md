@@ -8,7 +8,7 @@ Cross-platform high-performance big integer & decimal library for Java FFM (back
 - **BigDecimal** — arbitrary-precision decimal floating-point (MPFR)
 - **Int128** — 128-bit signed integer (no external dependency)
 - **FFM native bridge** — Java 23+ Foreign Function & Memory API
-- **Kotlin operator overloading** — use `+`, `-`, `*`, `/` with BigInt/BigDecimal
+- **Scoped Kotlin expressions** — use `+`, `-`, `*`, `/` without leaking BigInt/BigDeci intermediates
 
 ## Supported Platforms
 
@@ -32,6 +32,21 @@ System.out.println(sum); // 12345678901234567932
 BigDecimal pi = BigDecimal.fromString("3.141592653589793", 128);
 BigDecimal area = pi.multiply(pi);
 ```
+
+### Kotlin expressions
+
+BigInt and BigDeci operators are available only inside their calculation
+scopes. The returned value is detached; all other native-backed intermediates
+are closed automatically.
+
+```kotlin
+val integerResult = bigIntExpression { a + b * c }
+val decimalResult = bigDeciExpression { x / y + z }
+```
+
+The caller remains responsible for closing `integerResult` and
+`decimalResult`. Int128 operators remain available globally because Int128 does
+not allocate a native handle per result.
 
 ## Building
 
