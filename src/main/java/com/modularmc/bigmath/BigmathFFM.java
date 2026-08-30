@@ -88,6 +88,7 @@ public final class BigmathFFM {
 	static final String NATIVE_RESOURCE_ROOT = "native";
 
 	BigmathFFM() {
+		RuntimeOptions runtimeOptions = BigmathRuntime.beginNativeInitialization();
 		this.lookup = loadLibrary();
 		MethodHandle abiVersionHandle = requiredMetadataDowncall(
 			"bigmath_abi_version",
@@ -110,6 +111,7 @@ public final class BigmathFFM {
 		}
 		this.nativeBuildId = invokeMetadataString(buildIdHandle);
 		this.nativeCapabilities = invokeMetadataLong(capabilitiesHandle);
+		configureRuntime(runtimeOptions);
 		this.productCacheHitsHandle = optionalDowncall(
 			"bigmath_product_cache_hits",
 			FunctionDescriptors.PRODUCT_CACHE_LONG
@@ -136,6 +138,7 @@ public final class BigmathFFM {
 		this.cudaMultiplyCountHandle = optionalDowncall("bigmath_cuda_multiply_count", FunctionDescriptors.CUDA_INT);
 		this.cudaDeviceNameHandle = optionalDowncall("bigmath_cuda_device_name", FunctionDescriptors.CUDA_STRING);
 		this.cudaStatusMessageHandle = optionalDowncall("bigmath_cuda_status_message", FunctionDescriptors.CUDA_STRING);
+		initializeRuntime();
 	}
 
 	record DowncallKey(String name, FunctionDescriptor descriptor) {}
@@ -179,6 +182,43 @@ public final class BigmathFFM {
 			throw e;
 		} catch (Throwable t) {
 			throw new LinkageError("Failed to query Bigmath native build ID", t);
+		}
+	}
+
+	void configureRuntime(RuntimeOptions options) {
+		MethodHandle handle = downcall("bigmath_runtime_configure", FunctionDescriptors.RUNTIME_CONFIGURE);
+		long calibrationMillis = options.calibrationDuration().toMillis();
+		try {
+			int status = (int) handle.invokeExact(
+				options.productCacheEnabled() ? 1 : 0,
+				options.cpuProductCacheBytes(),
+				options.gpuWorkspaceFraction(),
+				options.gpuWorkspaceMaxBytes(),
+				calibrationMillis,
+				options.cudaDevice(),
+				options.cudaBackend().ordinal()
+			);
+			if (status != 0) {
+				throw new IllegalStateException("Native runtime configuration was rejected with status " + status);
+			}
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new LinkageError("Failed to configure the Bigmath Native runtime", t);
+		}
+	}
+
+	void initializeRuntime() {
+		MethodHandle handle = downcall("bigmath_runtime_initialize", FunctionDescriptors.RUNTIME_INT);
+		try {
+			int status = (int) handle.invokeExact();
+			if (status != 0) {
+				throw new IllegalStateException("Native runtime initialization failed with status " + status);
+			}
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new LinkageError("Failed to initialize the Bigmath Native runtime", t);
 		}
 	}
 
@@ -503,6 +543,64 @@ public final class BigmathFFM {
 				.map(addr -> linker.downcallHandle(addr, key.descriptor()))
 				.orElseThrow(() -> new UnsatisfiedLinkError("Symbol not found: " + key.name()))
 		);
+	}
+
+	RuntimeDiagnostics runtimeDiagnostics() {
+		RuntimeDiagnostics.CudaDiagnostics cuda = new RuntimeDiagnostics.CudaDiagnostics(
+			cudaDeviceCount(),
+			invokeRuntimeInt("bigmath_runtime_selected_device"),
+			cudaDeviceName(),
+			cudaStatusMessage(),
+			RuntimeDiagnostics.CalibrationStatus.fromNative(
+				invokeRuntimeInt("bigmath_runtime_calibration_status")
+			),
+			RuntimeOptions.CudaBackend.fromNative(invokeRuntimeInt("bigmath_runtime_active_backend")),
+			invokeRuntimeInt("bigmath_runtime_ntt_enabled") != 0,
+			invokeRuntimeLong("bigmath_runtime_balanced_threshold_bits"),
+			invokeRuntimeLong("bigmath_runtime_square_threshold_bits"),
+			invokeRuntimeLong("bigmath_runtime_workspace_budget_bytes"),
+			invokeRuntimeLong("bigmath_runtime_workspace_in_use_bytes"),
+			invokeRuntimeInt("bigmath_runtime_workspace_capacity"),
+			invokeRuntimeInt("bigmath_runtime_workspace_in_use")
+		);
+		RuntimeDiagnostics.ProductCacheDiagnostics productCache =
+			new RuntimeDiagnostics.ProductCacheDiagnostics(
+				productCacheHits(),
+				productCacheMisses(),
+				productCacheAdmissions(),
+				productCacheEvictions(),
+				productCacheBytes()
+			);
+		return new RuntimeDiagnostics(
+			nativeAbiVersion,
+			nativeBuildId,
+			nativeCapabilities,
+			cuda,
+			productCache,
+			invokeRuntimeLong("bigmath_runtime_cpu_fallback_count")
+		);
+	}
+
+	int invokeRuntimeInt(String name) {
+		MethodHandle handle = downcall(name, FunctionDescriptors.RUNTIME_INT);
+		try {
+			return (int) handle.invokeExact();
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new IllegalStateException("Failed to query Native runtime metric " + name, t);
+		}
+	}
+
+	long invokeRuntimeLong(String name) {
+		MethodHandle handle = downcall(name, FunctionDescriptors.RUNTIME_LONG);
+		try {
+			return (long) handle.invokeExact();
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Throwable t) {
+			throw new IllegalStateException("Failed to query Native runtime metric " + name, t);
+		}
 	}
 
 	static long productCacheHits() {
