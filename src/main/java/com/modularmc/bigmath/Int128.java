@@ -3,8 +3,9 @@ package com.modularmc.bigmath;
 /**
  * 128-bit signed integer value.
  * <p>
- * Hot-path small operations are implemented directly on two Java {@code long}
- * words. Native helpers remain for parsing.
+ * Operations, parsing, and conversion are implemented directly on two Java {@code long} words;
+ * creating or parsing an Int128 does not load the Native library. Use {@link BigNumberFormat} for
+ * pattern- and locale-aware output.
  */
 public final class Int128 extends Number implements AutoCloseable, Comparable<Int128> {
 
@@ -235,29 +236,6 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return toStringJava(radix);
 	}
 
-	public String toFormattedString() {
-		if (fitsInLong() || hi == 0) {
-			return formatGroupedDecimalDefault(toString());
-		}
-		return toFormattedDecimalStringDefault();
-	}
-
-	public String toFormattedString(int groupSize, String groupSep) {
-		if (groupSize <= 0 || groupSep == null || groupSep.isEmpty()) {
-			return toString();
-		}
-		if (groupSize == 3 && groupSep.equals(",")) {
-			return toFormattedString();
-		}
-		if (fitsInLong()) {
-			return formatGroupedDecimal(Long.toString(lo), groupSize, groupSep);
-		}
-		if (hi == 0) {
-			return formatGroupedDecimal(Long.toUnsignedString(lo), groupSize, groupSep);
-		}
-		return toFormattedStringJava(groupSize, groupSep);
-	}
-
 	@Override
 	public String toString() {
 		String cached = cachedDecimalString;
@@ -358,116 +336,6 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 		return new String(buffer);
 	}
 
-	String toFormattedDecimalStringDefault() {
-		long magnitudeLo = lo;
-		long magnitudeHi = hi;
-		boolean negative = magnitudeHi < 0;
-		if (negative) {
-			magnitudeLo = ~magnitudeLo + 1L;
-			magnitudeHi = ~magnitudeHi + (magnitudeLo == 0 ? 1L : 0L);
-		}
-
-		int[] chunks = new int[5];
-		int chunkCount = 0;
-		while (magnitudeHi != 0 || magnitudeLo != 0) {
-			long remainder = 0;
-
-			long part = magnitudeHi >>> 32;
-			long qHiHigh = part / DECIMAL_CHUNK_BASE;
-			remainder = part - qHiHigh * DECIMAL_CHUNK_BASE;
-
-			part = (remainder << 32) | (magnitudeHi & UNSIGNED_INT_MASK);
-			long qHiLow = part / DECIMAL_CHUNK_BASE;
-			remainder = part - qHiLow * DECIMAL_CHUNK_BASE;
-
-			part = (remainder << 32) | (magnitudeLo >>> 32);
-			long qLoHigh = part / DECIMAL_CHUNK_BASE;
-			remainder = part - qLoHigh * DECIMAL_CHUNK_BASE;
-
-			part = (remainder << 32) | (magnitudeLo & UNSIGNED_INT_MASK);
-			long qLoLow = part / DECIMAL_CHUNK_BASE;
-			remainder = part - qLoLow * DECIMAL_CHUNK_BASE;
-
-			chunks[chunkCount++] = (int) remainder;
-			magnitudeHi = (qHiHigh << 32) | qHiLow;
-			magnitudeLo = (qLoHigh << 32) | qLoLow;
-		}
-
-		int firstChunk = chunks[chunkCount - 1];
-		int firstDigits = decimalDigits(firstChunk);
-		int plainDigits = firstDigits + (chunkCount - 1) * DECIMAL_CHUNK_DIGITS;
-		int length = (negative ? 1 : 0) + plainDigits;
-		int sepCount = (plainDigits - 1) / 3;
-		char[] plain = new char[length];
-		char[] formatted = new char[length + sepCount];
-		int plainPos = 0;
-		int formattedPos = 0;
-		if (negative) {
-			plain[plainPos++] = '-';
-			formatted[formattedPos++] = '-';
-		}
-
-		plainPos = writeUnsignedInt(firstChunk, plain, plainPos);
-		for (int index = chunkCount - 2; index >= 0; index--) {
-			writePaddedNineDigits(chunks[index], plain, plainPos);
-			plainPos += DECIMAL_CHUNK_DIGITS;
-		}
-
-		String plainValue = new String(plain);
-		cachedDecimalString = plainValue;
-		int signOffset = negative ? 1 : 0;
-		int firstGroup = plainDigits % 3;
-		if (firstGroup == 0) {
-			firstGroup = 3;
-		}
-		int in = signOffset;
-		System.arraycopy(plain, in, formatted, formattedPos, firstGroup);
-		formattedPos += firstGroup;
-		in += firstGroup;
-		int end = plain.length;
-		while (in < end) {
-			formatted[formattedPos++] = ',';
-			System.arraycopy(plain, in, formatted, formattedPos, 3);
-			formattedPos += 3;
-			in += 3;
-		}
-		return new String(formatted);
-	}
-
-	String toFormattedStringJava(int groupSize, String groupSep) {
-		char[] raw = new char[130];
-		int pos = writeDigits(raw, 10);
-		boolean negative = raw[pos] == '-';
-		int digitStart = negative ? pos + 1 : pos;
-		int digits = raw.length - digitStart;
-		if (digits <= groupSize) {
-			return new String(raw, pos, raw.length - pos);
-		}
-
-		int sepLength = groupSep.length();
-		int sepCount = (digits - 1) / groupSize;
-		char[] formatted = new char[(negative ? 1 : 0) + digits + sepCount * sepLength];
-		int out = 0;
-		if (negative) {
-			formatted[out++] = '-';
-		}
-		int firstGroup = digits % groupSize;
-		if (firstGroup == 0) {
-			firstGroup = groupSize;
-		}
-		System.arraycopy(raw, digitStart, formatted, out, firstGroup);
-		out += firstGroup;
-		int in = digitStart + firstGroup;
-		while (in < raw.length) {
-			groupSep.getChars(0, sepLength, formatted, out);
-			out += sepLength;
-			System.arraycopy(raw, in, formatted, out, groupSize);
-			out += groupSize;
-			in += groupSize;
-		}
-		return new String(formatted);
-	}
-
 	int writeDigits(char[] buffer, int radix) {
 		if (hi == 0 && lo == 0) {
 			buffer[buffer.length - 1] = '0';
@@ -509,59 +377,6 @@ public final class Int128 extends Number implements AutoCloseable, Comparable<In
 			buffer[--pos] = '-';
 		}
 		return pos;
-	}
-
-	static String formatGroupedDecimal(String value, int groupSize, String groupSep) {
-		int signOffset = value.startsWith("-") ? 1 : 0;
-		int digits = value.length() - signOffset;
-		if (digits <= groupSize) {
-			return value;
-		}
-		StringBuilder sb = new StringBuilder(value.length() + (digits - 1) / groupSize * groupSep.length());
-		if (signOffset != 0) {
-			sb.append('-');
-		}
-		int firstGroup = digits % groupSize;
-		if (firstGroup == 0) {
-			firstGroup = groupSize;
-		}
-		int index = signOffset;
-		sb.append(value, index, index + firstGroup);
-		index += firstGroup;
-		while (index < value.length()) {
-			sb.append(groupSep);
-			sb.append(value, index, index + groupSize);
-			index += groupSize;
-		}
-		return sb.toString();
-	}
-
-	static String formatGroupedDecimalDefault(String value) {
-		int signOffset = value.startsWith("-") ? 1 : 0;
-		int digits = value.length() - signOffset;
-		if (digits <= 3) {
-			return value;
-		}
-		int sepCount = (digits - 1) / 3;
-		char[] formatted = new char[value.length() + sepCount];
-		int out = 0;
-		if (signOffset != 0) {
-			formatted[out++] = '-';
-		}
-		int firstGroup = digits % 3;
-		if (firstGroup == 0) {
-			firstGroup = 3;
-		}
-		value.getChars(signOffset, signOffset + firstGroup, formatted, out);
-		out += firstGroup;
-		int in = signOffset + firstGroup;
-		while (in < value.length()) {
-			formatted[out++] = ',';
-			value.getChars(in, in + 3, formatted, out);
-			out += 3;
-			in += 3;
-		}
-		return new String(formatted);
 	}
 
 	static int digitValue(char value, int radix) {

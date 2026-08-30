@@ -3,6 +3,7 @@ jmh = "1.37"
 junit = "5.12.2"
 lombok = "1.18.38"
 lombokPlugin = "8.13"
+jspecify = "1.0.0"
 spotless = "8.4.0"
 kotlin = "2.1.20"
 
@@ -13,6 +14,7 @@ junit-bom                = { module = "org.junit:junit-bom", version.ref = "juni
 junit-jupiter            = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-launcher  = { module = "org.junit.platform:junit-platform-launcher" }
 lombok                   = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+jspecify                  = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 
 [plugins]
 spotless   = { id = "com.diffplug.spotless", version.ref = "spotless" }

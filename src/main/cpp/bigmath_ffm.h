@@ -20,6 +20,11 @@ typedef struct __bigmath_mpfr *mpfr_ptr;
 struct BigIntHandle;
 struct BigDeciHandle;
 
+struct BigmathFormatResult {
+	char *data;
+	uint64_t size;
+};
+
 extern "C" {
 
 BIGMATH_EXPORT uint32_t    bigmath_abi_version();
@@ -66,7 +71,6 @@ BIGMATH_EXPORT int bigint_is_probably_prime(BigIntHandle *a, int reps);
 BIGMATH_EXPORT int64_t bigint_to_long(BigIntHandle *a);
 BIGMATH_EXPORT double bigint_to_double(BigIntHandle *a);
 BIGMATH_EXPORT char *bigint_to_string(BigIntHandle *a, int radix);
-BIGMATH_EXPORT char *bigint_format(BigIntHandle *a, int group_size, const char *group_sep);
 BIGMATH_EXPORT uint64_t bigint_twos_complement_size(BigIntHandle *a);
 BIGMATH_EXPORT int bigint_to_twos_complement(BigIntHandle *a, uint8_t *out, uint64_t size);
 BIGMATH_EXPORT uint64_t bigint_id(BigIntHandle *a);
@@ -107,11 +111,51 @@ BIGMATH_EXPORT int bigdecimal_sqrt_into(BigDeciHandle *out, BigDeciHandle *a);
 BIGMATH_EXPORT int bigdecimal_cmp(BigDeciHandle *a, BigDeciHandle *b);
 BIGMATH_EXPORT double bigdecimal_to_double(BigDeciHandle *a);
 BIGMATH_EXPORT char *bigdecimal_to_string(BigDeciHandle *a);
-BIGMATH_EXPORT char *bigdecimal_format(BigDeciHandle *a, int scale, int group_size, const char *group_sep);
 BIGMATH_EXPORT uint64_t bigdecimal_id(BigDeciHandle *a);
 BIGMATH_EXPORT uint64_t bigdecimal_version(BigDeciHandle *a);
 BIGMATH_EXPORT void bigdecimal_free(BigDeciHandle *a);
 BIGMATH_EXPORT void bigdecimal_free_string(char *value);
+
+BIGMATH_EXPORT int32_t bigmath_format_bigint(
+	const uint8_t *descriptor,
+	uint32_t descriptor_size,
+	BigIntHandle *value,
+	BigmathFormatResult *result
+);
+BIGMATH_EXPORT int32_t bigmath_format_bigdeci(
+	const uint8_t *descriptor,
+	uint32_t descriptor_size,
+	BigDeciHandle *value,
+	BigmathFormatResult *result
+);
+BIGMATH_EXPORT int32_t bigmath_format_int128(
+	const uint8_t *descriptor,
+	uint32_t descriptor_size,
+	int64_t lo,
+	int64_t hi,
+	BigmathFormatResult *result
+);
+BIGMATH_EXPORT int32_t bigmath_format_i64(
+	const uint8_t *descriptor,
+	uint32_t descriptor_size,
+	int64_t value,
+	BigmathFormatResult *result
+);
+BIGMATH_EXPORT int32_t bigmath_format_f64(
+	const uint8_t *descriptor,
+	uint32_t descriptor_size,
+	double value,
+	BigmathFormatResult *result
+);
+BIGMATH_EXPORT int32_t bigmath_format_decimal(
+	const uint8_t *descriptor,
+	uint32_t descriptor_size,
+	const uint8_t *unscaled,
+	uint64_t unscaled_size,
+	int64_t scale,
+	BigmathFormatResult *result
+);
+BIGMATH_EXPORT void bigmath_format_free(char *data);
 
 BIGMATH_EXPORT int         bigmath_cuda_available();
 BIGMATH_EXPORT int         bigmath_cuda_device_count();

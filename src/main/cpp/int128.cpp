@@ -494,36 +494,6 @@ char *int128_to_string(const int128_box *a, int radix) {
 }
 #endif // HAVE_INT128
 
-char *int128_format(const int128_box *a, int group_size, const char *group_sep) {
-	char *raw = int128_to_string(a, 10);
-	if (!raw || group_size <= 0 || !group_sep || !*group_sep) {
-		return raw;
-	}
-	const bool neg = (raw[0] == '-');
-	const char *digits = raw + (neg ? 1 : 0);
-	const size_t len = strlen(digits);
-	const size_t sep_len = strlen(group_sep);
-	const size_t groups = (len + group_size - 1) / group_size;
-	const size_t new_len = (neg ? 1 : 0) + len + (groups - 1) * sep_len;
-	const auto out = static_cast<char *>(malloc(new_len + 1));
-	if (!out) { free(raw); return nullptr; }
-	size_t pos = 0;
-	if (neg) out[pos++] = '-';
-	size_t first_group = len % group_size;
-	if (first_group == 0) first_group = group_size;
-	memcpy(out + pos, digits, first_group);
-	pos += first_group;
-	for (size_t i = first_group; i < len; i += group_size) {
-		memcpy(out + pos, group_sep, sep_len);
-		pos += sep_len;
-		memcpy(out + pos, digits + i, group_size);
-		pos += group_size;
-	}
-	out[pos] = '\0';
-	free(raw);
-	return out;
-}
-
 void int128_free_string(char *s) {
 	free(s);
 }

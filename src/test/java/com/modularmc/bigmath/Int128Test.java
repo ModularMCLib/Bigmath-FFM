@@ -414,7 +414,8 @@ class Int128Test {
 		String value = "170141183460469231731687303715884105727";
 		try (Int128 i = Int128.fromString(value, 10)) {
 			assertEquals(value, i.toString());
-			assertEquals("170,141,183,460,469,231,731,687,303,715,884,105,727", i.toFormattedString());
+			assertEquals("170,141,183,460,469,231,731,687,303,715,884,105,727",
+					BigNumberFormat.ofPattern("#,##0").format(i));
 		}
 	}
 
@@ -423,14 +424,16 @@ class Int128Test {
 		String value = "-170141183460469231731687303715884105728";
 		try (Int128 i = Int128.fromString(value, 10)) {
 			assertEquals(value, i.toString());
-			assertEquals("-170,141,183,460,469,231,731,687,303,715,884,105,728", i.toFormattedString());
+			assertEquals("-170,141,183,460,469,231,731,687,303,715,884,105,728",
+					BigNumberFormat.ofPattern("#,##0").format(i));
 		}
 	}
 
 	@Test
 	void wideDecimalFormattingWithCustomGrouping() {
 		try (Int128 i = Int128.fromString("170141183460469231731687303715884105727", 10)) {
-			assertEquals("1701_41183_46046_92317_31687_30371_58841_05727", i.toFormattedString(5, "_"));
+			assertEquals("1701,41183,46046,92317,31687,30371,58841,05727",
+					BigNumberFormat.ofPattern("#####,#####").format(i));
 		}
 	}
 
@@ -464,16 +467,16 @@ class Int128Test {
 	@Test
 	void formatSmallValueInJava() {
 		try (Int128 i = Int128.fromLong(1234567890)) {
-			assertEquals("1,234,567,890", i.toFormattedString());
-			assertEquals("12_3456_7890", i.toFormattedString(4, "_"));
+			assertEquals("1,234,567,890", BigNumberFormat.ofPattern("#,##0").format(i));
+			assertEquals("12,3456,7890", BigNumberFormat.ofPattern("####,####").format(i));
 		}
 	}
 
 	@Test
 	void formatUnsignedLongValue() {
 		try (Int128 i = Int128.fromString("12345678901234567890", 10)) {
-			assertEquals("12,345,678,901,234,567,890", i.toFormattedString());
-			assertEquals("1234_5678_9012_3456_7890", i.toFormattedString(4, "_"));
+			assertEquals("12,345,678,901,234,567,890", BigNumberFormat.ofPattern("#,##0").format(i));
+			assertEquals("1234,5678,9012,3456,7890", BigNumberFormat.ofPattern("####,####").format(i));
 		}
 	}
 

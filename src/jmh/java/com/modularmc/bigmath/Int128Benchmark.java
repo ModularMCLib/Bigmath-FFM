@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 @Measurement(iterations = 5, time = 1)
 @Fork(1)
 public class Int128Benchmark {
+	private static final BigNumberFormat GROUPED_FORMAT = BigNumberFormat.ofPattern("#,##0");
 
 	@State(Scope.Thread)
 	public static class ArithmeticState {
@@ -141,7 +142,7 @@ public class Int128Benchmark {
 
 	@Benchmark
 	public String formatBase10(ArithmeticState state) {
-		return state.left.toFormattedString();
+		return GROUPED_FORMAT.format(state.left);
 	}
 
 	@Benchmark
@@ -151,6 +152,6 @@ public class Int128Benchmark {
 
 	@Benchmark
 	public String formatBase10Cold(ColdStringState state) {
-		return state.value.toFormattedString();
+		return GROUPED_FORMAT.format(state.value);
 	}
 }

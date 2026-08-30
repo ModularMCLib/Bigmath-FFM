@@ -260,21 +260,21 @@ class BigDeciTest {
 	@Test
 	void formatting() {
 		try (BigDeci bd = BigDeci.fromString("1234567.89", 64)) {
-			assertEquals("1,234,567.89", bd.toFormattedString());
+			assertEquals("1,234,567.89", BigNumberFormat.ofPattern("#,##0.##").format(bd));
 		}
 	}
 
 	@Test
 	void formattingWithScale() {
 		try (BigDeci bd = BigDeci.fromString("3.14159", 64)) {
-			assertEquals("3.14", bd.toFormattedString(2));
+			assertEquals("3.14", BigNumberFormat.ofPattern("#,##0.00").format(bd));
 		}
 	}
 
 	@Test
 	void formattingSmallFraction() {
 		try (BigDeci bd = BigDeci.fromString("0.00125", 64)) {
-			assertEquals("0.00125", bd.toFormattedString());
+			assertEquals("0.00125", BigNumberFormat.ofPattern("#,##0.#####").format(bd));
 		}
 	}
 

@@ -82,16 +82,6 @@ final class FunctionDescriptors {
 	static final FunctionDescriptor HANDLE_STRING_RADIX = FunctionDescriptor.of(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
 	);
-	static final FunctionDescriptor HANDLE_FORMAT = FunctionDescriptor.of(
-			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS
-	);
-	static final FunctionDescriptor HANDLE_DECIMAL_FORMAT = FunctionDescriptor.of(
-			ValueLayout.ADDRESS,
-			ValueLayout.ADDRESS,
-			ValueLayout.JAVA_INT,
-			ValueLayout.JAVA_INT,
-			ValueLayout.ADDRESS
-	);
 	static final FunctionDescriptor HANDLE_EXPORT_BYTES = FunctionDescriptor.of(
 			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG
 	);
@@ -167,11 +157,6 @@ final class FunctionDescriptors {
 	/** {@code char* bigint_to_string(void* a, int radix)} */
 	static final FunctionDescriptor BIGINT_TO_STRING = FunctionDescriptor.of(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
-	);
-
-	/** {@code char* bigint_format(void* a, int group_size, const char* group_sep)} */
-	static final FunctionDescriptor BIGINT_FORMAT = FunctionDescriptor.of(
-			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS
 	);
 
 	/** {@code void bigint_free(void* a)} */
@@ -288,11 +273,6 @@ final class FunctionDescriptors {
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS
 	);
 
-	/** {@code char* bigdecimal_format(void* a, int scale, int group_size, const char* group_sep)} */
-	static final FunctionDescriptor BIGDECIMAL_FORMAT = FunctionDescriptor.of(
-			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS
-	);
-
 	/** {@code void bigdecimal_free(void* a)} */
 	static final FunctionDescriptor BIGDECIMAL_FREE = FunctionDescriptor.ofVoid(
 			ValueLayout.ADDRESS
@@ -344,11 +324,6 @@ final class FunctionDescriptors {
 	/** {@code char* int128_to_string(int128_t* a, int radix)} */
 	static final FunctionDescriptor INT128_TO_STRING = FunctionDescriptor.of(
 			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT
-	);
-
-	/** {@code char* int128_format(int128_t* a, int group_size, const char* group_sep)} */
-	static final FunctionDescriptor INT128_FORMAT = FunctionDescriptor.of(
-			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS
 	);
 
 	/** {@code void int128_free_string(char* s)} */

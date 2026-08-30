@@ -12,20 +12,6 @@
 #define BIGMATH_BUILD_ID "development"
 #endif
 
-struct BigIntHandle {
-	uint64_t id;
-	uint64_t version;
-	bool read_only;
-	mpz_ptr value;
-};
-
-struct BigDeciHandle {
-	uint64_t id;
-	uint64_t version;
-	bool read_only;
-	mpfr_ptr value;
-};
-
 namespace {
 
 std::atomic<uint64_t> next_handle_id{1};
@@ -370,10 +356,6 @@ char *bigint_to_string(BigIntHandle *a, int radix) {
 	return a == nullptr ? nullptr : bigint_backend_to_string(a->value, radix);
 }
 
-char *bigint_format(BigIntHandle *a, int group_size, const char *group_sep) {
-	return a == nullptr ? nullptr : bigint_backend_format(a->value, group_size, group_sep);
-}
-
 uint64_t bigint_twos_complement_size(BigIntHandle *a) {
 #ifndef BIGMATH_HAS_GMP
 	(void)a;
@@ -591,10 +573,6 @@ double bigdecimal_to_double(BigDeciHandle *a) {
 
 char *bigdecimal_to_string(BigDeciHandle *a) {
 	return a == nullptr ? nullptr : bigdecimal_backend_to_string(a->value);
-}
-
-char *bigdecimal_format(BigDeciHandle *a, int scale, int group_size, const char *group_sep) {
-	return a == nullptr ? nullptr : bigdecimal_backend_format(a->value, scale, group_size, group_sep);
 }
 
 uint64_t bigdecimal_id(BigDeciHandle *a) {

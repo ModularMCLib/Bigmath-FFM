@@ -29,7 +29,6 @@ BIGMATH_EXPORT void int128_abs(int128_box *out, const int128_box *a);
 BIGMATH_EXPORT int  int128_cmp(const int128_box *a, const int128_box *b);
 BIGMATH_EXPORT int  int128_sign(const int128_box *a);
 BIGMATH_EXPORT char *int128_to_string(const int128_box *a, int radix);
-BIGMATH_EXPORT char *int128_format(const int128_box *a, int group_size, const char *group_sep);
 BIGMATH_EXPORT void int128_free_string(char *s);
 
 }
