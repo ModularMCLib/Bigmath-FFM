@@ -69,6 +69,13 @@ bool cuda_multiply_direct(
 	bool reset_host_cache
 );
 
+bool try_cuda_multiply(
+	mpz_ptr out,
+	mpz_ptr a,
+	mpz_ptr b,
+	const caching::ProductCacheKey *cache_key = nullptr
+);
+
 bool cuda_dispatch_favorable(uint64_t left_bits, uint64_t right_bits, bool square);
 
 void modpow(mpz_ptr out, mpz_ptr base, mpz_ptr exp, mpz_ptr mod);

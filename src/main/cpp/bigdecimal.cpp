@@ -84,12 +84,14 @@ static bool gpu_mpfr_mul(
 		right_exponent = mpfr_get_z_2exp(scratch.right, b);
 		right_significand = scratch.right;
 	}
-	bigmath::accelerated_mul(
+	if (!bigmath::try_cuda_multiply(
 		scratch.product,
 		scratch.left,
 		right_significand,
 		cache_key
-	);
+	)) {
+		return false;
+	}
 	mpfr_set_z_2exp(
 		out,
 		scratch.product,

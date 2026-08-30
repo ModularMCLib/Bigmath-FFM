@@ -757,21 +757,26 @@ static void store_product_result(
 #endif
 }
 
-static void fft_multiply_impl(
+static bool fft_multiply_impl(
 		mpz_ptr out,
 		mpz_ptr a,
 		mpz_ptr b,
-		const caching::ProductCacheKey *cache_key
+		const caching::ProductCacheKey *cache_key,
+		bool cuda_only
 ) {
 	int alen = mpz_size(a);
 	int blen = mpz_size(b);
-	if (alen == 0 || blen == 0) { mpz_set_ui(out, 0); return; }
+	if (alen == 0 || blen == 0) {
+		mpz_set_ui(out, 0);
+		return true;
+	}
 
 	bool a_neg = (mpz_sgn(a) < 0);
 	bool b_neg = (mpz_sgn(b) < 0);
 	const uint64_t bits_a = mpz_sizeinbase(a, 2);
 	const uint64_t bits_b = mpz_sizeinbase(b, 2);
 	const cuda::DispatchDecision dispatch = cuda_dispatch_decision(bits_a, bits_b, a == b);
+	if (cuda_only && dispatch.backend == cuda::RuntimeBackend::CPU) return false;
 	caching::ProductCacheKey resolved_cache_key{};
 	const caching::ProductCacheKey *resolved_cache_key_ptr = nullptr;
 	if (cache_key != nullptr) {
@@ -790,7 +795,7 @@ static void fft_multiply_impl(
 		if (lookup.hit) {
 			write_u64_limbs_to_mpz(out, *lookup.packed_limbs);
 			if (a_neg != b_neg) mpz_neg(out, out);
-			return;
+			return true;
 		}
 	}
 #endif
@@ -818,13 +823,19 @@ static void fft_multiply_impl(
 		if (clear_abs_a) mpz_clear(abs_a_storage);
 		if (clear_abs_b) mpz_clear(abs_b_storage);
 		if (a_neg != b_neg) mpz_neg(out, out);
-		return;
+		return true;
 	}
 
+	if (cuda_only) {
+		if (clear_abs_a) mpz_clear(abs_a_storage);
+		if (clear_abs_b) mpz_clear(abs_b_storage);
+		return false;
+	}
 	mpz_mul(out, a, b);
 	store_product_result(resolved_cache_key_ptr, admit_product, out);
 	if (clear_abs_a) mpz_clear(abs_a_storage);
 	if (clear_abs_b) mpz_clear(abs_b_storage);
+	return true;
 }
 
 void fft_multiply(
@@ -833,7 +844,7 @@ void fft_multiply(
 		mpz_ptr b,
 		const caching::ProductCacheKey *cache_key
 ) {
-	fft_multiply_impl(out, a, b, cache_key);
+	fft_multiply_impl(out, a, b, cache_key, false);
 }
 
 void fft_multiply_into(
@@ -845,12 +856,29 @@ void fft_multiply_into(
 	if (out == a || out == b) {
 		mpz_t tmp;
 		mpz_init(tmp);
-		fft_multiply_impl(tmp, a, b, cache_key);
+		fft_multiply_impl(tmp, a, b, cache_key, false);
 		mpz_set(out, tmp);
 		mpz_clear(tmp);
 		return;
 	}
-	fft_multiply_impl(out, a, b, cache_key);
+	fft_multiply_impl(out, a, b, cache_key, false);
+}
+
+bool try_cuda_multiply(
+		mpz_ptr out,
+		mpz_ptr a,
+		mpz_ptr b,
+		const caching::ProductCacheKey *cache_key
+) {
+	if (out == a || out == b) {
+		mpz_t temporary;
+		mpz_init(temporary);
+		const bool completed = fft_multiply_impl(temporary, a, b, cache_key, true);
+		if (completed) mpz_set(out, temporary);
+		mpz_clear(temporary);
+		return completed;
+	}
+	return fft_multiply_impl(out, a, b, cache_key, true);
 }
 
 void accelerated_mul(
@@ -876,6 +904,7 @@ void product_tree_factorial(mpz_ptr, uint64_t) {}
 void fft_multiply(mpz_ptr, mpz_ptr, mpz_ptr, const caching::ProductCacheKey *) {}
 void fft_multiply_into(mpz_ptr, mpz_ptr, mpz_ptr, const caching::ProductCacheKey *) {}
 void accelerated_mul(mpz_ptr, mpz_ptr, mpz_ptr, const caching::ProductCacheKey *) {}
+bool try_cuda_multiply(mpz_ptr, mpz_ptr, mpz_ptr, const caching::ProductCacheKey *) { return false; }
 bool cuda_multiply_direct(
 		mpz_ptr,
 		mpz_ptr,
