@@ -33,7 +33,7 @@ foreach ($sourceDir in @($sourceNative, $vcpkgBinDir)) {
 
 foreach ($requiredPattern in @("bigmath_ffm.dll", "*gmp*.dll", "*mpfr*.dll")) {
 	if (-not (Get-ChildItem -LiteralPath $nativeDir -File -Filter $requiredPattern | Select-Object -First 1)) {
-		throw "Required Windows runtime is missing for $Label: $requiredPattern"
+		throw "Required Windows runtime is missing for ${Label}: $requiredPattern"
 	}
 }
 
