@@ -1,12 +1,17 @@
 package com.modularmc.bigmath;
 
-import lombok.Getter;
-
 import java.io.IOException;
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystemAlreadyExistsException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -58,6 +63,7 @@ public final class BigmathFFM {
 	final MethodHandle cudaMultiplyCountHandle;
 	final MethodHandle cudaDeviceNameHandle;
 	final MethodHandle cudaStatusMessageHandle;
+	static final String NATIVE_RESOURCE_ROOT = "native";
 
 	BigmathFFM() {
 		this.lookup = loadLibrary();
@@ -180,10 +186,20 @@ public final class BigmathFFM {
 		return 10;
 	}
 
+	record ResourceDirectory(Path path, FileSystem ownedFileSystem) implements AutoCloseable {
+		@Override
+		public void close() throws IOException {
+			if (ownedFileSystem != null) {
+				ownedFileSystem.close();
+			}
+		}
+	}
+
 	/**
 	 * Loads the platform-native shared library. Resolution order:
 	 * <ol>
 	 *   <li>{@code bigmath.native.path} system property (absolute file path)</li>
+	 *   <li>File-system path at {@code native/<classifier>/<libname>}</li>
 	 *   <li>Bundled resource at {@code native/<classifier>/<libname>}</li>
 	 *   <li>{@link System#loadLibrary} fallback</li>
 	 * </ol>
@@ -211,7 +227,7 @@ public final class BigmathFFM {
 			return SymbolLookup.loaderLookup();
 		}
 
-		Path nativeDir = Path.of("native", classifier);
+		Path nativeDir = Path.of(NATIVE_RESOURCE_ROOT, classifier);
 		Path nativePath = nativeDir.resolve(libName);
 		Path absolutePath = nativePath.toAbsolutePath();
 
@@ -220,6 +236,15 @@ public final class BigmathFFM {
 			preloadWindowsDependencies(nativeDir, libName);
 			System.load(absolutePath.toString());
 			LOGGER.info(() -> "Loaded from: " + absolutePath);
+			return SymbolLookup.loaderLookup();
+		}
+
+		Path unpackedPath = unpackBundledNativeDirectory(classifier, libName);
+		if (unpackedPath != null) {
+			Path unpackedDir = unpackedPath.getParent();
+			LOGGER.info(() -> "Loaded bundled native resource via Java FileSystem: " + unpackedPath);
+			preloadWindowsDependencies(unpackedDir, libName);
+			System.load(unpackedPath.toAbsolutePath().toString());
 			return SymbolLookup.loaderLookup();
 		}
 
@@ -239,6 +264,69 @@ public final class BigmathFFM {
 			"Failed to load " + libName + " for " + classifier + ". " +
 			"Tried: " + absolutePath + " and java.library.path"
 		);
+	}
+
+	static Path unpackBundledNativeDirectory(String classifier, String libName) {
+		String resourceName = NATIVE_RESOURCE_ROOT + "/" + classifier;
+		URL resource = BigmathFFM.class.getClassLoader().getResource(resourceName);
+		if (resource == null) {
+			LOGGER.info(() -> "Bundled native resource not found: " + resourceName);
+			return null;
+		}
+
+		try (ResourceDirectory resourceDirectory = openResourceDirectory(resource.toURI())) {
+			Path sourceDir = resourceDirectory.path();
+			Path sourceLib = sourceDir.resolve(libName);
+			if (!Files.isRegularFile(sourceLib)) {
+				LOGGER.warning(() -> "Bundled native library resource not found: " + sourceLib);
+				return null;
+			}
+
+			Path targetDir = Files.createTempDirectory("bigmath-ffm-" + classifier + "-");
+			targetDir.toFile().deleteOnExit();
+			copyBundledNativeDirectory(sourceDir, targetDir);
+			return targetDir.resolve(libName);
+		} catch (IOException | IllegalArgumentException | URISyntaxException e) {
+			LOGGER.warning(() -> "Failed to unpack bundled native resources for " + classifier + ": " + e.getMessage());
+			return null;
+		}
+	}
+
+	static ResourceDirectory openResourceDirectory(URI resourceUri) throws IOException {
+		if ("jar".equalsIgnoreCase(resourceUri.getScheme())) {
+			String rawUri = resourceUri.toString();
+			int separator = rawUri.indexOf('!');
+			if (separator < 0) {
+				throw new IOException("Invalid jar resource URI: " + resourceUri);
+			}
+
+			URI fileSystemUri = URI.create(rawUri.substring(0, separator));
+			try {
+				FileSystem fileSystem = FileSystems.newFileSystem(fileSystemUri, Map.of());
+				return new ResourceDirectory(Path.of(resourceUri), fileSystem);
+			} catch (FileSystemAlreadyExistsException ignored) {
+				return new ResourceDirectory(Path.of(resourceUri), null);
+			}
+		}
+		if ("file".equalsIgnoreCase(resourceUri.getScheme())) {
+			return new ResourceDirectory(Path.of(resourceUri), null);
+		}
+		throw new IOException("Unsupported native resource URI scheme: " + resourceUri.getScheme());
+	}
+
+	static void copyBundledNativeDirectory(Path sourceDir, Path targetDir) throws IOException {
+		try (Stream<Path> paths = Files.walk(sourceDir)) {
+			for (Path source : paths.filter(Files::isRegularFile).toList()) {
+				Path relativePath = sourceDir.relativize(source);
+				Path target = targetDir.resolve(relativePath.toString());
+				Path parent = target.getParent();
+				if (parent != null) {
+					Files.createDirectories(parent);
+				}
+				Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+				target.toFile().deleteOnExit();
+			}
+		}
 	}
 
 	/**
