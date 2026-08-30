@@ -15,9 +15,7 @@ import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.Blackhole;
 
-import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -40,7 +38,7 @@ public class JdkComparisonBenchmark {
 	private static final int RANDOM_PAIRS = 32;
 	private static final MethodHandle BIGINT_MUL_GMP_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_mul_gmp",
-			FunctionDescriptors.BIGINT_BINARY
+			FunctionDescriptors.HANDLE_BINARY
 	);
 	private static final MethodHandle BIGINT_FREE_HANDLE = BigmathFFM.getInstance().downcall(
 			"bigint_free",
@@ -190,7 +188,7 @@ public class JdkComparisonBenchmark {
 		@Param({"40000", "80000"})
 		public int digits;
 
-		@Param({"32"})
+		@Param({"1", "4", "8", "16", "32", "64"})
 		public int pairs;
 
 		BigInt[] nativeValues;
@@ -222,6 +220,83 @@ public class JdkComparisonBenchmark {
 				index = 0;
 			}
 			return pair;
+		}
+	}
+
+	@State(Scope.Thread)
+	public static class FixedLeftLargeIntState {
+		@Param({"40000", "80000"})
+		public int digits;
+
+		@Param({"4", "8", "16", "32"})
+		public int rights;
+
+		BigInt nativeLeft;
+		BigInt[] nativeRightValues;
+		int index;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			nativeLeft = BigInt.fromString(
+				randomDecimalDigits(digits, seedFor("fixed-left", digits, 0)),
+				10
+			);
+			nativeRightValues = new BigInt[rights];
+			for (int i = 0; i < rights; i++) {
+				nativeRightValues[i] = BigInt.fromString(
+					randomDecimalDigits(digits, seedFor("fixed-left-right", digits, i)),
+					10
+				);
+			}
+			index = 0;
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			nativeLeft.close();
+			for (BigInt value : nativeRightValues) value.close();
+		}
+
+		BigInt nextRight() {
+			BigInt right = nativeRightValues[index];
+			index++;
+			if (index == rights) index = 0;
+			return right;
+		}
+	}
+
+	@State(Scope.Thread)
+	public static class AliasMutationState {
+		@Param({"40000", "80000"})
+		public int digits;
+
+		BigInt sourceLeft;
+		BigInt right;
+		BigInt target;
+
+		@Setup(Level.Trial)
+		public void setup() {
+			sourceLeft = BigInt.fromString(
+				randomDecimalDigits(digits, seedFor("alias-left", digits, 0)),
+				10
+			);
+			right = BigInt.fromString(
+				randomDecimalDigits(digits, seedFor("alias-right", digits, 0)),
+				10
+			);
+			target = BigInt.fromLong(0);
+		}
+
+		@Setup(Level.Invocation)
+		public void resetTarget() {
+			target.set(sourceLeft);
+		}
+
+		@TearDown(Level.Trial)
+		public void tearDown() {
+			sourceLeft.close();
+			right.close();
+			target.close();
 		}
 	}
 
@@ -535,6 +610,30 @@ public class JdkComparisonBenchmark {
 	}
 
 	@Benchmark
+	public void nativeBigIntMultiplyFixedLeftAutoBackend(
+			FixedLeftLargeIntState state,
+			CudaState cudaState,
+			Blackhole blackhole) {
+		blackhole.consume(cudaState.status);
+		blackhole.consume(cudaState.available);
+		try (BigInt result = state.nativeLeft.multiply(state.nextRight())) {
+			blackhole.consume(BigmathFFM.cudaMultiplyCount());
+			blackhole.consume(result);
+		}
+	}
+
+	@Benchmark
+	public void nativeBigIntMultiplyAliasMutation(
+			AliasMutationState state,
+			CudaState cudaState,
+			Blackhole blackhole) {
+		blackhole.consume(cudaState.status);
+		blackhole.consume(cudaState.available);
+		blackhole.consume(state.target.multiplyInto(state.target, state.right));
+		blackhole.consume(BigmathFFM.cudaMultiplyCount());
+	}
+
+	@Benchmark
 	public void jdkBigIntegerMultiplyLarge(LargeIntState state, Blackhole blackhole) {
 		int pair = state.nextPair();
 		blackhole.consume(state.jdkLeftValues[pair].multiply(state.jdkRightValues[pair]));
@@ -648,16 +747,8 @@ public class JdkComparisonBenchmark {
 	}
 
 	private static MemorySegment multiplyGmp(BigInt left, BigInt right) {
-		try (Arena arena = Arena.ofConfined()) {
-			MemorySegment result = arena.allocate(ValueLayout.ADDRESS);
-			invokeBinaryOut(BIGINT_MUL_GMP_HANDLE, result, left.nativePtr(), right.nativePtr());
-			return result.get(ValueLayout.ADDRESS, 0);
-		}
-	}
-
-	private static void invokeBinaryOut(MethodHandle handle, MemorySegment out, MemorySegment left, MemorySegment right) {
 		try {
-			handle.invokeExact(out, left, right);
+			return (MemorySegment) BIGINT_MUL_GMP_HANDLE.invokeExact(left.nativePtr(), right.nativePtr());
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable e) {
