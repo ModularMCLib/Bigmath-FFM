@@ -119,8 +119,8 @@ Testing/
 *.gcno
 *.gcov
 
-# Allow native libraries in native/ for packaging
-!/native/**
+# Remote-built native artifacts staged for local testing and packaging
+/native/
 
 # --- Generated ---
 src/generated/
