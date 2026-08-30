@@ -186,6 +186,7 @@ add_library(bigmath_ffm SHARED
 	formatting/format_exports.cpp
 	formatting/number_renderer.cpp
 	handles/native_handles.cpp
+	runtime/cuda_workspace_budget.cpp
 	bigint.cpp
 	bigdecimal.cpp
 	int128.cpp

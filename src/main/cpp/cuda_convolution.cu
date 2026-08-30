@@ -1,4 +1,5 @@
 #include "cuda_convolution.h"
+#include "runtime/cuda_workspace_budget.h"
 
 #include <algorithm>
 #include <chrono>
@@ -409,11 +410,15 @@ public:
 		for (const auto &slot : slots_) {
 			if (slot->busy) return false;
 		}
+		for (const auto &slot : slots_) {
+			bigmath::runtime::release_cuda_workspace_bytes(device_, slot->device_bytes);
+		}
 		slots_.clear();
 		allocated_bytes_ = 0;
 		reserved_bytes_ = 0;
 		device_ = device;
 		budget_bytes_ = static_cast<size_t>(std::min<uint64_t>(budget_bytes, SIZE_MAX));
+		if (!bigmath::runtime::configure_cuda_workspace_budget(device_, budget_bytes_)) return false;
 		configured_ = true;
 		return true;
 	}
@@ -445,6 +450,9 @@ public:
 			}
 			if (estimate <= budget_bytes_ &&
 					allocated_bytes_ + reserved_bytes_ <= budget_bytes_ - estimate) {
+				if (!bigmath::runtime::reserve_cuda_workspace_bytes(device_, estimate)) {
+					if (evict_idle_lru()) continue;
+				} else {
 				reserved_bytes_ += estimate;
 				const int device = device_;
 				lock.unlock();
@@ -458,7 +466,20 @@ public:
 				const size_t actual = initialized ? workspace->device_bytes() : 0;
 				lock.lock();
 				reserved_bytes_ -= estimate;
-				if (!initialized || actual > budget_bytes_ - allocated_bytes_) {
+				bool actual_reserved = initialized;
+				if (initialized && actual < estimate) {
+					bigmath::runtime::release_cuda_workspace_bytes(device_, estimate - actual);
+				} else if (initialized && actual > estimate) {
+					actual_reserved = bigmath::runtime::reserve_cuda_workspace_bytes(
+						device_,
+						actual - estimate
+					);
+				}
+				if (!initialized || !actual_reserved || actual > budget_bytes_ - allocated_bytes_) {
+					bigmath::runtime::release_cuda_workspace_bytes(
+						device_,
+						actual_reserved ? actual : estimate
+					);
 					lock.unlock();
 					workspace.reset();
 					lock.lock();
@@ -476,6 +497,7 @@ public:
 				Slot *acquired_slot = slot.get();
 				slots_.push_back(std::move(slot));
 				return Lease(this, acquired_slot);
+				}
 			}
 
 			if (max_wait_nanos == 0 ||
@@ -517,8 +539,11 @@ public:
 			if (!slot->busy && slot->transform_size == n) return true;
 		}
 		const size_t estimate = estimate_device_bytes(n, true);
+		const uint64_t shared_allocated =
+			bigmath::runtime::cuda_workspace_allocated_bytes(device_);
 		return configured_ && estimate <= budget_bytes_ &&
-			allocated_bytes_ + reserved_bytes_ <= budget_bytes_ - estimate;
+			allocated_bytes_ + reserved_bytes_ <= budget_bytes_ - estimate &&
+			shared_allocated <= budget_bytes_ - estimate;
 	}
 
 private:
@@ -533,6 +558,7 @@ private:
 		}
 		device_ = device;
 		budget_bytes_ = std::min<size_t>(free_bytes / 4, 512 * 1024 * 1024);
+		if (!bigmath::runtime::configure_cuda_workspace_budget(device_, budget_bytes_)) return false;
 		configured_ = true;
 		return true;
 	}
@@ -565,6 +591,7 @@ private:
 		}
 		if (target == slots_.size()) return false;
 		allocated_bytes_ -= slots_[target]->device_bytes;
+		bigmath::runtime::release_cuda_workspace_bytes(device_, slots_[target]->device_bytes);
 		slots_.erase(slots_.begin() + static_cast<std::ptrdiff_t>(target));
 		return true;
 	}
@@ -582,6 +609,7 @@ private:
 			for (auto iterator = slots_.begin(); iterator != slots_.end(); ++iterator) {
 				if (iterator->get() == slot) {
 					allocated_bytes_ -= slot->device_bytes;
+					bigmath::runtime::release_cuda_workspace_bytes(device_, slot->device_bytes);
 					slots_.erase(iterator);
 					break;
 				}
