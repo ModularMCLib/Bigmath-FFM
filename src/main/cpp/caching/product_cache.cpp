@@ -136,7 +136,7 @@ private:
 	bool evict_lru() {
 		CachedProduct *target = nullptr;
 		for (CachedProduct &entry : results_) {
-			if (!entry.ready) continue;
+			if (!entry.ready || entry.packed_limbs.use_count() > 1) continue;
 			if (target == nullptr || entry.last_used < target->last_used) target = &entry;
 		}
 		if (target == nullptr) return false;
