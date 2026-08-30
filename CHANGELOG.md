@@ -20,6 +20,7 @@
 ### Changed
 - Number formatting now compiles Java pattern and locale metadata once and performs numeric conversion, scaling, rounding, grouping, localization, and output assembly in Native code
 - Formatter result caching uses Native handle ID/version keys for BigInt and BigDeci and word keys for Int128
+- Accelerated product results now use canonical handle ID/version/backend keys, two-hit admission, and a process-wide 16-entry/64 MiB byte-LRU cache with diagnostic metrics
 
 ### Removed
 - Removed `BigInt`, `BigDeci`, and `Int128` `toFormattedString(...)`; use `BigNumberFormat.ofPattern(...)`, `readable()`, or `scientific()`
