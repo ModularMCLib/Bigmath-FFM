@@ -1,6 +1,7 @@
 #ifndef BIGMATH_DECIMAL_QUANTITY_H
 #define BIGMATH_DECIMAL_QUANTITY_H
 
+#include "format_descriptor.h"
 #include "../handles/native_backend.h"
 
 #include <cstddef>
@@ -15,6 +16,14 @@ enum class NumberClass {
 	INFINITY_VALUE
 };
 
+enum class QuantityStatus {
+	OK,
+	INVALID_DESCRIPTOR,
+	INVALID_VALUE,
+	BACKEND_UNAVAILABLE,
+	RESULT_TOO_LARGE
+};
+
 struct DecimalQuantity {
 	NumberClass number_class = NumberClass::FINITE;
 	bool negative = false;
@@ -25,7 +34,11 @@ struct DecimalQuantity {
 };
 
 bool quantity_from_bigint(BigIntHandle *value, DecimalQuantity &out);
-bool quantity_from_bigdeci(BigDeciHandle *value, DecimalQuantity &out);
+QuantityStatus quantity_from_bigdeci(
+	BigDeciHandle *value,
+	const FormatDescriptor &descriptor,
+	DecimalQuantity &out
+);
 bool quantity_from_int128(int64_t lo, int64_t hi, DecimalQuantity &out);
 bool quantity_from_i64(int64_t value, DecimalQuantity &out);
 bool quantity_from_f64(double value, DecimalQuantity &out);

@@ -8,8 +8,8 @@
 namespace bigmath::formatting {
 namespace {
 
-constexpr size_t MAX_RESULT_BYTES = 16 * 1024 * 1024;
-constexpr std::array<std::string_view, 39> COMPACT_SUFFIXES = {
+constexpr size_t MAX_RESULT_BYTES = MAX_FORMAT_RESULT_BYTES;
+constexpr std::array<std::string_view, COMPACT_SUFFIX_COUNT> COMPACT_SUFFIXES = {
 	"", "K", "M", "G", "T", "P", "E", "Z", "Y", "B",
 	"N", "D", "C", "S", "O", "Q", "X", "W", "V", "U",
 	"Tt", "Gt", "Mt", "St", "Ot", "Nt", "Dt", "Ct", "Lt", "Kt",

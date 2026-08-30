@@ -7,6 +7,9 @@
 
 namespace bigmath::formatting {
 
+inline constexpr size_t COMPACT_SUFFIX_COUNT = 39;
+inline constexpr size_t MAX_FORMAT_RESULT_BYTES = 16 * 1024 * 1024;
+
 enum class RoundingMode : uint32_t {
 	UP,
 	DOWN,
