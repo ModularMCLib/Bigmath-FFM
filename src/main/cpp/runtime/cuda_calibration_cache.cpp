@@ -251,7 +251,7 @@ bool write_atomically(
 	if (!MoveFileExW(
 			temporary.c_str(),
 			data_path.c_str(),
-			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH | MOVEFILE_COPY_ALLOWED
 	)) {
 		const DWORD error = GetLastError();
 		DeleteFileW(temporary.c_str());
