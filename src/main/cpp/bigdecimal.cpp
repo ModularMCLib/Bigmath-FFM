@@ -221,80 +221,6 @@ char *bigdecimal_backend_to_string(mpfr_ptr a) {
 	return out;
 }
 
-char *bigdecimal_backend_format(mpfr_ptr a, int scale, int group_size, const char *group_sep) {
-	int max_sig = (int)(mpfr_get_prec(a) * 0.30103);
-	if (max_sig < 8) max_sig = 8;
-	if (max_sig > 100) max_sig = 100;
-
-	mpfr_exp_t exp;
-	char *digits = mpfr_get_str(nullptr, &exp, 10, (size_t)max_sig, a, MPFR_RNDN);
-	if (!digits) return nullptr;
-
-	bool neg = (digits[0] == '-');
-	char *p = digits + (neg ? 1 : 0);
-	size_t digit_len = strlen(p);
-
-	auto frac_digit = [&](size_t index) -> char {
-		if (exp > 0) {
-			size_t source = (size_t)exp + index;
-			return source < digit_len ? p[source] : '0';
-		}
-		size_t leading_zeros = (size_t)(-exp);
-		if (index < leading_zeros) {
-			return '0';
-		}
-		size_t source = index - leading_zeros;
-		return source < digit_len ? p[source] : '0';
-	};
-
-	size_t int_len = exp > 0 ? (size_t)exp : 1;
-	size_t frac_len;
-	if (scale >= 0) {
-		frac_len = (size_t)scale;
-	} else if (exp > 0) {
-		frac_len = (size_t)exp < digit_len ? digit_len - (size_t)exp : 0;
-	} else {
-		frac_len = (size_t)(-exp) + digit_len;
-	}
-	if (scale < 0) {
-		while (frac_len > 0 && frac_digit(frac_len - 1) == '0') {
-			frac_len--;
-		}
-	}
-
-	size_t sep_len = (group_sep && group_size > 0) ? strlen(group_sep) : 0;
-	size_t sep_count = sep_len > 0 && int_len > 0 ? (int_len - 1) / (size_t)group_size : 0;
-	size_t int_fmt_len = int_len + sep_count * sep_len;
-	size_t total = (neg ? 1 : 0) + int_fmt_len + (frac_len > 0 ? 1 + frac_len : 0);
-	char *out = (char *)malloc(total + 1);
-	if (!out) { mpfr_free_str(digits); return nullptr; }
-	size_t pos = 0;
-	if (neg) out[pos++] = '-';
-
-	size_t first_group = sep_len > 0 ? int_len % (size_t)group_size : int_len;
-	if (first_group == 0) first_group = (size_t)group_size;
-	size_t next_group = first_group;
-	for (size_t i = 0; i < int_len; i++) {
-		if (sep_len > 0 && i == next_group) {
-			memcpy(out + pos, group_sep, sep_len);
-			pos += sep_len;
-			next_group += (size_t)group_size;
-		}
-		out[pos++] = (exp > 0 && i < digit_len) ? p[i] : '0';
-	}
-
-	if (frac_len > 0) {
-		out[pos++] = '.';
-		for (size_t i = 0; i < frac_len; i++) {
-			out[pos++] = frac_digit(i);
-		}
-	}
-	out[pos] = '\0';
-
-	mpfr_free_str(digits);
-	return out;
-}
-
 void bigdecimal_backend_free_string(char *s) {
 	free(s);
 }
@@ -480,7 +406,6 @@ void bigdecimal_backend_abs(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }
 int  bigdecimal_backend_cmp(mpfr_ptr, mpfr_ptr) { return 0; }
 double bigdecimal_backend_to_double(mpfr_ptr) { return 0.0; }
 char *bigdecimal_backend_to_string(mpfr_ptr) { return nullptr; }
-char *bigdecimal_backend_format(mpfr_ptr, int, int, const char *) { return nullptr; }
 void bigdecimal_backend_free_string(char *) { }
 void bigdecimal_backend_free(mpfr_ptr) { }
 void bigdecimal_backend_sqrt(mpfr_ptr *out, mpfr_ptr) { *out = nullptr; }

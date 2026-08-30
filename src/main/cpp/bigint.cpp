@@ -318,65 +318,6 @@ char *bigint_backend_to_string(mpz_ptr a, int radix) {
 	return mpz_get_str(nullptr, radix, a);
 }
 
-char *bigint_backend_format(mpz_ptr a, int group_size, const char *group_sep) {
-	if (group_size <= 0 || group_sep == nullptr || *group_sep == '\0') {
-		return mpz_get_str(nullptr, 10, a);
-	}
-	size_t digit_cap = mpz_sizeinbase(a, 10);
-	bool value_neg = mpz_sgn(a) < 0;
-	size_t sep_len = group_sep[1] == '\0' ? 1 : strlen(group_sep);
-	size_t estimated_sep_count = digit_cap > 0 ? (digit_cap - 1) / static_cast<size_t>(group_size) : 0;
-	size_t capacity = (value_neg ? 1 : 0) + digit_cap + estimated_sep_count * sep_len + 1;
-	char *raw = (char *)malloc(capacity);
-	if (!raw) return nullptr;
-	if (!mpz_get_str(raw, 10, a)) {
-		free(raw);
-		return nullptr;
-	}
-	bool neg = (raw[0] == '-');
-	size_t sign_offset = neg ? 1 : 0;
-	char *digits = raw + sign_offset;
-	size_t len = strlen(digits);
-	if (len <= static_cast<size_t>(group_size)) {
-		return raw;
-	}
-	size_t sep_count = (len - 1) / static_cast<size_t>(group_size);
-	size_t new_len = sign_offset + len + sep_count * sep_len;
-	char *out = raw;
-	size_t read = sign_offset + len;
-	size_t write = new_len;
-	out[write--] = '\0';
-	if (group_size == 3 && sep_len == 1) {
-		char sep = group_sep[0];
-		while (read - sign_offset > 3) {
-			out[write--] = out[--read];
-			out[write--] = out[--read];
-			out[write--] = out[--read];
-			out[write--] = sep;
-		}
-		while (read > sign_offset) {
-			out[write--] = out[--read];
-		}
-		return out;
-	}
-	size_t group_digits = 0;
-	while (read > sign_offset) {
-		out[write--] = out[--read];
-		group_digits++;
-		if (group_digits == static_cast<size_t>(group_size) && read > sign_offset) {
-			if (sep_len == 1) {
-				out[write--] = group_sep[0];
-			} else {
-				write -= sep_len - 1;
-				memcpy(out + write, group_sep, sep_len);
-				write--;
-			}
-			group_digits = 0;
-		}
-	}
-	return out;
-}
-
 void bigint_backend_free_string(char *s) {
 	free(s);
 }

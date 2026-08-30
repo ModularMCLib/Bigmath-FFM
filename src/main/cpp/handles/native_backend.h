@@ -3,6 +3,20 @@
 
 #include "../bigmath_ffm.h"
 
+struct BigIntHandle {
+	uint64_t id;
+	uint64_t version;
+	bool read_only;
+	mpz_ptr value;
+};
+
+struct BigDeciHandle {
+	uint64_t id;
+	uint64_t version;
+	bool read_only;
+	mpfr_ptr value;
+};
+
 extern "C" {
 
 void bigint_backend_from_long(mpz_ptr *out, int64_t val);
@@ -30,7 +44,6 @@ void bigint_backend_neg(mpz_ptr *out, mpz_ptr a);
 void bigint_backend_abs(mpz_ptr *out, mpz_ptr a);
 int bigint_backend_cmp(mpz_ptr a, mpz_ptr b);
 char *bigint_backend_to_string(mpz_ptr a, int radix);
-char *bigint_backend_format(mpz_ptr a, int group_size, const char *group_sep);
 void bigint_backend_free(mpz_ptr a);
 void bigint_backend_free_string(char *s);
 void bigint_backend_gcd(mpz_ptr *out, mpz_ptr a, mpz_ptr b);
@@ -70,7 +83,6 @@ void bigdecimal_backend_abs(mpfr_ptr *out, mpfr_ptr a);
 int bigdecimal_backend_cmp(mpfr_ptr a, mpfr_ptr b);
 double bigdecimal_backend_to_double(mpfr_ptr a);
 char *bigdecimal_backend_to_string(mpfr_ptr a);
-char *bigdecimal_backend_format(mpfr_ptr a, int scale, int group_size, const char *group_sep);
 void bigdecimal_backend_free(mpfr_ptr a);
 void bigdecimal_backend_free_string(char *s);
 void bigdecimal_backend_sqrt(mpfr_ptr *out, mpfr_ptr a);
