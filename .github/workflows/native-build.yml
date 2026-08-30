@@ -31,3 +31,111 @@ jobs:
     needs: check
     if: needs.check.outputs.native == 'true'
     uses: ./.github/workflows/native-artifacts.yml
+
+  cuda-native:
+    name: cuda-${{ matrix.classifier }}
+    needs: check
+    if: needs.check.outputs.native == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            classifier: linux-x86-64
+            main_library: libbigmath_ffm.so
+          - os: windows-2022
+            platform: windows
+            classifier: windows-x86-64
+            main_library: bigmath_ffm.dll
+            vcpkg_triplet: x64-windows
+    runs-on: ${{ matrix.os }}
+    env:
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure MSVC
+        if: matrix.platform == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure MSVC compiler environment
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $cl = (Get-Command cl.exe -ErrorAction Stop).Source
+          "CC=$cl" >> $env:GITHUB_ENV
+          "CXX=$cl" >> $env:GITHUB_ENV
+          "BIGMATH_WINDOWS_COMPILER=msvc" >> $env:GITHUB_ENV
+
+      - name: Restore vcpkg binary cache
+        if: matrix.platform == 'windows'
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .vcpkg-cache
+          key: cuda-vcpkg-${{ matrix.classifier }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            cuda-vcpkg-${{ matrix.classifier }}-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-binary-${{ matrix.classifier }}-${{ hashFiles('vcpkg.json') }}-
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y cmake libgmp-dev libmpfr-dev ninja-build
+
+      - name: Install Windows dependencies
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          vcpkg install --triplet '${{ matrix.vcpkg_triplet }}'
+          "CMAKE_PREFIX_PATH=${{ github.workspace }}\vcpkg_installed\${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
+          "BIGMATH_VCPKG_TRIPLET=${{ matrix.vcpkg_triplet }}" >> $env:GITHUB_ENV
+
+      - name: Install CUDA toolkit
+        uses: Jimver/cuda-toolkit@v0.2.35
+        with:
+          cuda: '13.2.0'
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '23'
+          distribution: 'temurin'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build CUDA Native library
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew buildNative -PbigmathEnableCuda=true '-PbigmathCudaArch=75;80;86;89;90'
+          .github/scripts/stage-native-runtime-unix.sh \
+            '${{ matrix.platform }}' '${{ matrix.classifier }}' '${{ matrix.main_library }}'
+
+      - name: Build CUDA Native library
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          .\gradlew.bat buildNative -PbigmathEnableCuda=true '-PbigmathCudaArch=75;80;86;89;90'
+          if ($LASTEXITCODE -ne 0) { throw "Gradle buildNative failed with exit code $LASTEXITCODE" }
+          .github/scripts/stage-native-runtime-windows.ps1 `
+            -Label '${{ matrix.classifier }}' -Triplet '${{ matrix.vcpkg_triplet }}'
+
+      - name: Save vcpkg binary cache
+        if: matrix.platform == 'windows' && !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-cache
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+
+      - name: Upload CUDA Native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuda-native-${{ matrix.classifier }}
+          path: native/${{ matrix.classifier }}/
+          if-no-files-found: error
+          retention-days: 7
