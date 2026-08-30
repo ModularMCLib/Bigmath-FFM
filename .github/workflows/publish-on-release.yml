@@ -33,7 +33,7 @@ jobs:
     uses: ./.github/workflows/native-artifacts.yml
 
   package:
-    name: Package and Verify the Release JAR
+    name: Package the Release JAR
     needs: native
     runs-on: ubuntu-latest
     permissions:
@@ -77,7 +77,7 @@ jobs:
           retention-days: 7
 
   github-release:
-    name: Upload Verified JAR to GitHub Release
+    name: Upload the Release JAR to GitHub Release
     needs: package
     runs-on: ubuntu-latest
     permissions:

@@ -23,7 +23,7 @@ body:
     attributes:
       label: Bigmath-FFM Version
       description: The version of Bigmath-FFM you were using.
-      placeholder: "Example: 0.1.0"
+      placeholder: "Example: 0.2.0"
     validations:
       required: true
   - type: dropdown
