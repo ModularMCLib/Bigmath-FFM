@@ -6,7 +6,10 @@ import org.jspecify.annotations.Nullable;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
-/** Process-wide configuration and diagnostics entry point for the Bigmath Native runtime. */
+/**
+ * Process-wide configuration and diagnostics entry point for the Bigmath Native runtime.
+ * Runtime options are captured by the first Native-backed API use and cannot be changed afterward.
+ */
 @NullMarked
 public final class BigmathRuntime {
 
@@ -19,9 +22,9 @@ public final class BigmathRuntime {
 	}
 
 	/**
-	 * Replaces the runtime options used by the first Native initialization.
+	 * Replaces the runtime options used by the first Native-backed API call.
 	 *
-	 * @throws IllegalStateException if Native initialization has already started
+	 * @throws IllegalStateException if any Native-backed API has already started initialization
 	 */
 	public static void configure(RuntimeOptions configuredOptions) {
 		Objects.requireNonNull(configuredOptions, "configuredOptions");
@@ -33,7 +36,11 @@ public final class BigmathRuntime {
 		}
 	}
 
-	/** Starts Native initialization on the common asynchronous executor. Calls are idempotent. */
+	/**
+	 * Starts Native initialization on the common asynchronous executor. The returned future completes
+	 * after device probing and calibration finish and contains the resulting diagnostics snapshot.
+	 * Repeated calls return the same future.
+	 */
 	public static CompletableFuture<RuntimeDiagnostics> initializeAsync() {
 		synchronized (LOCK) {
 			if (initialization == null) {
@@ -47,7 +54,10 @@ public final class BigmathRuntime {
 		}
 	}
 
-	/** Returns a current read-only snapshot, initializing the Native runtime if necessary. */
+	/**
+	 * Returns a current read-only snapshot, initializing the Native runtime and waiting for device
+	 * probing and calibration if necessary.
+	 */
 	public static RuntimeDiagnostics diagnostics() {
 		return BigmathFFM.getInstance().runtimeDiagnostics();
 	}

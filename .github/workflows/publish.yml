@@ -64,7 +64,7 @@ jobs:
       - name: Read version
         id: version
         run: echo "value=$(grep -oP 'mod_version\s*=\s*\K.*' gradle.properties | tail -1)" >> "$GITHUB_OUTPUT"
-      - name: Publish the packaged JAR to Maven
+      - name: Publish the Java and Kotlin artifacts to Maven
         if: ${{ !inputs.simulate }}
         env:
           MAVEN_URL: ${{ secrets.MAVEN_URL }}
@@ -75,6 +75,7 @@ jobs:
           test -n "$MAVEN_USER"
           test -n "$MAVEN_PASSWORD"
           ./gradlew publishMavenJavaPublicationToReleaseRepository \
+            :bigmath-ffm-kt:publishMavenJavaPublicationToReleaseRepository \
             "-PreleaseJarFile=${{ steps.jar.outputs.path }}" \
             -x releaseJar -x cmakeConfigure -x buildNative -x copyNativeLib -x processResources
 

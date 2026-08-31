@@ -17,6 +17,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@link #close()} to free the underlying resource. A cleaner is retained only
  * as a fallback for abandoned owned values.
  * <p>
+ * The ordinary arithmetic methods allocate and return a new native-backed
+ * value, leaving the original operands unchanged. For hot loops, {@code set}
+ * and {@code *Into} methods mutate the current native value so callers can
+ * reuse an existing result object and avoid repeated native allocations.
+ * <p>
  * Constants {@link #ZERO}, {@link #ONE}, {@link #TWO}, {@link #TEN}, and
  * {@link #NEGATIVE_ONE} are permanent read-only handles and reject both
  * mutation and {@link #close()}.

@@ -16,7 +16,7 @@ import java.lang.foreign.ValueLayout;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 final class FunctionDescriptors {
 
-	// --- Native ABI v2 ---
+	// --- Current internal Native ABI ---
 
 	static final FunctionDescriptor ABI_VERSION = FunctionDescriptor.of(ValueLayout.JAVA_INT);
 	static final FunctionDescriptor ABI_STRING = FunctionDescriptor.of(ValueLayout.ADDRESS);
