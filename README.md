@@ -1,6 +1,56 @@
-# Bigmath-FFM
+<h1 align="center">Bigmath-FFM</h1>
 
-Cross-platform high-performance big integer & decimal library for Java FFM (backed by GMP/MPFR), part of [ModularMCLib](https://github.com/ModularMCLib).
+<p align="center">
+  基于 GMP 和 MPFR 的跨平台高性能 Java 大数库。<br>
+  A cross-platform, high-performance Java FFM library for big integers and decimals, backed by GMP and MPFR.
+</p>
+
+<p align="center">
+  <a href="https://github.com/ModularMCLib/Bigmath-FFM/releases"><img src="https://img.shields.io/badge/GitHub-Releases-24292F?logo=github&amp;logoColor=white&amp;style=for-the-badge" alt="GitHub Releases"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-LGPL--3.0-blue?style=for-the-badge" alt="License"></a>
+  <a href="https://discord.gg/HwnF3RTPtH"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&amp;logoColor=white&amp;style=for-the-badge" alt="Discord"></a>
+</p>
+
+<p align="center">
+  <a href="#简体中文">简体中文</a> · <a href="#english">English</a>
+</p>
+
+## 分支与版本 / Branches and Versions
+
+| 分支 / Branch | Java | CI | 最新发布 / Latest Release |
+| --- | --- | --- | --- |
+| [`main`](https://github.com/ModularMCLib/Bigmath-FFM/tree/main) | `23+` | [![CI (main)](https://img.shields.io/github/actions/workflow/status/ModularMCLib/Bigmath-FFM/auto-build.yml?branch=main&style=flat-square)](https://github.com/ModularMCLib/Bigmath-FFM/actions/workflows/auto-build.yml?query=branch%3Amain) | [![Latest GitHub release](https://img.shields.io/github/v/release/ModularMCLib/Bigmath-FFM?style=flat-square)](https://github.com/ModularMCLib/Bigmath-FFM/releases/latest) |
+
+## 简体中文
+
+Bigmath-FFM 是 [ModularMCLib](https://github.com/ModularMCLib) 的跨平台大数库，通过 Java FFM 调用 GMP 和 MPFR。
+
+### 功能
+
+- `BigInt` 提供基于 GMP 的任意精度整数运算，`BigDeci` 提供基于 MPFR 的任意精度十进制浮点运算。
+- `Int128` 提供有符号 128 位整数运算，无需外部库。
+- `BigNumberFormat` 支持 `DecimalFormat` 格式、区域设置、紧凑单位和科学计数法。
+- Kotlin 计算作用域支持 `+`、`-`、`*`、`/`，并自动释放计算中的原生临时对象。
+
+### 安装与使用
+
+从 [GitHub Releases](https://github.com/ModularMCLib/Bigmath-FFM/releases/latest) 下载发布 JAR。它包含 Linux、macOS 和 Windows 的 x86-64 与 aarch64 原生库。Linux 的 glibc 和 macOS 的最低部署版本取决于发布时使用的 GitHub runner 工具链。
+
+- [Java 快速入门](#quick-start)演示如何用 try-with-resources 释放 `BigInt` 和 `BigDeci`。
+- [数字格式化](#number-formatting)列出了分组、紧凑单位和科学计数法的写法。`BigNumberFormat` 不可变且线程安全，默认在构建时读取 FORMAT 区域设置。
+- [运行时配置](#runtime-configuration-and-diagnostics)须在首次初始化原生数值前通过 `BigmathRuntime.configure` 设置。默认 AUTO 策略在校准完成前使用 CPU。
+- [Kotlin 表达式](#kotlin-expressions)会自动关闭中间值，调用方仍需关闭作用域返回的结果。`Int128` 无需为每个结果分配原生句柄，其运算符可在作用域外使用。
+- 从旧版升级时，参阅 [0.2.0 迁移指南](docs/migration-0.2.0.md)。
+
+### 构建与分发
+
+构建需要 Java 23+、CMake 3.21+、GMP 6.x 和 MPFR 4.x。运行 `./gradlew assemble` 为当前系统构建，或参阅 [CMake 构建命令](#cmake-directly)。仅构建 `Int128` 时，可用 `-DUSE_GMP=OFF` 配置 CMake。
+
+[实验性 CUDA 构建](#experimental-cuda)需要 `nvcc`，适用于 Linux x86-64 和 Windows x86-64。标准发行 JAR 无需 CUDA。发布流程将六个平台的 CI 产物打包进同一个 JAR。
+
+本项目采用 [GNU LGPL 3.0](LICENSE)。原生库替换要求见[分发说明](#native-distribution-notes)，第三方依赖见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+## English
 
 ## Features
 
